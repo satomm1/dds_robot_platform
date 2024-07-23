@@ -1,0 +1,40 @@
+# This is the docker-compose file for the Kafka cluster. This includes 
+# a zookeeper, broker, kafkacat, and python container. The python
+# container is used to run the python kafka client scripts.
+
+services:
+  
+  python2:
+    image: matt_python:latest
+    container_name: python2
+    volumes:
+      - ./graphql:/home/graphql
+    network_mode: host
+    stdin_open: true  # docker run -i
+    tty: true         # docker run -t
+    
+  ignite_dds:
+    image: apacheignite/ignite:latest
+    hostname: ignite_host
+    container_name: ignite_dds
+    ports:
+      - "10800:10800"
+    restart: always
+    volumes:
+      - ./ignite:/storage
+    environment:
+      - "IGNITE_WORK_DIR=/storage"
+
+  graphql_endpoint_dds:
+    image: matt_python:latest
+    container_name: graphql_endpoint_dds
+    hostname: graphql_endpoint
+    ports:
+      - "8000:8000"
+      - "4000:4000"
+    volumes: 
+      - ./graphql:/home
+    stdin_open: true  # docker run -i
+    tty: true         # docker run -t
+    working_dir: /home/python-graphql
+    command: /bin/sh -c 'python3 server.py'
