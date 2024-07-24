@@ -179,8 +179,8 @@ class EntryExitListener(Listener):
         - None
         """
         for sample in reader.read():
-            # print(sample)
 
+            # Skip messages from self
             if sample.agent_id == int(self.my_id):
                 continue
 
@@ -344,11 +344,11 @@ class HeartbeatListener(Listener):
         """
         for sample in reader.read():
 
+            # Skip messages from self
             if sample.agent_id == int(self.my_id):
                 continue
 
-            print(f'Heartbeat from agent {sample.agent_id} at time {sample.timestamp}')
-
+            # Only process heartbeats from agents that are in the agents dictionary
             if sample.agent_id in self.agents:
                 self.heartbeats[sample.agent_id] = sample.timestamp
 
@@ -356,9 +356,6 @@ class HeartbeatListener(Listener):
                     self.locations[sample.agent_id] = (sample.x, sample.y, sample.theta)
                 else:
                     self.locations[sample.agent_id] = None
-
-            else:
-                print(f'Heartbeat from Agent {sample.agent_id}, but is not in the environment')
 
     def get_heartbeats(self):
         """
@@ -399,6 +396,7 @@ class HeartbeatListener(Listener):
             if agent_id not in self.agents:
                 self.heartbeats.pop(agent_id)
 
+    # TODO Should provide function to alert of new agents detected through heartbeats
 
 class InitializationListener(Listener):
     """
@@ -564,13 +562,14 @@ class LocationListener(Listener):
             None
         """
         for sample in reader.read():
+
+            # Skip messages from self
             if sample.agent_id == int(self.my_id):
                 continue
 
             if sample.agent_id in self.agent_ids:
-                print(f'Location message from agent {sample.agent_id} at time {sample.timestamp}')
+                # Update store locations of agents
                 self.locations[sample.agent_id] = (sample.x, sample.y, sample.theta)
-
                 ignite_data = {"x": sample.x, "y": sample.y, "theta": sample.theta, "timestamp": sample.timestamp}
                 ignite_data = json.dumps(ignite_data).encode('utf-8')
                 robot_position_cache.put(int(sample.agent_id), ignite_data)
@@ -613,9 +612,6 @@ def hash_id(robot_id):
 
     """
     return int(hashlib.sha256(robot_id.encode()).hexdigest(), 16)
-
-
-# connected_clients = set()
 
 
 class EntryExitCommunication:
