@@ -15,3 +15,21 @@ root.render(
 // to log results (for example: reportWebVitals(console.log))
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();
+
+
+// # client
+// #   .query({
+// #     query: gql`
+// #        query {
+// #           GetMap {
+// #             map {
+// #               width
+// #               height
+// #               resolution
+// #               occupancy
+// #             }
+// #           }
+// #         }
+// #     `,
+// #   })
+// #   .then((result) => console.log(result));

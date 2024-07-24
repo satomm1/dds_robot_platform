@@ -1,31 +1,35 @@
-// src/App.js
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import './App.css';
+import { ApolloProvider, useQuery } from '@apollo/client';
+import client from './apolloClient';
+// import PhaserGame from './PhaserGame';
+import { GET_OCCUPANCY_GRID } from './queries';
+import RobotGoalForm from './RobotGoalForm';
+import RobotLocationUpdater from './RobotLocationUpdater';
 
 function App() {
-    const [messages, setMessages] = useState([]);
-
-    useEffect(() => {
-        const websocket = new WebSocket('ws://localhost:8765');
-
-        websocket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            setMessages((prevMessages) => [...prevMessages, data]);
-            console.log('Received data:', data);
-        };
-
-        return () => websocket.close();
-    }, []);
-
-    return (
-        <div>
-            <h1>WebSocket Messages</h1>
-            <ul>
-                {messages.map((message, index) => (
-                    <li key={index}>{JSON.stringify(message)}</li>
-                ))}
-            </ul>
-        </div>
-    );
+  return (
+      <ApolloProvider client={client}>
+          <div className="App">
+              <header className="App-header">
+                  <h1>Robot GUI</h1>
+              </header>
+              <RobotGoalForm/>
+              <OccupancyGridLoader/>   
+              {/* <ImageStream /> */}
+          </div>
+      </ApolloProvider>
+  );
 }
+
+const OccupancyGridLoader = () => {
+  const { loading, error, data } = useQuery(GET_OCCUPANCY_GRID);
+
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p>Error: {error.message}</p>;
+
+  // return <PhaserGame occupancyGrid={data.map.occupancy} height={data.map.height} width={data.map.width} resolution={data.map.resolution} />;
+  return <RobotLocationUpdater occupancyGrid={data.map.occupancy} height={data.map.height} width={data.map.width} resolution={data.map.resolution} />;
+};
 
 export default App;
