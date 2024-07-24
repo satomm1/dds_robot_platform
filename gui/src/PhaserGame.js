@@ -126,7 +126,9 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
                     if (robot.theta_goal) {
                         sprite.setRotation(3.14-robot.theta_goal);
                     }
-                    sprite.setDisplaySize(30, 30);
+
+                    const sprite_size = 800 / width * 15;
+                    sprite.setDisplaySize(sprite_size, sprite_size);
 
                     const label = scene.add.text(0, 0, robot.id, { font: '16px Arial', fill: '#ffffff' });
                     label.setOrigin(0.5, 0.5); // Center the text on the sprite
@@ -153,7 +155,9 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
                     if (robot.theta) {
                         sprite.setRotation(3.14 - robot.theta);
                     }
-                    sprite.setDisplaySize(30, 30);
+
+                    const sprite_size = 800 / width * 15;
+                    sprite.setDisplaySize(sprite_size, sprite_size);
 
                     const label = scene.add.text(0, 0, robot.id, { font: '16px Arial', fill: '#ffffff' });
                     label.setOrigin(0.5, 0.5); // Center the text on the sprite

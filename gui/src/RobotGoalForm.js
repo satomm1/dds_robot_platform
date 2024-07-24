@@ -12,7 +12,8 @@ const RobotGoalForm = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setRobotGoal({ variables: { robotId: parseInt(robotId), xGoal: parseFloat(xGoal), yGoal: parseFloat(yGoal), thetaGoal: parseFloat(thetaGoal) } });
+    const timestamp = new Date().getTime() / 1000;
+    setRobotGoal({ variables: { robotId: parseInt(robotId), xGoal: parseFloat(xGoal), yGoal: parseFloat(yGoal), thetaGoal: parseFloat(thetaGoal), timestamp: timestamp } });
   };
 
   return (
