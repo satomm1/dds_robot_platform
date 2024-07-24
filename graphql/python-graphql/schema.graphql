@@ -1,0 +1,93 @@
+type Map {
+    occupancy: [Int]
+    width: Int
+    height: Int
+    resolution: Float
+    origin_x: Float
+    origin_y: Float
+    origin_z: Float
+    origin_orientation_x: Float
+    origin_orientation_y: Float
+    origin_orientation_z: Float
+    origin_orientation_w: Float
+}
+
+type Robot {
+    id: Int
+    x: Float
+    y: Float
+    theta: Float
+    x_goal: Float
+    y_goal: Float
+    theta_goal: Float
+    goal_timestamp: Float
+    v_x: Float
+    v_y: Float
+    v_theta: Float
+    status: String
+}
+
+type Path {
+    id: Int
+    x: [Float]
+    y: [Float]
+    t: [Float]
+}
+
+type Scan {
+    id: Int
+    ranges: [Float]
+    range_min: Float
+    range_max: Float
+    angle_min: Float
+    angle_max: Float
+    angle_increment: Float
+    timestamp: Float
+}
+
+type Image {
+    id: Int
+    data: [Int]
+}
+
+type Objects {
+    id: Int
+    x: Float
+    y: Float
+    type: String
+}
+
+type Query {
+    map: Map
+    robotPosition(robot_id: Int): Robot
+    robotPositions: [Robot]
+    robotGoal(robot_id: Int): Robot
+    robotGoals: [Robot]
+    robotVelocity(robot_id: Int): Robot
+    robotPath(robot_id: Int): Path
+    robotPaths: [Path]
+    # robotVelocities: [Robot]
+    robotScan(robot_id: Int): Scan
+    # robotImage(robot_id: Int): Image
+    robotStatus(robot_id: Int): Robot
+    stoppedRobotPositions: [Robot]
+    objectPositions: [Objects]
+}
+
+type Mutation {
+    setRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float): Boolean
+    setRobotPosition(robot_id: Int, x: Float, y: Float, theta: Float): Boolean
+}
+
+type Subscription {
+    robotPosition(robot_id: Int): Robot
+    robotPositions: Robot
+    # robotVelocity(robot_id: Int): Robot
+    robotVideo(robot_id: Int): Image
+}
+
+schema {
+    query: Query
+    mutation: Mutation
+    subscription: Subscription
+}

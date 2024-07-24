@@ -16,8 +16,9 @@ import hashlib
 import socket
 import json
 import requests
-import websockets
-import asyncio
+import numpy as np
+
+from pyignite import Client
 
 from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, OccupancyGrid, msg_to_dict
 from websocket_server import send_message, start_websocket_server
@@ -30,6 +31,17 @@ AGENT_CAPABILITIES = []
 AGENT_MESSAGE_TYPES = ['commands']
 AGENT_TYPE = 'human'
 
+ROBOT_GOALS_QUERY = """
+                    query {
+                        robotGoals {
+                            id
+                            x_goal
+                            y_goal
+                            theta_goal
+                            goal_timestamp
+                        }
+                    }
+                    """
 
 @dataclass
 class EntryExit(IdlStruct):
@@ -95,6 +107,21 @@ class Location(IdlStruct):
     y: float
     theta: float
 
+@dataclass
+class RobotGoal(IdlStruct):
+    """
+    Represents the goal of a robot.
+
+    Attributes:
+        id (int): The ID of the robot.
+        x_goal (float): The x-coordinate of the goal.
+        y_goal (float): The y-coordinate of the goal.
+        theta_goal (float): The orientation of the goal.
+    """
+    id: int
+    x_goal: float
+    y_goal: float
+    theta_goal: float
 
 class EntryExitListener(Listener):
     """
@@ -434,7 +461,7 @@ class InitializationListener(Listener):
                         ip_address = agent_info['ip_address']
                         agent_hash = agent_info['hash']
                         timestamp = agent_info['timestamp']
-                        self.agents[agent_id] = {
+                        self.agents[int(agent_id)] = {
                             'agent_type': agent_type,
                             'capabilities': capabilities,
                             'message_types': message_types,
@@ -443,7 +470,7 @@ class InitializationListener(Listener):
                             'timestamp': timestamp
                         }
 
-                        # Load the map from the initialization message
+            # Load the map from the initialization message
             map_dict = json.loads(sample.map)
             map_md_dict = json.loads(sample.map_md)
 
@@ -544,6 +571,10 @@ class LocationListener(Listener):
                 print(f'Location message from agent {sample.agent_id} at time {sample.timestamp}')
                 self.locations[sample.agent_id] = (sample.x, sample.y, sample.theta)
 
+                ignite_data = {"x": sample.x, "y": sample.y, "theta": sample.theta, "timestamp": sample.timestamp}
+                ignite_data = json.dumps(ignite_data).encode('utf-8')
+                robot_position_cache.put(int(sample.agent_id), ignite_data)
+
     def get_locations(self):
         """
         Returns the locations dictionary.
@@ -622,12 +653,14 @@ class EntryExitCommunication:
         self.heartbeat_topic = Topic(self.participant, 'HeartbeatTopic', Heartbeat)
         self.init_topic = Topic(self.participant, 'InitializationTopic', Initialization)
         self.location_topic = Topic(self.participant, 'LocationTopic' + str(self.my_id), Location)
+        self.goal_topic = Topic(self.participant, 'RobotGoalTopic' + str(self.my_id), RobotGoal)
 
         # Create the DataWriters and DataReaders
         self.enter_exit_writer = DataWriter(self.publisher, self.entry_exit_topic)
         self.heartbeat_writer = DataWriter(self.publisher, self.heartbeat_topic)
         self.init_writer = DataWriter(self.publisher, self.init_topic)
         self.location_writer = DataWriter(self.publisher, self.location_topic)
+        self.goal_writer = DataWriter(self.publisher, self.goal_topic)
 
         self.entry_exit_listener = EntryExitListener(self.participant, self.publisher, self.subscriber, self.my_id,
                                                      self.my_ip, self.my_hash, self.init_writer)
@@ -647,8 +680,6 @@ class EntryExitCommunication:
 
         # GraphQL server URL
         self.graphql_server = server_url
-
-        self.data_to_send = []
 
         self.last_time = int(time.time())
 
@@ -680,8 +711,7 @@ class EntryExitCommunication:
         """
 
         # Determine the number of participants on the DDS network
-        for part in self.built_in_reader.take_iter(timeout=duration(milliseconds=100)):
-            print(part)
+        for _ in self.built_in_reader.take_iter(timeout=duration(milliseconds=100)):
             self.num_participants += 1
 
         if self.num_participants == 1:
@@ -782,10 +812,18 @@ class EntryExitCommunication:
 
             # Store the map, map metadata, and agents
             self.map_msg, self.map_md_msg = self.init_listener.get_map()
+
             self.agents = self.init_listener.get_agents()
 
             # Update the agents in the entry/exit listener
             self.entry_exit_listener.update_agents(agents=self.agents)
+
+            self.location_listener.set_agent_ids(list(self.agents.keys()))
+            for agent_id, _ in self.agents.items():
+                if agent_id != int(self.my_id):
+                    # Create a DataReader for each agent
+                    new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
+                    self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listener)
 
             # Start the heartbeat reader now that we have the map, stop listening for initialization messages
             self.init_reader = None
@@ -794,105 +832,143 @@ class EntryExitCommunication:
 
             print("Initialization complete")
 
-        self.data_to_send.append(msg_to_dict(self.map_msg))
-        self.data_to_send.append(msg_to_dict(self.map_md_msg))
+        map_data_str = np.array(self.map_msg.data).tobytes()
+        ignite_map_md_msg = dict()
+        ignite_map_md_msg['resolution'] = self.map_md_msg.resolution
+        ignite_map_md_msg['width'] = self.map_md_msg.width
+        ignite_map_md_msg['height'] = self.map_md_msg.height
+        ignite_map_md_msg['origin.position.x'] = self.map_md_msg.origin.position.x
+        ignite_map_md_msg['origin.position.y'] = self.map_md_msg.origin.position.y
+        ignite_map_md_msg['origin.position.z'] = self.map_md_msg.origin.position.z
+        ignite_map_md_msg['origin.orientation.x'] = self.map_md_msg.origin.orientation.x
+        ignite_map_md_msg['origin.orientation.y'] = self.map_md_msg.origin.orientation.y
+        ignite_map_md_msg['origin.orientation.z'] = self.map_md_msg.origin.orientation.z
+        ignite_map_md_msg['origin.orientation.w'] = self.map_md_msg.origin.orientation.w
+        ignite_map_md_msg = json.dumps(ignite_map_md_msg)
 
-    def generate_data(self):
-        """
-        Generates data for the agent to send to the server.
-        """
-        current_time = int(time.time())
+        # Send the map to ignite server
+        map_cache = ignite_client.get_or_create_cache('map')
+        map_metadata_cache = ignite_client.get_or_create_cache('map_metadata')
+        map_cache.put(1, map_data_str)
+        map_metadata_cache.put(1, ignite_map_md_msg)
 
-        # Get agent locations
-        nearby_agents_locations = self.location_listener.get_locations()
-        # TODO
+    def run(self):
 
-        # If any agents, add to data to send
-        # if len(agent_list):
-        #     # FIXME
-        #     pass
+        robot_goal_history = dict()
+        while True:
+            current_time = int(time.time())
 
-        # Now publish heartbeat periodically
-        if current_time - self.last_time >= HEARTBEAT_PERIOD:
-            self.last_time = current_time
+            # Get agent locations
+            robot_locations = self.location_listener.get_locations()
+            
+            # Send the locations to ignite
+            for agent_id, location in robot_locations.items():
+                ignite_data = {"x": location[0], "y": location[1], "theta": location[2], "timestamp": current_time}
+                ignite_data = json.dumps(ignite_data).encode('utf-8')
+                robot_position_cache.put(int(agent_id), ignite_data)
 
-            # Check for new agents
-            # if self.entry_exit_listener.agent_update_available():
-            #     self.agents, self.exited_agents, self.lost_agents = self.entry_exit_listener.get_agents()
-            # current_agents_list = list(self.agents.keys())
+            # Get input robot goals
+            try:
+                response = requests.post(self.graphql_server, json={'query': ROBOT_GOALS_QUERY}, timeout=1)
+                if response.status_code == 200:
+                    data = response.json()
+                    robot_goals = data.get('data', {}).get('robotGoals', [])
+                    for robot_goal in robot_goals:
+                        robot_goal_id = int(robot_goal['id'])
+                        robot_goal_x = robot_goal['x_goal']
+                        robot_goal_y = robot_goal['y_goal']
+                        robot_goal_theta = robot_goal['theta_goal']
+                        robot_goal_timestamp = robot_goal['goal_timestamp']
 
-            # Update the heartbeat listener with the new agents
-            self.heartbeat_listener.update_agents(self.agents)
+                        if robot_goal_id not in robot_goal_history:
+                            goal_message = RobotGoal(robot_goal_id, robot_goal_x, robot_goal_y, robot_goal_theta)
+                            robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+                            if abs(current_time - robot_goal_timestamp) < 10: 
+                                self.goal_writer.write(goal_message)    
+                        elif robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
+                            goal_message = RobotGoal(robot_goal_id, robot_goal_x, robot_goal_y, robot_goal_theta)
+                            robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+                            self.goal_writer.write(goal_message)
+                            print("Received new goal *********************")
+            except Exception as e:
+                print("No goals yet...")
+  
+            # Now publish heartbeat periodically
+            if current_time - self.last_time >= HEARTBEAT_PERIOD:
+                self.last_time = current_time
 
-            # Send Heartbeat
-            heartbeat_message = Heartbeat(int(self.my_id), current_time, False, 0.0, 0.0, 0.0)
-            self.heartbeat_writer.write(heartbeat_message)
+                # Check for new agents
+                prev_agents_set = set(self.agents.keys())
+                if self.entry_exit_listener.agent_update_available():
+                    self.agents, self.exited_agents, self.lost_agents = self.entry_exit_listener.get_agents()
+                current_agents_list = list(self.agents.keys())
 
-            # Update agents with new heartbeats
-            # heartbeats, locations = self.heartbeat_listener.get_heartbeats_and_locations()
-            # for agent_id, timestamp in heartbeats.items():
-            #     if agent_id in current_agents_list:
-            #         self.agents[agent_id]['timestamp'] = timestamp
+                # Update the heartbeat listener with the new agents
+                self.heartbeat_listener.update_agents(self.agents)
 
+                # Send Heartbeat
+                heartbeat_message = Heartbeat(int(self.my_id), current_time, False, 0.0, 0.0, 0.0)
+                self.heartbeat_writer.write(heartbeat_message)
 
-            # Perform this housekeeping if number of agents has changed
-            # if nearby_agents != prev_nearby_agents:
-            #     prev_nearby_agents = nearby_agents
-            #
-            #     # Remove readers that are no longer needed
-            #     for agent_id in list(self.location_readers.keys()):
-            #         if agent_id not in nearby_agents:
-            #             self.location_readers.pop(agent_id)
-            #     self.location_listener.set_agent_ids(
-            #         nearby_agents)  # update the list of agents we should be listening for
+                # Update agents with new heartbeats
+                heartbeats, locations = self.heartbeat_listener.get_heartbeats_and_locations()
+                for agent_id, timestamp in heartbeats.items():
+                    if agent_id in current_agents_list:
+                        self.agents[agent_id]['timestamp'] = timestamp
 
-            # Check Periodically for Dead Agents
-            # dead_agents = []
-            # for agent_id, agent_info in self.agents.items():
-            #     time_difference = current_time - agent_info['timestamp']
-            #
-            #     if time_difference > HEARTBEAT_TIMEOUT:
-            #         # Agent has timed out
-            #         print(f'Agent {agent_id} has timed out')
-            #         dead_agents.append(agent_id)
-            #
-            # # Remove Dead Agents
-            # for agent_id in dead_agents:
-            #     self.lost_agents[agent_id] = self.agents.pop(agent_id)
-            # if dead_agents:
-            #     self.entry_exit_listener.update_agents(agents=self.agents, lost_agents=self.lost_agents)
+                current_agents_set = set(self.agents.keys())
+                if prev_agents_set != current_agents_set:
+                    for agent_id in current_agents_set:
+                        if agent_id not in prev_agents_set:
+                            # Start listening for location messages from new agents
+                            new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
+                            self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listener)
+                    for agent_id in prev_agents_set:
+                        if agent_id not in current_agents_set:
+                            # Stop listening for location messages from agents that have left
+                            self.location_readers.pop(agent_id)
+                    self.location_listener.set_agent_ids(list(current_agents_set))
 
-    def get_data(self):
-        return_data = self.data_to_send
-        self.data_to_send = []
-        return return_data
+                # Check Periodically for Dead Agents
+                dead_agents = []
+                for agent_id, agent_info in self.agents.items():
+                    time_difference = current_time - agent_info['timestamp']
+                
+                    if time_difference > HEARTBEAT_TIMEOUT:
+                        # Agent has timed out
+                        print(f'Agent {agent_id} has timed out')
+                        dead_agents.append(agent_id)
+                
+                # Remove Dead Agents
+                for agent_id in dead_agents:
+                    self.lost_agents[agent_id] = self.agents.pop(agent_id)
+                if dead_agents:
+                    self.entry_exit_listener.update_agents(agents=self.agents, lost_agents=self.lost_agents)
+
+            time.sleep(0.2)
 
     def shutdown(self):
-        print('Shutting down...')
+        print('\nSending exit message...')
         # Write exit message
         exit_message = EntryExit(int(self.my_id), AGENT_TYPE, 'exit', [], [], self.my_ip, int(time.time()))
         self.enter_exit_writer.write(exit_message)
 
 
-async def send_data(websocket, path, entry_exit_instance):
-    while True:
-        entry_exit_instance.generate_data()
-        data = entry_exit_instance.get_data()
+if __name__ == '__main__':
 
-        for data_item in data:
-            data_json = json.dumps(data_item)
-            await websocket.send(data_json)
+    # Set up the Ignite Client
+    ignite_client = Client()
+    ignite_client.connect('localhost', 10800)
 
-        # Simulate variable data arrival interval
-        await asyncio.sleep(random.uniform(0.5, 5))  # Adjust the interval as needed
+    robot_position_cache = ignite_client.get_or_create_cache('robot_position')
+    robot_goal_cache = ignite_client.get_or_create_cache('robot_goal')
 
-
-async def main():
     entry_exit_obj = EntryExitCommunication('101', server_url='http://localhost:8000/graphql')
     entry_exit_obj.setup()
-    async with websockets.serve(lambda ws, path: send_data(ws, path, entry_exit_obj), "localhost", 8765):
-        await asyncio.Future()  # Run forever
-
-if __name__ == '__main__':
-    import random
-    asyncio.run(main())
+    try:
+        entry_exit_obj.run()
+    except KeyboardInterrupt:
+        entry_exit_obj.shutdown()
+        ignite_client.close()
+        print('Exiting...')
+        exit(0)
