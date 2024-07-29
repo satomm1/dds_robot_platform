@@ -656,14 +656,12 @@ class EntryExitCommunication:
         self.heartbeat_topic = Topic(self.participant, 'HeartbeatTopic', Heartbeat)
         self.init_topic = Topic(self.participant, 'InitializationTopic', Initialization)
         self.location_topic = Topic(self.participant, 'LocationTopic' + str(self.my_id), Location)
-        self.goal_topic = Topic(self.participant, 'RobotGoalTopic' + str(self.my_id), RobotGoal)
 
         # Create the DataWriters and DataReaders
         self.enter_exit_writer = DataWriter(self.publisher, self.entry_exit_topic)
         self.heartbeat_writer = DataWriter(self.publisher, self.heartbeat_topic)
         self.init_writer = DataWriter(self.publisher, self.init_topic)
         self.location_writer = DataWriter(self.publisher, self.location_topic)
-        self.goal_writer = DataWriter(self.publisher, self.goal_topic)
 
         self.entry_exit_listener = EntryExitListener(self.participant, self.publisher, self.subscriber, self.my_id,
                                                      self.my_ip, self.my_hash, self.init_writer)
@@ -884,17 +882,28 @@ class EntryExitCommunication:
                         robot_goal_timestamp = robot_goal['goal_timestamp']
 
                         if robot_goal_id not in robot_goal_history:
-                            goal_message = RobotGoal(robot_goal_id, robot_goal_x, robot_goal_y, robot_goal_theta)
+                            # Store goal in history
                             robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+                            
                             if abs(current_time - robot_goal_timestamp) < 10: 
-                                self.goal_writer.write(goal_message)    
+                                # Send the goal to the robot
+                                goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
+                                command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
+                                message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
+                                message_writer = DataWriter(self.publisher, message_topic)
+                                message_writer.write(command_message)
                         elif robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
-                            goal_message = RobotGoal(robot_goal_id, robot_goal_x, robot_goal_y, robot_goal_theta)
+                            # Store goal in history
                             robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
-                            self.goal_writer.write(goal_message)
+
+                            goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
+                            command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
+                            message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
+                            message_writer = DataWriter(self.publisher, message_topic)
+                            message_writer.write(command_message)
                             print("Received new goal *********************")
             except Exception as e:
-                print("No goals yet...")
+                print("No goals yet...", e)
   
             # Now publish heartbeat periodically
             if current_time - self.last_time >= HEARTBEAT_PERIOD:
