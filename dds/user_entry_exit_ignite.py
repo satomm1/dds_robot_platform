@@ -123,6 +123,13 @@ class RobotGoal(IdlStruct):
     y_goal: float
     theta_goal: float
 
+@dataclass
+class DataMessage(IdlStruct):
+    message_type: str
+    sending_agent: int
+    timestamp: int
+    data: str
+
 class EntryExitListener(Listener):
     """
     Listener class for handling entry and exit events of agents in the environment.
