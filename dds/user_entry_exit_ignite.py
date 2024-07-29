@@ -606,6 +606,53 @@ class LocationListener(Listener):
             if agent_id not in agent_ids:
                 self.locations.pop(agent_id)
 
+class DataListener(Listener):
+
+    def __init__(self, my_id):
+        super().__init__()
+        self.my_id = my_id
+
+        self.path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
+
+    def on_data_available(self, reader):
+        for sample in reader.read():
+
+            sending_agent = sample.sending_agent
+
+            if sending_agent == int(self.my_id):
+                continue
+
+            message_type = sample.message_type
+            timestamp = sample.timestamp
+            data = json.loads(sample.data)
+
+            if message_type == 'path':
+                poses = data['poses']
+                x = []
+                y = []
+                t = []
+                for pose in poses:
+                    x.append(pose['pose']['position']['x'])
+                    y.append(pose['pose']['position']['y'])
+                    t.append(pose['header']['stamp']['secs'] + pose['header']['stamp']['nsecs'] / 1e9)
+
+                # Write the data to Ignite always
+                ignite_data = {"x": x, "y": y, "t": t, "timestamp": timestamp}
+                ignite_data = json.dumps(ignite_data).encode('utf-8')
+                self.path_cache.put(sending_agent, ignite_data)
+
+    def get_data(self):
+        return self.data_messages
+
+    def clear_data(self):
+        self.data_messages = dict()
+
+    def get_data_for_agent(self, agent_id):
+        data = dict()
+        if agent_id in self.data_messages:
+            data = self.data_messages[agent_id]
+        return data
+
 
 def hash_id(robot_id):
     """
@@ -668,12 +715,14 @@ class EntryExitCommunication:
         self.heartbeat_listener = HeartbeatListener(self.my_id)
         self.init_listener = InitializationListener(self.my_id)
         self.location_listener = LocationListener(self.my_id)
+        self.data_listener = DataListener(self.my_id)
 
         # We will start the readers later when it is necessary
         self.enter_exit_reader = None
         self.init_reader = None
         self.heartbeat_reader = None
         self.location_readers = dict()
+        self.data_readers = dict()
 
         # Built-in reader to detect number of participants
         self.built_in_reader = BuiltinDataReader(self.participant, BuiltinTopicDcpsParticipant)
@@ -826,6 +875,9 @@ class EntryExitCommunication:
                     new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
                     self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listener)
 
+                    new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
+                    self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listener)  
+
             # Start the heartbeat reader now that we have the map, stop listening for initialization messages
             self.init_reader = None
             self.init_listener = None
@@ -935,10 +987,14 @@ class EntryExitCommunication:
                             # Start listening for location messages from new agents
                             new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
                             self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listener)
+
+                            new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
+                            self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listener)  
                     for agent_id in prev_agents_set:
                         if agent_id not in current_agents_set:
                             # Stop listening for location messages from agents that have left
                             self.location_readers.pop(agent_id)
+                            self.data_readers.pop(agent_id)
                     self.location_listener.set_agent_ids(list(current_agents_set))
 
                 # Check Periodically for Dead Agents
