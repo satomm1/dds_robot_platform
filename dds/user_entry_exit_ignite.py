@@ -693,6 +693,24 @@ class EntryExitCommunication:
         self.map_msg = OccupancyGrid()
         self.map_md_msg = MapMetaData()
 
+        # Create different policies for the DDS entities
+        self.reliable_qos = Qos(
+            policy=[
+                Policy.Reliability.Reliable(),
+                Policy.Durability.TransientLocal(),
+                Policy.History.KeepLast(1),
+                Policy.Reliability.MaxBlockingTime(duration(milliseconds=100))
+            ]
+        )
+
+        self.best_effort_qos = Qos(
+            policy=[
+                Policy.Reliability.BestEffort(),
+                Policy.Durability.TransientLocal(),
+                Policy.History.KeepLast(1)
+            ]
+        )
+
         # Create a DomainParticipant, Subscriber, and Publisher
         self.participant = DomainParticipant()
         self.subscriber = Subscriber(self.participant)
@@ -705,10 +723,10 @@ class EntryExitCommunication:
         self.location_topic = Topic(self.participant, 'LocationTopic' + str(self.my_id), Location)
 
         # Create the DataWriters and DataReaders
-        self.enter_exit_writer = DataWriter(self.publisher, self.entry_exit_topic)
-        self.heartbeat_writer = DataWriter(self.publisher, self.heartbeat_topic)
-        self.init_writer = DataWriter(self.publisher, self.init_topic)
-        self.location_writer = DataWriter(self.publisher, self.location_topic)
+        self.enter_exit_writer = DataWriter(self.publisher, self.entry_exit_topic, qos=self.reliable_qos)
+        self.heartbeat_writer = DataWriter(self.publisher, self.heartbeat_topic, qos=self.best_effort_qos)
+        self.init_writer = DataWriter(self.publisher, self.init_topic, qos=self.reliable_qos)
+        self.location_writer = DataWriter(self.publisher, self.location_topic, qos=self.best_effort_qos)
 
         self.entry_exit_listener = EntryExitListener(self.participant, self.publisher, self.subscriber, self.my_id,
                                                      self.my_ip, self.my_hash, self.init_writer)
@@ -829,10 +847,10 @@ class EntryExitCommunication:
 
                         # Start the readers now that we have the map
                         self.enter_exit_reader = DataReader(self.subscriber, self.entry_exit_topic,
-                                                            listener=self.entry_exit_listener)
-                        self.init_reader = DataReader(self.subscriber, self.init_topic, listener=self.init_listener)
+                                                            listener=self.entry_exit_listener, qos=self.reliable_qos)
+                        self.init_reader = DataReader(self.subscriber, self.init_topic, listener=self.init_listener, qos=self.reliable_qos)
                         self.heartbeat_reader = DataReader(self.subscriber, self.heartbeat_topic,
-                                                           listener=self.heartbeat_listener)
+                                                           listener=self.heartbeat_listener, qos=self.best_effort_qos)
                     else:
                         print(f"Error retrieving map: {response.status_code}")
                 except Exception as e:
@@ -844,8 +862,8 @@ class EntryExitCommunication:
 
             # We start the readers now since we will need them to access map information
             self.enter_exit_reader = DataReader(self.subscriber, self.entry_exit_topic,
-                                                listener=self.entry_exit_listener)
-            self.init_reader = DataReader(self.subscriber, self.init_topic, listener=self.init_listener)
+                                                listener=self.entry_exit_listener, qos=self.reliable_qos)
+            self.init_reader = DataReader(self.subscriber, self.init_topic, listener=self.init_listener, qos=self.reliable_qos)
 
             # Broadcast an entry message
             entry_message = EntryExit(int(self.my_id), AGENT_TYPE, 'enter', AGENT_CAPABILITIES, AGENT_MESSAGE_TYPES,
@@ -873,15 +891,15 @@ class EntryExitCommunication:
                 if agent_id != int(self.my_id):
                     # Create a DataReader for each agent
                     new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
-                    self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listener)
+                    self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listener, qos=self.best_effort_qos)
 
                     new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
-                    self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listener)  
+                    self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listener, qos=self.reliable_qos)  
 
             # Start the heartbeat reader now that we have the map, stop listening for initialization messages
             self.init_reader = None
             self.init_listener = None
-            self.heartbeat_reader = DataReader(self.subscriber, self.heartbeat_topic, listener=self.heartbeat_listener)
+            self.heartbeat_reader = DataReader(self.subscriber, self.heartbeat_topic, listener=self.heartbeat_listener, qos=self.best_effort_qos)
 
             print("Initialization complete")
 
@@ -942,7 +960,7 @@ class EntryExitCommunication:
                                 goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
                                 command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                                 message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                                message_writer = DataWriter(self.publisher, message_topic)
+                                message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_qos)
                                 message_writer.write(command_message)
                         elif robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
                             # Store goal in history
@@ -951,7 +969,7 @@ class EntryExitCommunication:
                             goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
                             command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                             message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                            message_writer = DataWriter(self.publisher, message_topic)
+                            message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_qos)
                             message_writer.write(command_message)
                             print("Received new goal *********************")
             except Exception as e:
@@ -986,10 +1004,10 @@ class EntryExitCommunication:
                         if agent_id not in prev_agents_set:
                             # Start listening for location messages from new agents
                             new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
-                            self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listener)
+                            self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listener, qos=self.best_effort_qos)
 
                             new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
-                            self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listener)  
+                            self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listener, qos=self.reliable_qos)  
                     for agent_id in prev_agents_set:
                         if agent_id not in current_agents_set:
                             # Stop listening for location messages from agents that have left
