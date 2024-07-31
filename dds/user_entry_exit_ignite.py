@@ -576,10 +576,11 @@ class LocationListener(Listener):
 
             if sample.agent_id in self.agent_ids:
                 # Update store locations of agents
-                self.locations[sample.agent_id] = (sample.x, sample.y, sample.theta)
-                ignite_data = {"x": sample.x, "y": sample.y, "theta": sample.theta, "timestamp": sample.timestamp}
-                ignite_data = json.dumps(ignite_data).encode('utf-8')
-                robot_position_cache.put(int(sample.agent_id), ignite_data)
+                if sample.x is not None and sample.y is not None and sample.theta is not None:
+                    self.locations[sample.agent_id] = (sample.x, sample.y, sample.theta)
+                    ignite_data = {"x": sample.x, "y": sample.y, "theta": sample.theta, "timestamp": sample.timestamp}
+                    ignite_data = json.dumps(ignite_data).encode('utf-8')
+                    robot_position_cache.put(int(sample.agent_id), ignite_data)
 
     def get_locations(self):
         """
