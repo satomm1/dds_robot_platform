@@ -338,9 +338,10 @@ class HeartbeatListener(Listener):
     def __init__(self, my_id):
         super().__init__()
         self.heartbeats = dict()
+        self.new_heartbeats = dict()
         self.locations = dict()
+        self.new_locations = dict()
         self.my_id = my_id
-        self.agents = dict()
 
     def on_data_available(self, reader):
         """
@@ -358,14 +359,15 @@ class HeartbeatListener(Listener):
             if sample.agent_id == int(self.my_id):
                 continue
 
-            # Only process heartbeats from agents that are in the agents dictionary
-            if sample.agent_id in self.agents:
-                self.heartbeats[sample.agent_id] = sample.timestamp
+            self.new_heartbeats[sample.agent_id] = sample.timestamp
+            self.heartbeats[sample.agent_id] = sample.timestamp
 
-                if sample.location_valid:
-                    self.locations[sample.agent_id] = (sample.x, sample.y, sample.theta)
-                else:
-                    self.locations[sample.agent_id] = None
+            if sample.location_valid:
+                self.locations[sample.agent_id] = (sample.x, sample.y, sample.theta)
+                self.new_locations[sample.agent_id] = (sample.x, sample.y, sample.theta)
+            else:
+                self.locations[sample.agent_id] = None
+                self.new_locations[sample.agent_id] = None
 
     def get_heartbeats(self):
         """
@@ -374,7 +376,8 @@ class HeartbeatListener(Listener):
         Returns:
             dict: A copy of the heartbeats dictionary.
         """
-        return self.heartbeats.copy()
+        returned_heartbeats = self.new_heartbeats.copy()
+        return returned_heartbeats
 
     def get_heartbeats_and_locations(self):
         """
@@ -383,29 +386,14 @@ class HeartbeatListener(Listener):
         Returns:
             tuple: A tuple containing copies of the heartbeats and locations dictionaries.
         """
-        return self.heartbeats.copy(), self.locations
+        returned_heartbeats = self.new_heartbeats.copy()
+        self.new_heartbeats = dict()
 
-    def update_agents(self, agents):
-        """
-        Update the agents dictionary and heartbeats dictionary.
+        returned_locations = self.new_locations.copy() 
+        self.new_locations = dict()
 
-        Args:
-            agents (dict): A dictionary containing information about all agents in the environment.
-
-        Returns:
-            None
-        """
-        self.agents = agents
-        # Check for robot id in self.agents that isn't in self.heartbeats
-        for agent_id in self.agents.keys():
-            if agent_id not in self.heartbeats:
-                self.heartbeats[agent_id] = self.agents[agent_id]['timestamp']
-
-        # Remove any heartbeats of agents that no longer exist
-        for agent_id in list(self.heartbeats.keys()):
-            if agent_id not in self.agents:
-                self.heartbeats.pop(agent_id)
-
+        return returned_heartbeats, returned_locations
+    
     # TODO Should provide function to alert of new agents detected through heartbeats
 
 class InitializationListener(Listener):
@@ -963,9 +951,6 @@ class EntryExitCommunication:
                     self.agents, self.exited_agents, self.lost_agents = self.entry_exit_listener.get_agents()
                 current_agents_list = list(self.agents.keys())
 
-                # Update the heartbeat listener with the new agents
-                self.heartbeat_listener.update_agents(self.agents)
-
                 # Send Heartbeat
                 heartbeat_message = Heartbeat(int(self.my_id), current_time, False, 0.0, 0.0, 0.0)
                 self.heartbeat_writer.write(heartbeat_message)
@@ -975,6 +960,9 @@ class EntryExitCommunication:
                 for agent_id, timestamp in heartbeats.items():
                     if agent_id in current_agents_list:
                         self.agents[agent_id]['timestamp'] = timestamp
+                    else:
+                        # TODO
+                        pass
 
                 current_agents_set = set(self.agents.keys())
                 if prev_agents_set != current_agents_set:
