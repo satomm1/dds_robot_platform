@@ -226,19 +226,28 @@ class EntryExitListener(Listener):
 
                     print("Sent initialization message to new agent")
             elif sample.action == "initialized":
-                print(f'Agent {sample.agent_id} of type \'{sample.agent_type}\' entered the environment')
+                # Only if the sample.timestamp is recent
+                if int(time.time()) - sample.timestamp < 5: 
+                    print(f'Agent {sample.agent_id} of type \'{sample.agent_type}\' entered the environment')
 
-                # Agent initialized, add to agents dictionary
-                new_robot_hash = hash_id(str(sample.agent_id))
-                self.agents[sample.agent_id] = {
-                    'agent_type': sample.agent_type,
-                    'capabilities': sample.capabilities,
-                    'message_types': sample.message_types,
-                    'ip_address': sample.ip_address,
-                    'hash': new_robot_hash,
-                    'timestamp': sample.timestamp
-                }  
-                self.update_to_agents = True
+                    # Agent initialized, add to agents dictionary
+                    new_robot_hash = hash_id(str(sample.agent_id))
+                    self.agents[sample.agent_id] = {
+                        'agent_type': sample.agent_type,
+                        'capabilities': sample.capabilities,
+                        'message_types': sample.message_types,
+                        'ip_address': sample.ip_address,
+                        'hash': new_robot_hash,
+                        'timestamp': sample.timestamp
+                    }  
+
+                    # Remove from other agent lists if they are there
+                    if sample.agent_id in self.lost_agents:
+                        self.lost_agents.pop(sample.agent_id)
+                    elif sample.agent_id in self.exited_agents:
+                        self.exited_agents.pop(sample.agent_id)
+                    
+                    self.update_to_agents = True
             elif sample.action == 'exit':
                 # Agent Exited, remove from agents dictionary
                 if sample.agent_id in self.agents:
@@ -437,7 +446,7 @@ class InitializationListener(Listener):
 
             print(f'Initialization message received from agent {sending_agent_dict["id"]}')
 
-            self.agents[sending_agent_dict['id']] = {
+            self.agents[int(sending_agent_dict['id'])] = {
                 'agent_type': sending_agent_dict['agent_type'],
                 'capabilities': sending_agent_dict['capabilities'],
                 'message_types': sending_agent_dict['message_types'],
@@ -898,49 +907,64 @@ class EntryExitCommunication:
         map_cache.put(1, map_data_str)
         map_metadata_cache.put(1, ignite_map_md_msg)
 
+    def get_goals(self, robot_goal_history, current_time):
+        """
+        Retrieves robot goals from the GraphQL server and sends them to the robot if necessary.
+
+        Args:
+            robot_goal_history (dict): A dictionary containing the history of robot goals.
+            current_time (int): The current timestamp.
+
+        Returns:
+            dict: The updated robot_goal_history dictionary.
+        """
+        try:
+            response = requests.post(self.graphql_server, json={'query': ROBOT_GOALS_QUERY}, timeout=1)
+            if response.status_code == 200:
+                data = response.json()
+                robot_goals = data.get('data', {}).get('robotGoals', [])
+                for robot_goal in robot_goals:
+                    robot_goal_id = int(robot_goal['id'])
+                    robot_goal_x = robot_goal['x_goal']
+                    robot_goal_y = robot_goal['y_goal']
+                    robot_goal_theta = robot_goal['theta_goal']
+                    robot_goal_timestamp = robot_goal['goal_timestamp']
+
+                    if robot_goal_id not in robot_goal_history:
+                        # Store goal in history
+                        robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+                        
+                        if abs(current_time - robot_goal_timestamp) < 10: 
+                            # Send the goal to the robot
+                            goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
+                            command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
+                            message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
+                            message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_qos)
+                            message_writer.write(command_message)
+                    elif robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
+                        # Store goal in history
+                        robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+
+                        goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
+                        command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
+                        message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
+                        message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_qos)
+                        message_writer.write(command_message)
+                        print("Received new goal *********************")
+        except Exception as e:
+            print("No goals yet...", e)
+
+        return robot_goal_history
+
     def run(self):
 
         robot_goal_history = dict()
         while True:
             current_time = int(time.time())
 
-            # Get input robot goals
-            try:
-                response = requests.post(self.graphql_server, json={'query': ROBOT_GOALS_QUERY}, timeout=1)
-                if response.status_code == 200:
-                    data = response.json()
-                    robot_goals = data.get('data', {}).get('robotGoals', [])
-                    for robot_goal in robot_goals:
-                        robot_goal_id = int(robot_goal['id'])
-                        robot_goal_x = robot_goal['x_goal']
-                        robot_goal_y = robot_goal['y_goal']
-                        robot_goal_theta = robot_goal['theta_goal']
-                        robot_goal_timestamp = robot_goal['goal_timestamp']
+            # Retrieve goals from GraphQL server
+            robot_goal_history = self.get_goals(robot_goal_history, current_time)
 
-                        if robot_goal_id not in robot_goal_history:
-                            # Store goal in history
-                            robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
-                            
-                            if abs(current_time - robot_goal_timestamp) < 10: 
-                                # Send the goal to the robot
-                                goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
-                                command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
-                                message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                                message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_qos)
-                                message_writer.write(command_message)
-                        elif robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
-                            # Store goal in history
-                            robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
-
-                            goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
-                            command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
-                            message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                            message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_qos)
-                            message_writer.write(command_message)
-                            print("Received new goal *********************")
-            except Exception as e:
-                print("No goals yet...", e)
-  
             # Now publish heartbeat periodically
             if current_time - self.last_time >= HEARTBEAT_PERIOD:
                 self.last_time = current_time
@@ -957,12 +981,33 @@ class EntryExitCommunication:
 
                 # Update agents with new heartbeats
                 heartbeats, locations = self.heartbeat_listener.get_heartbeats_and_locations()
-                for agent_id, timestamp in heartbeats.items():
+
+                update_to_active_agents = False
+                for agent_id in heartbeats.keys():
                     if agent_id in current_agents_list:
-                        self.agents[agent_id]['timestamp'] = timestamp
+                        self.agents[agent_id]['timestamp'] = heartbeats[agent_id]
+                    elif agent_id in self.exited_agents.keys():
+                        self.agents[agent_id] = self.exited_agents.pop(agent_id)
+                        self.agents[agent_id]['timestamp'] = heartbeats[agent_id]
+                        update_to_active_agents = True
+                    elif agent_id in self.lost_agents.keys():
+                        self.agents[agent_id] = self.lost_agents.pop(agent_id)
+                        self.agents[agent_id]['timestamp'] = heartbeats[agent_id]
+                        update_to_active_agents = True
                     else:
-                        # TODO
-                        pass
+                        print(f'Detected heartbeat from unknown agent {agent_id}')
+                        agent_hash = hash_id(str(agent_id))
+                        self.agents[agent_id] = {
+                            'agent_type': 'unknown',
+                            'capabilities': [],
+                            'message_types': [],
+                            'ip_address': 'unknown',
+                            'hash': agent_hash,
+                            'timestamp': heartbeats[agent_id]
+                        }
+                        update_to_active_agents = True
+                if update_to_active_agents:
+                    self.entry_exit_listener.update_agents(agents=self.agents, exited_agents=self.exited_agents, lost_agents=self.lost_agents)
 
                 current_agents_set = set(self.agents.keys())
                 if prev_agents_set != current_agents_set:
@@ -975,7 +1020,7 @@ class EntryExitCommunication:
 
                             new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
                             self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)
-                            self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listener[agent_id], qos=self.reliable_qos)  
+                            self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=self.reliable_qos)  
                     for agent_id in prev_agents_set:
                         if agent_id not in current_agents_set:
                             # Stop listening for location messages from agents that have left
