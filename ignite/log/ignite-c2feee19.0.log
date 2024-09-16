@@ -1,0 +1,616 @@
+[16:30:59,419][INFO][main][IgniteKernal] 
+
+>>>    __________  ________________  
+>>>   /  _/ ___/ |/ /  _/_  __/ __/  
+>>>  _/ // (7 7    // /  / / / _/    
+>>> /___/\___/_/|_/___/ /_/ /___/   
+>>> 
+>>> ver. 2.16.0#20231215-sha1:7bde6a42
+>>> 2023 Copyright(C) Apache Software Foundation
+>>> 
+>>> Ignite documentation: https://ignite.apache.org
+
+[16:30:59,430][INFO][main][IgniteKernal] Config URL: file:/opt/ignite/apache-ignite/config/default-config.xml
+[16:30:59,458][INFO][main][IgniteKernal] IgniteConfiguration [igniteInstanceName=null, pubPoolSize=12, svcPoolSize=12, callbackPoolSize=12, stripedPoolSize=12, sysPoolSize=12, mgmtPoolSize=4, dataStreamerPoolSize=12, utilityCachePoolSize=12, utilityCacheKeepAliveTime=60000, p2pPoolSize=2, qryPoolSize=12, buildIdxPoolSize=3, igniteHome=/opt/ignite/apache-ignite, igniteWorkDir=/storage, mbeanSrv=com.sun.jmx.mbeanserver.JmxMBeanServer@32a068d1, nodeId=c2feee19-c213-46aa-8986-74de48bc4e5e, marsh=BinaryMarshaller [], marshLocJobs=false, p2pEnabled=false, netTimeout=5000, netCompressionLevel=1, sndRetryDelay=1000, sndRetryCnt=3, metricsHistSize=10000, metricsUpdateFreq=2000, metricsExpTime=9223372036854775807, discoSpi=TcpDiscoverySpi [addrRslvr=null, addressFilter=null, sockTimeout=0, ackTimeout=0, marsh=null, reconCnt=10, reconDelay=2000, maxAckTimeout=600000, soLinger=0, forceSrvMode=false, clientReconnectDisabled=false, internalLsnr=null, skipAddrsRandomization=false], segPlc=USE_FAILURE_HANDLER, segResolveAttempts=2, waitForSegOnStart=true, allResolversPassReq=true, segChkFreq=10000, commSpi=TcpCommunicationSpi [connectGate=org.apache.ignite.spi.communication.tcp.internal.ConnectGateway@5dda768f, ctxInitLatch=java.util.concurrent.CountDownLatch@7a8c8dcf[Count = 1], stopping=false, clientPool=null, nioSrvWrapper=null, stateProvider=null], evtSpi=org.apache.ignite.spi.eventstorage.NoopEventStorageSpi@24269709, colSpi=NoopCollisionSpi [], deploySpi=LocalDeploymentSpi [], indexingSpi=org.apache.ignite.spi.indexing.noop.NoopIndexingSpi@1ff4931d, addrRslvr=null, encryptionSpi=org.apache.ignite.spi.encryption.noop.NoopEncryptionSpi@65e98b1c, tracingSpi=org.apache.ignite.spi.tracing.NoopTracingSpi@61322f9d, clientMode=false, rebalanceThreadPoolSize=3, rebalanceTimeout=10000, rebalanceBatchesPrefetchCnt=3, rebalanceThrottle=0, rebalanceBatchSize=524288, txCfg=TransactionConfiguration [txSerEnabled=false, dfltIsolation=REPEATABLE_READ, dfltConcurrency=PESSIMISTIC, dfltTxTimeout=0, txTimeoutOnPartitionMapExchange=0, pessimisticTxLogSize=0, pessimisticTxLogLinger=10000, tmLookupClsName=null, txManagerFactory=null, useJtaSync=false], cacheSanityCheckEnabled=true, discoStartupDelay=60000, deployMode=SHARED, p2pMissedCacheSize=100, locHost=null, timeSrvPortBase=31100, timeSrvPortRange=100, failureDetectionTimeout=10000, sysWorkerBlockedTimeout=null, clientFailureDetectionTimeout=30000, metricsLogFreq=60000, connectorCfg=ConnectorConfiguration [jettyPath=null, host=null, port=11211, noDelay=true, directBuf=false, sndBufSize=32768, rcvBufSize=32768, idleQryCurTimeout=600000, idleQryCurCheckFreq=60000, sndQueueLimit=0, selectorCnt=4, idleTimeout=7000, sslEnabled=false, sslClientAuth=false, sslFactory=null, portRange=100, threadPoolSize=12, msgInterceptor=null], odbcCfg=null, warmupClos=null, atomicCfg=AtomicConfiguration [seqReserveSize=1000, cacheMode=PARTITIONED, backups=1, aff=null, grpName=null], classLdr=null, sslCtxFactory=null, platformCfg=null, binaryCfg=null, memCfg=null, pstCfg=null, dsCfg=DataStorageConfiguration [pageSize=0, concLvl=0, sysDataRegConf=org.apache.ignite.configuration.SystemDataRegionConfiguration@6200f9cb, dfltDataRegConf=DataRegionConfiguration [name=default, maxSize=3324653568, initSize=268435456, swapPath=null, pageEvictionMode=DISABLED, pageReplacementMode=CLOCK, evictionThreshold=0.9, emptyPagesPoolSize=100, metricsEnabled=false, metricsSubIntervalCount=5, metricsRateTimeInterval=60000, persistenceEnabled=false, checkpointPageBufSize=0, lazyMemoryAllocation=true, warmUpCfg=null, memoryAllocator=null, cdcEnabled=false], dataRegions=null, storagePath=null, checkpointFreq=180000, lockWaitTime=10000, checkpointThreads=4, checkpointWriteOrder=SEQUENTIAL, walHistSize=20, maxWalArchiveSize=1073741824, walSegments=10, walSegmentSize=67108864, walPath=db/wal, walArchivePath=db/wal/archive, cdcWalPath=db/wal/cdc, cdcWalDirMaxSize=0, metricsEnabled=false, walMode=LOG_ONLY, walTlbSize=131072, walBuffSize=0, walFlushFreq=2000, walFsyncDelay=1000, walRecordIterBuffSize=67108864, alwaysWriteFullPages=false, fileIOFactory=org.apache.ignite.internal.processors.cache.persistence.file.AsyncFileIOFactory@2de23121, metricsSubIntervalCnt=5, metricsRateTimeInterval=60000, walAutoArchiveAfterInactivity=-1, walForceArchiveTimeout=-1, writeThrottlingEnabled=false, walCompactionEnabled=false, walCompactionLevel=1, checkpointReadLockTimeout=null, walPageCompression=DISABLED, walPageCompressionLevel=null, dfltWarmUpCfg=null, encCfg=org.apache.ignite.configuration.EncryptionConfiguration@4988d8b8, defragmentationThreadPoolSize=4, minWalArchiveSize=-1, memoryAllocator=null], snapshotPath=snapshots, snapshotThreadPoolSize=4, activeOnStart=true, activeOnStartPropSetFlag=false, autoActivation=true, autoActivationPropSetFlag=false, clusterStateOnStart=null, sqlConnCfg=null, cliConnCfg=ClientConnectorConfiguration [host=null, port=10800, portRange=100, sockSndBufSize=0, sockRcvBufSize=0, tcpNoDelay=true, maxOpenCursorsPerConn=128, threadPoolSize=12, selectorCnt=6, idleTimeout=0, handshakeTimeout=10000, jdbcEnabled=true, odbcEnabled=true, thinCliEnabled=true, sslEnabled=false, useIgniteSslCtxFactory=true, sslClientAuth=false, sslCtxFactory=null, thinCliCfg=ThinClientConfiguration [maxActiveTxPerConn=100, maxActiveComputeTasksPerConn=0, sendServerExcStackTraceToClient=false], sesOutboundMsgQueueLimit=0], mvccVacuumThreadCnt=2, mvccVacuumFreq=5000, authEnabled=false, failureHnd=null, commFailureRslvr=null, sqlCfg=SqlConfiguration [longQryWarnTimeout=3000, dfltQryTimeout=0, sqlQryHistSize=1000, validationEnabled=false], asyncContinuationExecutor=null]
+[16:30:59,458][INFO][main][IgniteKernal] OS: Linux 5.15.153.1-microsoft-standard-WSL2 amd64
+[16:30:59,459][INFO][main][IgniteKernal] OS user: root
+[16:30:59,461][INFO][main][IgniteKernal] PID: 1
+[16:30:59,462][INFO][main][IgniteKernal] Language runtime: Java Platform API Specification ver. 1.8
+[16:30:59,462][INFO][main][IgniteKernal] VM information: OpenJDK Runtime Environment 1.8.0_392-b08 Temurin OpenJDK 64-Bit Server VM 25.392-b08
+[16:30:59,463][INFO][main][IgniteKernal] VM total memory: 0.96GB
+[16:30:59,463][INFO][main][IgniteKernal] Remote Management [restart: off, REST: on, JMX (remote: off)]
+[16:30:59,463][INFO][main][IgniteKernal] Logger: JavaLogger [quiet=true, config=null]
+[16:30:59,463][INFO][main][IgniteKernal] IGNITE_HOME=/opt/ignite/apache-ignite
+[16:30:59,463][INFO][main][IgniteKernal] VM arguments: [-XX:+AggressiveOpts, -Xms1g, -Xmx1g, -XX:MaxMetaspaceSize=256m, -DIGNITE_HOME=/opt/ignite/apache-ignite]
+[16:30:59,464][INFO][main][IgniteKernal] System cache's DataRegion size is configured to 40 MB. Use DataStorageConfiguration.systemRegionInitialSize property to change the setting.
+[16:30:59,464][INFO][main][IgniteKernal] Configured caches [in 'sysMemPlc' dataRegion: ['ignite-sys-cache']]
+[16:30:59,464][WARNING][main][IgniteKernal] Please set system property '-Djava.net.preferIPv4Stack=true' to avoid possible problems in mixed environments.
+[16:30:59,464][INFO][main][IgniteKernal] 3-rd party licenses can be found at: /opt/ignite/apache-ignite/libs/licenses
+[16:30:59,573][INFO][main][IgnitePluginProcessor] Configured plugins:
+[16:30:59,574][INFO][main][IgnitePluginProcessor]   ^-- None
+[16:30:59,574][INFO][main][IgnitePluginProcessor] 
+[16:30:59,576][INFO][main][FailureProcessor] Configured failure handler: [hnd=StopNodeOrHaltFailureHandler [tryStop=false, timeout=0, super=AbstractFailureHandler [ignoredFailureTypes=UnmodifiableSet [SYSTEM_WORKER_BLOCKED, SYSTEM_CRITICAL_OPERATION_TIMEOUT]]]]
+[16:30:59,993][INFO][main][TcpCommunicationSpi] Successfully bound communication NIO server to TCP port [port=47100, locHost=0.0.0.0/0.0.0.0, selectorsCnt=6, selectorSpins=0, pairedConn=false]
+[16:30:59,994][WARNING][main][TcpCommunicationSpi] Message queue limit is set to 0 which may lead to potential OOMEs when running cache operations in FULL_ASYNC or PRIMARY_SYNC modes due to message queues growth on sender and receiver sides.
+[16:31:00,031][INFO][main][GridCollisionManager] Collision resolution is disabled (all jobs will be activated upon arrival).
+[16:31:00,294][INFO][main][TcpDiscoverySpi] Successfully bound to TCP port [port=47500, localHost=0.0.0.0/0.0.0.0, locNodeId=c2feee19-c213-46aa-8986-74de48bc4e5e]
+[16:31:00,296][INFO][main][GridLocalConfigManager] Resolved page store work directory: /storage/db/0_0_0_0_0_0_0_1_lo_127_0_0_1_172_19_0_2_47500
+[16:31:00,351][INFO][main][IgniteCacheDatabaseSharedManager] Configured data regions initialized successfully [total=4]
+[16:31:00,505][WARNING][main][IgniteH2Indexing] Serialization of Java objects in H2 was enabled.
+[16:31:00,709][INFO][main][ClientListenerProcessor] Client connector processor has started on TCP port 10800
+[16:31:00,830][INFO][main][GridTcpRestProtocol] Command protocol successfully started [name=TCP binary, host=0.0.0.0/0.0.0.0, port=11211]
+[16:31:00,897][INFO][main][IgniteKernal] Non-loopback local IPs: 172.19.0.2, fe80:0:0:0:42:acff:fe13:2%eth0
+[16:31:00,897][INFO][main][IgniteKernal] Enabled local MACs: 0242AC130002
+[16:31:00,905][INFO][main][ClusterProcessor] Cluster ID and tag has been read from metastorage: null
+[16:31:00,912][INFO][main][IgniteClusterImpl] Shutdown policy was updated [oldVal=null, newVal=null]
+[16:31:00,915][INFO][main][IgniteStatisticsManagerImpl] Statistics usage state was changed from null to null
+[16:31:00,933][WARNING][main][TcpDiscoveryMulticastIpFinder] TcpDiscoveryMulticastIpFinder has no pre-configured addresses (it is recommended in production to specify at least one address in TcpDiscoveryMulticastIpFinder.getAddresses() configuration property)
+[16:31:02,198][INFO][disco-notifier-worker-#56][GridClusterStateProcessor] Received activate cluster request with BaselineTopology[id=0] initiator node ID: c2feee19-c213-46aa-8986-74de48bc4e5e
+[16:31:02,201][INFO][disco-notifier-worker-#56][GridClusterStateProcessor] Started state transition: activate cluster
+[16:31:02,203][INFO][disco-notifier-worker-#56][GridClusterStateProcessor] Received state change finish message: ACTIVE
+[16:31:02,203][INFO][disco-notifier-worker-#56][GridClusterStateProcessor] Cluster state was changed from ACTIVE to ACTIVE
+[16:31:02,211][INFO][disco-notifier-worker-#56][MvccProcessorImpl] Assigned mvcc coordinator [crd=MvccCoordinator [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], nodeId=c2feee19-c213-46aa-8986-74de48bc4e5e, ver=1722616262180, local=true, initialized=false]]
+[16:31:02,234][INFO][sys-#62][ClusterProcessor] Writing cluster ID and tag to metastorage on ready for write ClusterIdAndTag [id=541457bf-1268-44f6-94f6-86c7121c9600, tag=practical_williamson]
+[16:31:02,263][INFO][disco-notifier-worker-#56][DistributedBaselineConfiguration] Baseline parameter 'baselineAutoAdjustEnabled' was changed from 'null' to 'true'
+[16:31:02,269][INFO][disco-notifier-worker-#56][DistributedBaselineConfiguration] Baseline parameter 'baselineAutoAdjustTimeout' was changed from 'null' to '0'
+[16:31:02,270][INFO][disco-notifier-worker-#56][ClusterProcessor] Cluster tag will be set to new value: practical_williamson, previous value was: null
+[16:31:02,273][INFO][disco-notifier-worker-#56][IgniteTxManager] Transactions parameter 'longOperationsDumpTimeout' was changed from 'null' to '60000'
+[16:31:02,275][INFO][disco-notifier-worker-#56][IgniteTxManager] Transactions parameter 'longTransactionTimeDumpThreshold' was changed from 'null' to '0'
+[16:31:02,276][INFO][disco-notifier-worker-#56][IgniteTxManager] Transactions parameter 'transactionTimeDumpSamplesCoefficient' was changed from 'null' to '0.0'
+[16:31:02,278][INFO][disco-notifier-worker-#56][IgniteTxManager] Transactions parameter 'longTransactionTimeDumpSamplesPerSecondLimit' was changed from 'null' to '5'
+[16:31:02,282][INFO][disco-notifier-worker-#56][IgniteTxManager] Transactions parameter 'collisionsDumpInterval' was changed from 'null' to '1000'
+[16:31:02,284][INFO][disco-notifier-worker-#56][IgniteTxManager] Transactions parameter 'txOwnerDumpRequestsAllowed' was changed from 'null' to 'true'
+[16:31:02,285][INFO][disco-notifier-worker-#56][IgniteSnapshotManager] The snapshot transfer rate is not limited.
+[16:31:02,287][INFO][disco-notifier-worker-#56][IgniteH2Indexing] SQL parameter 'sql.defaultQueryTimeout' was changed from 'null' to '0'
+[16:31:02,290][INFO][disco-notifier-worker-#56][IgniteH2Indexing] SQL parameter 'sql.disabledFunctions' was changed from 'null' to '[FILE_WRITE, CANCEL_SESSION, MEMORY_USED, CSVREAD, LINK_SCHEMA, MEMORY_FREE, FILE_READ, CSVWRITE, SESSION_ID, LOCK_MODE]'
+[16:31:02,452][INFO][exchange-worker-#63][time] Started exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], crd=true, evt=NODE_JOINED, evtNode=c2feee19-c213-46aa-8986-74de48bc4e5e, customEvt=null, allowMerge=false, exchangeFreeSwitch=false]
+[16:31:02,467][INFO][exchange-worker-#63][IgniteCacheDatabaseSharedManager] Data Regions Started: 4
+[16:31:02,469][INFO][exchange-worker-#63][msg] Components activation performed in 16 ms.
+[16:31:02,575][INFO][exchange-worker-#63][GridCacheProcessor] Started cache [name=ignite-sys-cache, id=-2100569601, dataRegionName=sysMemPlc, mode=REPLICATED, atomicity=TRANSACTIONAL, backups=2147483647]
+[16:31:02,590][INFO][exchange-worker-#63][GridCacheProcessor] Starting caches on local join performed in 122 ms.
+[16:31:02,603][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Skipped waiting for partitions release future (local node is joining) [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=0]]
+[16:31:02,670][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] finishExchangeOnCoordinator [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=0]]
+[16:31:02,691][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finish exchange future [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], err=null, rebalanced=true, wasRebalanced=false]
+[16:31:02,703][INFO][exchange-worker-#63][GridCacheProcessor] Finish proxy initialization, cacheName=ignite-sys-cache, localNodeId=c2feee19-c213-46aa-8986-74de48bc4e5e
+[16:31:02,704][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Completed partition exchange [localNode=c2feee19-c213-46aa-8986-74de48bc4e5e, exchange=GridDhtPartitionsExchangeFuture [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], evt=NODE_JOINED, evtNode=TcpDiscoveryNode [id=c2feee19-c213-46aa-8986-74de48bc4e5e, consistentId=0:0:0:0:0:0:0:1%lo,127.0.0.1,172.19.0.2:47500, addrs=ArrayList [0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], sockAddrs=HashSet [ignite_host/172.19.0.2:47500, /0:0:0:0:0:0:0:1%lo:47500, /127.0.0.1:47500], discPort=47500, order=1, intOrder=1, lastExchangeTime=1722616260925, loc=true, ver=2.16.0#20231215-sha1:7bde6a42, isClient=false], rebalanced=true, done=true, newCrdFut=null], topVer=AffinityTopologyVersion [topVer=1, minorTopVer=0]]
+[16:31:02,705][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange timings [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], stage="Waiting in exchange queue" (228 ms), stage="Exchange parameters initialization" (2 ms), stage="Components activation" (17 ms), stage="Determine exchange type" (131 ms), stage="Preloading notification" (1 ms), stage="After states restored callback" (66 ms), stage="WAL history reservation" (0 ms), stage="Waiting for all single messages" (0 ms), stage="Affinity recalculation (crd)" (1 ms), stage="Collect update counters and create affinity messages" (0 ms), stage="Assign partitions states" (2 ms), stage="Validate partitions states" (2 ms), stage="Apply update counters" (0 ms), stage="Full message preparing" (14 ms), stage="Full message sending" (0 ms), stage="State finish message sending" (0 ms), stage="Exchange done" (13 ms), stage="Total time" (477 ms)]
+[16:31:02,705][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange longest local stages [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], stage="Coordinator affinity cache init [grp=ignite-sys-cache]" (125 ms) (parent=Determine exchange type), stage="First node affinity initialization (node join) [grp=ignite-sys-cache]" (5 ms) (parent=Determine exchange type)]
+[16:31:02,717][INFO][exchange-worker-#63][time] Finished exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=0], crd=true]
+[16:31:02,721][INFO][exchange-worker-#63][GridCachePartitionExchangeManager] Skipping rebalancing (nothing scheduled) [top=AffinityTopologyVersion [topVer=1, minorTopVer=0], force=false, evt=NODE_JOINED, node=c2feee19-c213-46aa-8986-74de48bc4e5e]
+[16:31:02,753][INFO][main][IgniteKernal] Security status [authentication=off, sandbox=off, tls/ssl=off]
+[16:31:02,753][INFO][main][IgniteKernal] Performance suggestions for grid  (fix if possible)
+[16:31:02,753][INFO][main][IgniteKernal] To disable, set -DIGNITE_PERFORMANCE_SUGGESTIONS_DISABLED=true
+[16:31:02,754][INFO][main][IgniteKernal]   ^-- Switch to the most recent 11 JVM version
+[16:31:02,754][INFO][main][IgniteKernal]   ^-- Enable G1 Garbage Collector (add '-XX:+UseG1GC' to JVM options)
+[16:31:02,754][INFO][main][IgniteKernal]   ^-- Set max direct memory size if getting 'OOME: Direct buffer memory' (add '-XX:MaxDirectMemorySize=<size>[g|G|m|M|k|K]' to JVM options)
+[16:31:02,755][INFO][main][IgniteKernal]   ^-- Speed up flushing of dirty pages by OS (alter vm.dirty_writeback_centisecs and vm.dirty_expire_centisecs parameters by setting to 500)
+[16:31:02,755][INFO][main][IgniteKernal]   ^-- Reduce pages swapping ratio (set vm.swappiness=10 or less)
+[16:31:02,755][INFO][main][IgniteKernal] Refer to this page for more performance suggestions: https://ignite.apache.org/docs/latest/perf-and-troubleshooting/memory-tuning
+[16:31:02,756][INFO][main][IgniteKernal] 
+[16:31:02,757][INFO][main][IgniteKernal] 
+
+>>> +-----------------------------------------------------------------------+
+>>> Ignite ver. 2.16.0#20231215-sha1:7bde6a42b7fda05f8058350d30d67e57ada216d0
+>>> +-----------------------------------------------------------------------+
+>>> OS name: Linux 5.15.153.1-microsoft-standard-WSL2 amd64
+>>> CPU(s): 12
+>>> Heap: 1.0GB
+>>> VM name: 1@ignite_host
+>>> Local node [ID=C2FEEE19-C213-46AA-8986-74DE48BC4E5E, order=1, clientMode=false]
+>>> Local node addresses: [ignite_host/0:0:0:0:0:0:0:1%lo, /127.0.0.1, /172.19.0.2]
+>>> Local ports: TCP:10800 TCP:11211 TCP:47100 UDP:47400 TCP:47500 
+>>> +-----------------------------------------------------------------------+
+
+[16:31:02,759][INFO][main][GridDiscoveryManager] Topology snapshot [ver=1, locNode=c2feee19, servers=1, clients=0, state=ACTIVE, CPUs=12, offheap=3.1GB, heap=1.0GB, aliveNodes=[TcpDiscoveryNode [id=c2feee19-c213-46aa-8986-74de48bc4e5e, consistentId=0:0:0:0:0:0:0:1%lo,127.0.0.1,172.19.0.2:47500, isClient=false, ver=2.16.0#20231215-sha1:7bde6a42]]]
+[16:31:02,760][INFO][main][GridDiscoveryManager]   ^-- Baseline [id=0, size=1, online=1, offline=0]
+[16:31:02,760][INFO][main][G] Node started : [stage="Configure system pool" (147 ms),stage="Start managers" (669 ms),stage="Configure binary metadata" (55 ms),stage="Start processors" (757 ms),stage="Init metastore" (23 ms),stage="Finish recovery" (0 ms),stage="Join topology" (1289 ms),stage="Await transition" (40 ms),stage="Await exchange" (514 ms),stage="Total time" (3494 ms)]
+[16:31:09,639][INFO][exchange-worker-#63][time] Started exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], crd=true, evt=DISCOVERY_CUSTOM_EVT, evtNode=c2feee19-c213-46aa-8986-74de48bc4e5e, customEvt=DynamicCacheChangeBatch [id=7262ee31191-7a5d2c44-1be6-45f2-908a-64f357454291, reqs=ArrayList [DynamicCacheChangeRequest [cacheName=map_metadata, hasCfg=true, nodeId=c2feee19-c213-46aa-8986-74de48bc4e5e, clientStartOnly=false, stop=false, destroy=false, disabledAfterStart=false]], exchangeActions=ExchangeActions [startCaches=[map_metadata], stopCaches=null, startGrps=[map_metadata], stopGrps=[], resetParts=null, finalizePartitionCounters=false, stateChangeRequest=null], startCaches=false], allowMerge=false, exchangeFreeSwitch=false]
+[16:31:09,662][INFO][exchange-worker-#63][GridCacheProcessor] Started cache [name=map_metadata, id=2080329394, dataRegionName=default, mode=PARTITIONED, atomicity=ATOMIC, backups=0]
+[16:31:09,682][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], waitTime=0ms, futInfo=NA, mode=DISTRIBUTED]
+[16:31:09,684][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partitions release latch: ServerLatch [permits=0, pendingAcks=HashSet [], super=CompletableLatch [id=CompletableLatchUid [id=exchange, topVer=AffinityTopologyVersion [topVer=1, minorTopVer=1]]]]
+[16:31:09,684][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], waitTime=0ms, futInfo=NA, mode=LOCAL]
+[16:31:09,753][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] finishExchangeOnCoordinator [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=1]]
+[16:31:09,762][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finish exchange future [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], err=null, rebalanced=true, wasRebalanced=true]
+[16:31:09,765][INFO][exchange-worker-#63][GridCacheProcessor] Finish proxy initialization, cacheName=map_metadata, localNodeId=c2feee19-c213-46aa-8986-74de48bc4e5e
+[16:31:09,766][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Completed partition exchange [localNode=c2feee19-c213-46aa-8986-74de48bc4e5e, exchange=GridDhtPartitionsExchangeFuture [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], evt=DISCOVERY_CUSTOM_EVT, evtNode=TcpDiscoveryNode [id=c2feee19-c213-46aa-8986-74de48bc4e5e, consistentId=0:0:0:0:0:0:0:1%lo,127.0.0.1,172.19.0.2:47500, addrs=ArrayList [0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], sockAddrs=HashSet [ignite_host/172.19.0.2:47500, /0:0:0:0:0:0:0:1%lo:47500, /127.0.0.1:47500], discPort=47500, order=1, intOrder=1, lastExchangeTime=1722616260925, loc=true, ver=2.16.0#20231215-sha1:7bde6a42, isClient=false], rebalanced=true, done=true, newCrdFut=null], topVer=AffinityTopologyVersion [topVer=1, minorTopVer=1]]
+[16:31:09,767][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange timings [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], stage="Waiting in exchange queue" (0 ms), stage="Exchange parameters initialization" (1 ms), stage="Update caches registry" (2 ms), stage="Start caches" (25 ms), stage="Affinity initialization on cache group start" (12 ms), stage="Determine exchange type" (0 ms), stage="Preloading notification" (0 ms), stage="Wait partitions release [latch=exchange]" (3 ms), stage="Wait partitions release latch [latch=exchange]" (1 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="After states restored callback" (68 ms), stage="WAL history reservation" (0 ms), stage="Waiting for all single messages" (0 ms), stage="Affinity recalculation (crd)" (0 ms), stage="Collect update counters and create affinity messages" (0 ms), stage="Assign partitions states" (1 ms), stage="Validate partitions states" (1 ms), stage="Apply update counters" (1 ms), stage="Full message preparing" (5 ms), stage="Full message sending" (0 ms), stage="Exchange done" (4 ms), stage="Total time" (124 ms)]
+[16:31:09,768][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange longest local stages [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], stage="Affinity initialization on cache group start [grp=map_metadata]" (12 ms) (parent=Affinity initialization on cache group start)]
+[16:31:09,768][INFO][exchange-worker-#63][time] Finished exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=1], crd=true]
+[16:31:09,776][INFO][exchange-worker-#63][GridCachePartitionExchangeManager] Skipping rebalancing (nothing scheduled) [top=AffinityTopologyVersion [topVer=1, minorTopVer=1], force=false, evt=DISCOVERY_CUSTOM_EVT, node=c2feee19-c213-46aa-8986-74de48bc4e5e]
+[16:31:09,778][INFO][exchange-worker-#63][time] Started exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], crd=true, evt=DISCOVERY_CUSTOM_EVT, evtNode=c2feee19-c213-46aa-8986-74de48bc4e5e, customEvt=DynamicCacheChangeBatch [id=d262ee31191-7a5d2c44-1be6-45f2-908a-64f357454291, reqs=ArrayList [DynamicCacheChangeRequest [cacheName=map, hasCfg=true, nodeId=c2feee19-c213-46aa-8986-74de48bc4e5e, clientStartOnly=false, stop=false, destroy=false, disabledAfterStart=false]], exchangeActions=ExchangeActions [startCaches=[map], stopCaches=null, startGrps=[map], stopGrps=[], resetParts=null, finalizePartitionCounters=false, stateChangeRequest=null], startCaches=false], allowMerge=false, exchangeFreeSwitch=false]
+[16:31:09,780][INFO][exchange-worker-#63][GridCacheProcessor] Started cache [name=map, id=107868, dataRegionName=default, mode=PARTITIONED, atomicity=ATOMIC, backups=0]
+[16:31:09,783][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], waitTime=0ms, futInfo=NA, mode=DISTRIBUTED]
+[16:31:09,783][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partitions release latch: ServerLatch [permits=0, pendingAcks=HashSet [], super=CompletableLatch [id=CompletableLatchUid [id=exchange, topVer=AffinityTopologyVersion [topVer=1, minorTopVer=2]]]]
+[16:31:09,783][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], waitTime=0ms, futInfo=NA, mode=LOCAL]
+[16:31:09,812][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] finishExchangeOnCoordinator [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=2]]
+[16:31:09,820][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finish exchange future [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], err=null, rebalanced=true, wasRebalanced=true]
+[16:31:09,829][INFO][exchange-worker-#63][GridCacheProcessor] Finish proxy initialization, cacheName=map, localNodeId=c2feee19-c213-46aa-8986-74de48bc4e5e
+[16:31:09,830][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Completed partition exchange [localNode=c2feee19-c213-46aa-8986-74de48bc4e5e, exchange=GridDhtPartitionsExchangeFuture [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], evt=DISCOVERY_CUSTOM_EVT, evtNode=TcpDiscoveryNode [id=c2feee19-c213-46aa-8986-74de48bc4e5e, consistentId=0:0:0:0:0:0:0:1%lo,127.0.0.1,172.19.0.2:47500, addrs=ArrayList [0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], sockAddrs=HashSet [ignite_host/172.19.0.2:47500, /0:0:0:0:0:0:0:1%lo:47500, /127.0.0.1:47500], discPort=47500, order=1, intOrder=1, lastExchangeTime=1722616260925, loc=true, ver=2.16.0#20231215-sha1:7bde6a42, isClient=false], rebalanced=true, done=true, newCrdFut=null], topVer=AffinityTopologyVersion [topVer=1, minorTopVer=2]]
+[16:31:09,831][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange timings [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], stage="Waiting in exchange queue" (0 ms), stage="Exchange parameters initialization" (0 ms), stage="Update caches registry" (0 ms), stage="Start caches" (2 ms), stage="Affinity initialization on cache group start" (1 ms), stage="Determine exchange type" (0 ms), stage="Preloading notification" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="Wait partitions release latch [latch=exchange]" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="After states restored callback" (29 ms), stage="WAL history reservation" (0 ms), stage="Waiting for all single messages" (0 ms), stage="Affinity recalculation (crd)" (0 ms), stage="Collect update counters and create affinity messages" (0 ms), stage="Assign partitions states" (0 ms), stage="Validate partitions states" (1 ms), stage="Apply update counters" (1 ms), stage="Full message preparing" (4 ms), stage="Full message sending" (0 ms), stage="Exchange done" (11 ms), stage="Total time" (49 ms)]
+[16:31:09,832][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange longest local stages [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], stage="Affinity initialization on cache group start [grp=map]" (1 ms) (parent=Affinity initialization on cache group start)]
+[16:31:09,832][INFO][exchange-worker-#63][time] Finished exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=2], crd=true]
+[16:31:09,835][INFO][exchange-worker-#63][GridCachePartitionExchangeManager] Skipping rebalancing (nothing scheduled) [top=AffinityTopologyVersion [topVer=1, minorTopVer=2], force=false, evt=DISCOVERY_CUSTOM_EVT, node=c2feee19-c213-46aa-8986-74de48bc4e5e]
+[16:31:32,337][INFO][exchange-worker-#63][time] Started exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], crd=true, evt=DISCOVERY_CUSTOM_EVT, evtNode=c2feee19-c213-46aa-8986-74de48bc4e5e, customEvt=DynamicCacheChangeBatch [id=e462ee31191-7a5d2c44-1be6-45f2-908a-64f357454291, reqs=ArrayList [DynamicCacheChangeRequest [cacheName=robot_position, hasCfg=true, nodeId=c2feee19-c213-46aa-8986-74de48bc4e5e, clientStartOnly=false, stop=false, destroy=false, disabledAfterStart=false]], exchangeActions=ExchangeActions [startCaches=[robot_position], stopCaches=null, startGrps=[robot_position], stopGrps=[], resetParts=null, finalizePartitionCounters=false, stateChangeRequest=null], startCaches=false], allowMerge=false, exchangeFreeSwitch=false]
+[16:31:32,339][INFO][exchange-worker-#63][GridCacheProcessor] Started cache [name=robot_position, id=1677555550, dataRegionName=default, mode=PARTITIONED, atomicity=ATOMIC, backups=0]
+[16:31:32,342][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], waitTime=0ms, futInfo=NA, mode=DISTRIBUTED]
+[16:31:32,342][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partitions release latch: ServerLatch [permits=0, pendingAcks=HashSet [], super=CompletableLatch [id=CompletableLatchUid [id=exchange, topVer=AffinityTopologyVersion [topVer=1, minorTopVer=3]]]]
+[16:31:32,342][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], waitTime=0ms, futInfo=NA, mode=LOCAL]
+[16:31:32,361][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] finishExchangeOnCoordinator [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=3]]
+[16:31:32,368][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finish exchange future [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], err=null, rebalanced=true, wasRebalanced=true]
+[16:31:32,372][INFO][exchange-worker-#63][GridCacheProcessor] Finish proxy initialization, cacheName=robot_position, localNodeId=c2feee19-c213-46aa-8986-74de48bc4e5e
+[16:31:32,372][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Completed partition exchange [localNode=c2feee19-c213-46aa-8986-74de48bc4e5e, exchange=GridDhtPartitionsExchangeFuture [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], evt=DISCOVERY_CUSTOM_EVT, evtNode=TcpDiscoveryNode [id=c2feee19-c213-46aa-8986-74de48bc4e5e, consistentId=0:0:0:0:0:0:0:1%lo,127.0.0.1,172.19.0.2:47500, addrs=ArrayList [0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], sockAddrs=HashSet [ignite_host/172.19.0.2:47500, /0:0:0:0:0:0:0:1%lo:47500, /127.0.0.1:47500], discPort=47500, order=1, intOrder=1, lastExchangeTime=1722616260925, loc=true, ver=2.16.0#20231215-sha1:7bde6a42, isClient=false], rebalanced=true, done=true, newCrdFut=null], topVer=AffinityTopologyVersion [topVer=1, minorTopVer=3]]
+[16:31:32,372][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange timings [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], stage="Waiting in exchange queue" (0 ms), stage="Exchange parameters initialization" (0 ms), stage="Update caches registry" (0 ms), stage="Start caches" (1 ms), stage="Affinity initialization on cache group start" (1 ms), stage="Determine exchange type" (0 ms), stage="Preloading notification" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="Wait partitions release latch [latch=exchange]" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="After states restored callback" (18 ms), stage="WAL history reservation" (0 ms), stage="Waiting for all single messages" (0 ms), stage="Affinity recalculation (crd)" (0 ms), stage="Collect update counters and create affinity messages" (0 ms), stage="Assign partitions states" (0 ms), stage="Validate partitions states" (1 ms), stage="Apply update counters" (1 ms), stage="Full message preparing" (3 ms), stage="Full message sending" (0 ms), stage="Exchange done" (4 ms), stage="Total time" (29 ms)]
+[16:31:32,373][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange longest local stages [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], stage="Affinity initialization on cache group start [grp=robot_position]" (1 ms) (parent=Affinity initialization on cache group start)]
+[16:31:32,374][INFO][exchange-worker-#63][time] Finished exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=3], crd=true]
+[16:31:32,379][INFO][exchange-worker-#63][GridCachePartitionExchangeManager] Skipping rebalancing (nothing scheduled) [top=AffinityTopologyVersion [topVer=1, minorTopVer=3], force=false, evt=DISCOVERY_CUSTOM_EVT, node=c2feee19-c213-46aa-8986-74de48bc4e5e]
+[16:31:32,382][INFO][exchange-worker-#63][time] Started exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], crd=true, evt=DISCOVERY_CUSTOM_EVT, evtNode=c2feee19-c213-46aa-8986-74de48bc4e5e, customEvt=DynamicCacheChangeBatch [id=4562ee31191-7a5d2c44-1be6-45f2-908a-64f357454291, reqs=ArrayList [DynamicCacheChangeRequest [cacheName=robot_goal, hasCfg=true, nodeId=c2feee19-c213-46aa-8986-74de48bc4e5e, clientStartOnly=false, stop=false, destroy=false, disabledAfterStart=false]], exchangeActions=ExchangeActions [startCaches=[robot_goal], stopCaches=null, startGrps=[robot_goal], stopGrps=[], resetParts=null, finalizePartitionCounters=false, stateChangeRequest=null], startCaches=false], allowMerge=false, exchangeFreeSwitch=false]
+[16:31:32,385][INFO][exchange-worker-#63][GridCacheProcessor] Started cache [name=robot_goal, id=-1849376824, dataRegionName=default, mode=PARTITIONED, atomicity=ATOMIC, backups=0]
+[16:31:32,391][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], waitTime=0ms, futInfo=NA, mode=DISTRIBUTED]
+[16:31:32,391][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partitions release latch: ServerLatch [permits=0, pendingAcks=HashSet [], super=CompletableLatch [id=CompletableLatchUid [id=exchange, topVer=AffinityTopologyVersion [topVer=1, minorTopVer=4]]]]
+[16:31:32,392][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], waitTime=0ms, futInfo=NA, mode=LOCAL]
+[16:31:32,405][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] finishExchangeOnCoordinator [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=4]]
+[16:31:32,414][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finish exchange future [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], err=null, rebalanced=true, wasRebalanced=true]
+[16:31:32,418][INFO][exchange-worker-#63][GridCacheProcessor] Finish proxy initialization, cacheName=robot_goal, localNodeId=c2feee19-c213-46aa-8986-74de48bc4e5e
+[16:31:32,418][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Completed partition exchange [localNode=c2feee19-c213-46aa-8986-74de48bc4e5e, exchange=GridDhtPartitionsExchangeFuture [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], evt=DISCOVERY_CUSTOM_EVT, evtNode=TcpDiscoveryNode [id=c2feee19-c213-46aa-8986-74de48bc4e5e, consistentId=0:0:0:0:0:0:0:1%lo,127.0.0.1,172.19.0.2:47500, addrs=ArrayList [0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], sockAddrs=HashSet [ignite_host/172.19.0.2:47500, /0:0:0:0:0:0:0:1%lo:47500, /127.0.0.1:47500], discPort=47500, order=1, intOrder=1, lastExchangeTime=1722616260925, loc=true, ver=2.16.0#20231215-sha1:7bde6a42, isClient=false], rebalanced=true, done=true, newCrdFut=null], topVer=AffinityTopologyVersion [topVer=1, minorTopVer=4]]
+[16:31:32,419][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange timings [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], stage="Waiting in exchange queue" (0 ms), stage="Exchange parameters initialization" (0 ms), stage="Update caches registry" (0 ms), stage="Start caches" (3 ms), stage="Affinity initialization on cache group start" (3 ms), stage="Determine exchange type" (0 ms), stage="Preloading notification" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="Wait partitions release latch [latch=exchange]" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="After states restored callback" (13 ms), stage="WAL history reservation" (0 ms), stage="Waiting for all single messages" (0 ms), stage="Affinity recalculation (crd)" (0 ms), stage="Collect update counters and create affinity messages" (0 ms), stage="Assign partitions states" (0 ms), stage="Validate partitions states" (1 ms), stage="Apply update counters" (2 ms), stage="Full message preparing" (4 ms), stage="Full message sending" (0 ms), stage="Exchange done" (4 ms), stage="Total time" (30 ms)]
+[16:31:32,419][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange longest local stages [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], stage="Affinity initialization on cache group start [grp=robot_goal]" (3 ms) (parent=Affinity initialization on cache group start)]
+[16:31:32,420][INFO][exchange-worker-#63][time] Finished exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=4], crd=true]
+[16:31:32,429][INFO][exchange-worker-#63][GridCachePartitionExchangeManager] Skipping rebalancing (nothing scheduled) [top=AffinityTopologyVersion [topVer=1, minorTopVer=4], force=false, evt=DISCOVERY_CUSTOM_EVT, node=c2feee19-c213-46aa-8986-74de48bc4e5e]
+[16:31:33,627][INFO][exchange-worker-#63][time] Started exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], crd=true, evt=DISCOVERY_CUSTOM_EVT, evtNode=c2feee19-c213-46aa-8986-74de48bc4e5e, customEvt=DynamicCacheChangeBatch [id=b562ee31191-7a5d2c44-1be6-45f2-908a-64f357454291, reqs=ArrayList [DynamicCacheChangeRequest [cacheName=cmd_smoothed_path, hasCfg=true, nodeId=c2feee19-c213-46aa-8986-74de48bc4e5e, clientStartOnly=false, stop=false, destroy=false, disabledAfterStart=false]], exchangeActions=ExchangeActions [startCaches=[cmd_smoothed_path], stopCaches=null, startGrps=[cmd_smoothed_path], stopGrps=[], resetParts=null, finalizePartitionCounters=false, stateChangeRequest=null], startCaches=false], allowMerge=false, exchangeFreeSwitch=false]
+[16:31:33,628][INFO][exchange-worker-#63][GridCacheProcessor] Started cache [name=cmd_smoothed_path, id=-4838382, dataRegionName=default, mode=PARTITIONED, atomicity=ATOMIC, backups=0]
+[16:31:33,631][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], waitTime=0ms, futInfo=NA, mode=DISTRIBUTED]
+[16:31:33,631][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partitions release latch: ServerLatch [permits=0, pendingAcks=HashSet [], super=CompletableLatch [id=CompletableLatchUid [id=exchange, topVer=AffinityTopologyVersion [topVer=1, minorTopVer=5]]]]
+[16:31:33,631][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], waitTime=0ms, futInfo=NA, mode=LOCAL]
+[16:31:33,646][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] finishExchangeOnCoordinator [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=5]]
+[16:31:33,655][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finish exchange future [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], err=null, rebalanced=true, wasRebalanced=true]
+[16:31:33,664][INFO][exchange-worker-#63][GridCacheProcessor] Finish proxy initialization, cacheName=cmd_smoothed_path, localNodeId=c2feee19-c213-46aa-8986-74de48bc4e5e
+[16:31:33,664][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Completed partition exchange [localNode=c2feee19-c213-46aa-8986-74de48bc4e5e, exchange=GridDhtPartitionsExchangeFuture [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], evt=DISCOVERY_CUSTOM_EVT, evtNode=TcpDiscoveryNode [id=c2feee19-c213-46aa-8986-74de48bc4e5e, consistentId=0:0:0:0:0:0:0:1%lo,127.0.0.1,172.19.0.2:47500, addrs=ArrayList [0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], sockAddrs=HashSet [ignite_host/172.19.0.2:47500, /0:0:0:0:0:0:0:1%lo:47500, /127.0.0.1:47500], discPort=47500, order=1, intOrder=1, lastExchangeTime=1722616260925, loc=true, ver=2.16.0#20231215-sha1:7bde6a42, isClient=false], rebalanced=true, done=true, newCrdFut=null], topVer=AffinityTopologyVersion [topVer=1, minorTopVer=5]]
+[16:31:33,664][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange timings [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], stage="Waiting in exchange queue" (0 ms), stage="Exchange parameters initialization" (0 ms), stage="Update caches registry" (0 ms), stage="Start caches" (1 ms), stage="Affinity initialization on cache group start" (1 ms), stage="Determine exchange type" (0 ms), stage="Preloading notification" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="Wait partitions release latch [latch=exchange]" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="After states restored callback" (14 ms), stage="WAL history reservation" (0 ms), stage="Waiting for all single messages" (0 ms), stage="Affinity recalculation (crd)" (0 ms), stage="Collect update counters and create affinity messages" (0 ms), stage="Assign partitions states" (0 ms), stage="Validate partitions states" (1 ms), stage="Apply update counters" (1 ms), stage="Full message preparing" (4 ms), stage="Full message sending" (0 ms), stage="Exchange done" (9 ms), stage="Total time" (31 ms)]
+[16:31:33,665][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange longest local stages [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], stage="Affinity initialization on cache group start [grp=cmd_smoothed_path]" (1 ms) (parent=Affinity initialization on cache group start)]
+[16:31:33,665][INFO][exchange-worker-#63][time] Finished exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=5], crd=true]
+[16:31:33,673][INFO][exchange-worker-#63][GridCachePartitionExchangeManager] Skipping rebalancing (nothing scheduled) [top=AffinityTopologyVersion [topVer=1, minorTopVer=5], force=false, evt=DISCOVERY_CUSTOM_EVT, node=c2feee19-c213-46aa-8986-74de48bc4e5e]
+[16:31:33,926][SEVERE][grid-nio-worker-client-listener-1-#44][ClientListenerProcessor] Failed to read message [msg=o.a.i.i.processors.odbc.ClientMessage@71130bfe, buf=java.nio.DirectByteBuffer[pos=7765 lim=7898 cap=65536], ses=GridSelectorNioSessionImpl [worker=DirectNioClientWorker [super=AbstractNioClientWorker [idx=1, bytesRcvd=5752817, bytesSent=20834, bytesRcvd0=5752817, bytesSent0=20834, select=true, super=GridWorker [name=grid-nio-worker-client-listener-1, igniteInstanceName=null, finished=false, heartbeatTs=1722616293920, hashCode=1676070050, interrupted=false, runner=grid-nio-worker-client-listener-1-#44]]], writeBuf=java.nio.DirectByteBuffer[pos=0 lim=1313280 cap=1313280], readBuf=java.nio.DirectByteBuffer[pos=7765 lim=7898 cap=65536], inRecovery=null, outRecovery=null, closeSocket=true, outboundMessagesQueueSizeMetric=o.a.i.i.processors.metric.impl.LongAdderMetric@63a61cb2, super=GridNioSessionImpl [locAddr=/172.19.0.2:10800, rmtAddr=/172.19.0.1:59174, createTime=1722616292317, closeTime=0, bytesSent=20834, bytesRcvd=5752817, bytesSent0=20834, bytesRcvd0=5752817, sndSchedTime=1722616293706, lastSndTime=1722616293706, lastRcvTime=1722616293920, readsPaused=false, filterChain=FilterChain[filters=[GridNioAsyncNotifyFilter, GridNioCodecFilter [parser=ClientListenerNioMessageParser, directMode=true]], accepted=true, markedForClose=false]]]
+java.io.IOException: Message size must be greater than 0: -1
+	at org.apache.ignite.internal.processors.odbc.ClientMessage.readFrom(ClientMessage.java:155)
+	at org.apache.ignite.internal.processors.odbc.ClientListenerNioMessageParser.decode(ClientListenerNioMessageParser.java:66)
+	at org.apache.ignite.internal.util.nio.GridNioCodecFilter.onMessageReceived(GridNioCodecFilter.java:113)
+	at org.apache.ignite.internal.util.nio.GridNioFilterAdapter.proceedMessageReceived(GridNioFilterAdapter.java:109)
+	at org.apache.ignite.internal.util.nio.GridNioServer$HeadFilter.onMessageReceived(GridNioServer.java:3753)
+	at org.apache.ignite.internal.util.nio.GridNioFilterChain.onMessageReceived(GridNioFilterChain.java:175)
+	at org.apache.ignite.internal.util.nio.GridNioServer$DirectNioClientWorker.processRead(GridNioServer.java:1379)
+	at org.apache.ignite.internal.util.nio.GridNioServer$AbstractNioClientWorker.processSelectedKeysOptimized(GridNioServer.java:2527)
+	at org.apache.ignite.internal.util.nio.GridNioServer$AbstractNioClientWorker.bodyInternal(GridNioServer.java:2282)
+	at org.apache.ignite.internal.util.nio.GridNioServer$AbstractNioClientWorker.body(GridNioServer.java:1911)
+	at org.apache.ignite.internal.util.worker.GridWorker.run(GridWorker.java:125)
+	at java.lang.Thread.run(Thread.java:750)
+[16:31:33,930][WARNING][grid-nio-worker-client-listener-1-#44][ClientListenerProcessor] Client disconnected abruptly due to network connection loss or because the connection was left open on application shutdown. [cls=class o.a.i.i.util.nio.GridNioException, msg=Message size must be greater than 0: -1]
+[16:31:46,713][INFO][exchange-worker-#63][time] Started exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], crd=true, evt=DISCOVERY_CUSTOM_EVT, evtNode=c2feee19-c213-46aa-8986-74de48bc4e5e, customEvt=DynamicCacheChangeBatch [id=4762ee31191-7a5d2c44-1be6-45f2-908a-64f357454291, reqs=ArrayList [DynamicCacheChangeRequest [cacheName=detected_objects, hasCfg=true, nodeId=c2feee19-c213-46aa-8986-74de48bc4e5e, clientStartOnly=false, stop=false, destroy=false, disabledAfterStart=false]], exchangeActions=ExchangeActions [startCaches=[detected_objects], stopCaches=null, startGrps=[detected_objects], stopGrps=[], resetParts=null, finalizePartitionCounters=false, stateChangeRequest=null], startCaches=false], allowMerge=false, exchangeFreeSwitch=false]
+[16:31:46,716][INFO][exchange-worker-#63][GridCacheProcessor] Started cache [name=detected_objects, id=-379002793, dataRegionName=default, mode=PARTITIONED, atomicity=ATOMIC, backups=0]
+[16:31:46,719][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], waitTime=0ms, futInfo=NA, mode=DISTRIBUTED]
+[16:31:46,719][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partitions release latch: ServerLatch [permits=0, pendingAcks=HashSet [], super=CompletableLatch [id=CompletableLatchUid [id=exchange, topVer=AffinityTopologyVersion [topVer=1, minorTopVer=6]]]]
+[16:31:46,719][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], waitTime=0ms, futInfo=NA, mode=LOCAL]
+[16:31:46,742][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] finishExchangeOnCoordinator [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=6]]
+[16:31:46,753][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finish exchange future [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], err=null, rebalanced=true, wasRebalanced=true]
+[16:31:46,763][INFO][exchange-worker-#63][GridCacheProcessor] Finish proxy initialization, cacheName=detected_objects, localNodeId=c2feee19-c213-46aa-8986-74de48bc4e5e
+[16:31:46,764][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Completed partition exchange [localNode=c2feee19-c213-46aa-8986-74de48bc4e5e, exchange=GridDhtPartitionsExchangeFuture [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], evt=DISCOVERY_CUSTOM_EVT, evtNode=TcpDiscoveryNode [id=c2feee19-c213-46aa-8986-74de48bc4e5e, consistentId=0:0:0:0:0:0:0:1%lo,127.0.0.1,172.19.0.2:47500, addrs=ArrayList [0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], sockAddrs=HashSet [ignite_host/172.19.0.2:47500, /0:0:0:0:0:0:0:1%lo:47500, /127.0.0.1:47500], discPort=47500, order=1, intOrder=1, lastExchangeTime=1722616260925, loc=true, ver=2.16.0#20231215-sha1:7bde6a42, isClient=false], rebalanced=true, done=true, newCrdFut=null], topVer=AffinityTopologyVersion [topVer=1, minorTopVer=6]]
+[16:31:46,764][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange timings [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], stage="Waiting in exchange queue" (0 ms), stage="Exchange parameters initialization" (0 ms), stage="Update caches registry" (0 ms), stage="Start caches" (2 ms), stage="Affinity initialization on cache group start" (2 ms), stage="Determine exchange type" (0 ms), stage="Preloading notification" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="Wait partitions release latch [latch=exchange]" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="After states restored callback" (22 ms), stage="WAL history reservation" (0 ms), stage="Waiting for all single messages" (0 ms), stage="Affinity recalculation (crd)" (0 ms), stage="Collect update counters and create affinity messages" (0 ms), stage="Assign partitions states" (0 ms), stage="Validate partitions states" (1 ms), stage="Apply update counters" (2 ms), stage="Full message preparing" (5 ms), stage="Full message sending" (0 ms), stage="Exchange done" (10 ms), stage="Total time" (44 ms)]
+[16:31:46,764][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange longest local stages [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], stage="Affinity initialization on cache group start [grp=detected_objects]" (1 ms) (parent=Affinity initialization on cache group start)]
+[16:31:46,764][INFO][exchange-worker-#63][time] Finished exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=6], crd=true]
+[16:31:46,770][INFO][exchange-worker-#63][GridCachePartitionExchangeManager] Skipping rebalancing (nothing scheduled) [top=AffinityTopologyVersion [topVer=1, minorTopVer=6], force=false, evt=DISCOVERY_CUSTOM_EVT, node=c2feee19-c213-46aa-8986-74de48bc4e5e]
+[16:32:01,097][INFO][exchange-worker-#63][time] Started exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], crd=true, evt=DISCOVERY_CUSTOM_EVT, evtNode=c2feee19-c213-46aa-8986-74de48bc4e5e, customEvt=DynamicCacheChangeBatch [id=b862ee31191-7a5d2c44-1be6-45f2-908a-64f357454291, reqs=ArrayList [DynamicCacheChangeRequest [cacheName=robot_status, hasCfg=true, nodeId=c2feee19-c213-46aa-8986-74de48bc4e5e, clientStartOnly=false, stop=false, destroy=false, disabledAfterStart=false]], exchangeActions=ExchangeActions [startCaches=[robot_status], stopCaches=null, startGrps=[robot_status], stopGrps=[], resetParts=null, finalizePartitionCounters=false, stateChangeRequest=null], startCaches=false], allowMerge=false, exchangeFreeSwitch=false]
+[16:32:01,098][INFO][exchange-worker-#63][GridCacheProcessor] Started cache [name=robot_status, id=1213511527, dataRegionName=default, mode=PARTITIONED, atomicity=ATOMIC, backups=0]
+[16:32:01,102][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], waitTime=0ms, futInfo=NA, mode=DISTRIBUTED]
+[16:32:01,102][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partitions release latch: ServerLatch [permits=0, pendingAcks=HashSet [], super=CompletableLatch [id=CompletableLatchUid [id=exchange, topVer=AffinityTopologyVersion [topVer=1, minorTopVer=7]]]]
+[16:32:01,102][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finished waiting for partition release future [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], waitTime=0ms, futInfo=NA, mode=LOCAL]
+[16:32:01,113][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] finishExchangeOnCoordinator [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=7]]
+[16:32:01,127][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Finish exchange future [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], err=null, rebalanced=true, wasRebalanced=true]
+[16:32:01,136][INFO][exchange-worker-#63][GridCacheProcessor] Finish proxy initialization, cacheName=robot_status, localNodeId=c2feee19-c213-46aa-8986-74de48bc4e5e
+[16:32:01,136][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Completed partition exchange [localNode=c2feee19-c213-46aa-8986-74de48bc4e5e, exchange=GridDhtPartitionsExchangeFuture [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], evt=DISCOVERY_CUSTOM_EVT, evtNode=TcpDiscoveryNode [id=c2feee19-c213-46aa-8986-74de48bc4e5e, consistentId=0:0:0:0:0:0:0:1%lo,127.0.0.1,172.19.0.2:47500, addrs=ArrayList [0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], sockAddrs=HashSet [ignite_host/172.19.0.2:47500, /0:0:0:0:0:0:0:1%lo:47500, /127.0.0.1:47500], discPort=47500, order=1, intOrder=1, lastExchangeTime=1722616260925, loc=true, ver=2.16.0#20231215-sha1:7bde6a42, isClient=false], rebalanced=true, done=true, newCrdFut=null], topVer=AffinityTopologyVersion [topVer=1, minorTopVer=7]]
+[16:32:01,136][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange timings [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], stage="Waiting in exchange queue" (0 ms), stage="Exchange parameters initialization" (0 ms), stage="Update caches registry" (0 ms), stage="Start caches" (2 ms), stage="Affinity initialization on cache group start" (1 ms), stage="Determine exchange type" (0 ms), stage="Preloading notification" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="Wait partitions release latch [latch=exchange]" (0 ms), stage="Wait partitions release [latch=exchange]" (0 ms), stage="After states restored callback" (11 ms), stage="WAL history reservation" (0 ms), stage="Waiting for all single messages" (0 ms), stage="Affinity recalculation (crd)" (0 ms), stage="Collect update counters and create affinity messages" (0 ms), stage="Assign partitions states" (0 ms), stage="Validate partitions states" (1 ms), stage="Apply update counters" (4 ms), stage="Full message preparing" (6 ms), stage="Full message sending" (0 ms), stage="Exchange done" (9 ms), stage="Total time" (34 ms)]
+[16:32:01,137][INFO][exchange-worker-#63][GridDhtPartitionsExchangeFuture] Exchange longest local stages [startVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], resVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], stage="Affinity initialization on cache group start [grp=robot_status]" (1 ms) (parent=Affinity initialization on cache group start)]
+[16:32:01,137][INFO][exchange-worker-#63][time] Finished exchange init [topVer=AffinityTopologyVersion [topVer=1, minorTopVer=7], crd=true]
+[16:32:01,145][INFO][exchange-worker-#63][GridCachePartitionExchangeManager] Skipping rebalancing (nothing scheduled) [top=AffinityTopologyVersion [topVer=1, minorTopVer=7], force=false, evt=DISCOVERY_CUSTOM_EVT, node=c2feee19-c213-46aa-8986-74de48bc4e5e]
+[16:32:02,771][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:01:00.014]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=1%, avgLoad=0.74%, GC=0%]
+    ^-- Heap [used=241MB, free=75.41%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=12, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:32:02,772][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1]
+[16:32:12,404][INFO][ignite-update-notifier-timer][GridUpdateNotifier] Update status is not available.
+[16:33:02,782][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:02:00.027]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.37%, avgLoad=0.62%, GC=0%]
+    ^-- Heap [used=102MB, free=89.53%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:33:02,782][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=0]
+[16:34:02,784][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:03:00.036]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.27%, avgLoad=0.53%, GC=0%]
+    ^-- Heap [used=156MB, free=84.05%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=6, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:34:02,784][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=2]
+[16:35:02,794][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:04:00.045]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.17%, avgLoad=0.46%, GC=0%]
+    ^-- Heap [used=201MB, free=79.51%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:35:02,794][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=2]
+[16:36:02,796][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:05:00.045]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.2%, avgLoad=0.41%, GC=0%]
+    ^-- Heap [used=223MB, free=77.24%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:36:02,796][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=2]
+[16:37:02,803][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:06:00.054]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.3%, avgLoad=0.4%, GC=0%]
+    ^-- Heap [used=295MB, free=69.89%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:37:02,803][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1422]
+[16:38:02,812][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:07:00.063]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.43%, avgLoad=0.38%, GC=0%]
+    ^-- Heap [used=93MB, free=90.45%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:38:02,812][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[16:39:02,820][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:08:00.068]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.33%, avgLoad=0.37%, GC=0%]
+    ^-- Heap [used=152MB, free=84.46%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:39:02,822][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1392]
+[16:40:02,824][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:09:00.076]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.13%, avgLoad=0.35%, GC=0%]
+    ^-- Heap [used=200MB, free=79.57%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:40:02,825][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1392]
+[16:41:02,826][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:10:00.077]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.3%, avgLoad=0.34%, GC=0%]
+    ^-- Heap [used=275MB, free=71.98%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:41:02,827][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1418]
+[16:42:02,827][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:11:00.077]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.37%, avgLoad=0.34%, GC=0%]
+    ^-- Heap [used=76MB, free=92.2%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:42:02,827][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=1, reusePages=1402]
+[16:43:02,834][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:12:00.082]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.2%, avgLoad=0.33%, GC=0%]
+    ^-- Heap [used=130MB, free=86.67%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:43:02,834][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1396]
+[16:44:02,839][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:13:00.090]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.3%, avgLoad=0.33%, GC=0%]
+    ^-- Heap [used=187MB, free=80.88%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:44:02,839][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=3, reusePages=1382]
+[16:45:02,847][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:14:00.099]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.23%, avgLoad=0.33%, GC=0%]
+    ^-- Heap [used=254MB, free=74.03%, comm=981MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:45:02,848][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1378]
+[16:46:02,852][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:15:00.102]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.23%, avgLoad=0.32%, GC=0%]
+    ^-- Heap [used=70MB, free=92.85%, comm=984MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:46:02,852][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=1, reusePages=1378]
+[16:47:02,856][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:16:00.103]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.1%, avgLoad=0.31%, GC=0%]
+    ^-- Heap [used=109MB, free=88.9%, comm=984MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:47:02,856][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=1, reusePages=1378]
+[16:48:02,858][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:17:00.110]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.13%, avgLoad=0.3%, GC=0%]
+    ^-- Heap [used=128MB, free=86.92%, comm=984MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:48:02,858][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=1, reusePages=1378]
+[16:49:02,862][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:18:00.110]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.07%, avgLoad=0.29%, GC=0%]
+    ^-- Heap [used=131MB, free=86.66%, comm=984MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:49:02,863][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=1, reusePages=1378]
+[16:50:02,867][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:19:00.118]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.23%, avgLoad=0.29%, GC=0%]
+    ^-- Heap [used=203MB, free=79.37%, comm=984MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:50:02,867][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=3, reusePages=1416]
+[16:51:02,874][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:20:00.120]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.1%, avgLoad=0.28%, GC=0%]
+    ^-- Heap [used=249MB, free=74.66%, comm=984MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:51:02,874][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1412]
+[16:52:02,872][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:21:00.120]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.17%, avgLoad=0.27%, GC=0%]
+    ^-- Heap [used=280MB, free=71.47%, comm=984MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:52:02,872][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1412]
+[16:53:02,056][SEVERE][grid-nio-worker-client-listener-2-#45][ClientListenerProcessor] Failed to read message [msg=o.a.i.i.processors.odbc.ClientMessage@22aef8b6, buf=java.nio.DirectByteBuffer[pos=10813 lim=10943 cap=65536], ses=GridSelectorNioSessionImpl [worker=DirectNioClientWorker [super=AbstractNioClientWorker [idx=2, bytesRcvd=5752832, bytesSent=20838, bytesRcvd0=5752814, bytesSent0=20810, select=true, super=GridWorker [name=grid-nio-worker-client-listener-2, igniteInstanceName=null, finished=false, heartbeatTs=1722617582031, hashCode=1469702365, interrupted=false, runner=grid-nio-worker-client-listener-2-#45]]], writeBuf=java.nio.DirectByteBuffer[pos=0 lim=1313280 cap=1313280], readBuf=java.nio.DirectByteBuffer[pos=10813 lim=10943 cap=65536], inRecovery=null, outRecovery=null, closeSocket=true, outboundMessagesQueueSizeMetric=o.a.i.i.processors.metric.impl.LongAdderMetric@63a61cb2, super=GridNioSessionImpl [locAddr=/172.19.0.2:10800, rmtAddr=/172.19.0.1:59192, createTime=1722617580648, closeTime=0, bytesSent=20810, bytesRcvd=5752814, bytesSent0=20810, bytesRcvd0=5752814, sndSchedTime=1722617581869, lastSndTime=1722617581869, lastRcvTime=1722617582042, readsPaused=false, filterChain=FilterChain[filters=[GridNioAsyncNotifyFilter, GridNioCodecFilter [parser=ClientListenerNioMessageParser, directMode=true]], accepted=true, markedForClose=false]]]
+java.io.IOException: Message size must be greater than 0: -1
+	at org.apache.ignite.internal.processors.odbc.ClientMessage.readFrom(ClientMessage.java:155)
+	at org.apache.ignite.internal.processors.odbc.ClientListenerNioMessageParser.decode(ClientListenerNioMessageParser.java:66)
+	at org.apache.ignite.internal.util.nio.GridNioCodecFilter.onMessageReceived(GridNioCodecFilter.java:113)
+	at org.apache.ignite.internal.util.nio.GridNioFilterAdapter.proceedMessageReceived(GridNioFilterAdapter.java:109)
+	at org.apache.ignite.internal.util.nio.GridNioServer$HeadFilter.onMessageReceived(GridNioServer.java:3753)
+	at org.apache.ignite.internal.util.nio.GridNioFilterChain.onMessageReceived(GridNioFilterChain.java:175)
+	at org.apache.ignite.internal.util.nio.GridNioServer$DirectNioClientWorker.processRead(GridNioServer.java:1379)
+	at org.apache.ignite.internal.util.nio.GridNioServer$AbstractNioClientWorker.processSelectedKeysOptimized(GridNioServer.java:2527)
+	at org.apache.ignite.internal.util.nio.GridNioServer$AbstractNioClientWorker.bodyInternal(GridNioServer.java:2282)
+	at org.apache.ignite.internal.util.nio.GridNioServer$AbstractNioClientWorker.body(GridNioServer.java:1911)
+	at org.apache.ignite.internal.util.worker.GridWorker.run(GridWorker.java:125)
+	at java.lang.Thread.run(Thread.java:750)
+[16:53:02,057][WARNING][grid-nio-worker-client-listener-2-#45][ClientListenerProcessor] Client disconnected abruptly due to network connection loss or because the connection was left open on application shutdown. [cls=class o.a.i.i.util.nio.GridNioException, msg=Message size must be greater than 0: -1]
+[16:53:02,878][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:22:00.129]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.1%, avgLoad=0.27%, GC=0%]
+    ^-- Heap [used=298MB, free=69.67%, comm=984MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:53:02,878][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[16:53:07,254][SEVERE][grid-nio-worker-client-listener-4-#47][ClientListenerProcessor] Failed to read message [msg=o.a.i.i.processors.odbc.ClientMessage@59af1fe5, buf=java.nio.DirectByteBuffer[pos=8261 lim=8391 cap=65536], ses=GridSelectorNioSessionImpl [worker=DirectNioClientWorker [super=AbstractNioClientWorker [idx=4, bytesRcvd=11564374, bytesSent=64224, bytesRcvd0=5752852, bytesSent0=41510, select=true, super=GridWorker [name=grid-nio-worker-client-listener-4, igniteInstanceName=null, finished=false, heartbeatTs=1722617587245, hashCode=1308179167, interrupted=false, runner=grid-nio-worker-client-listener-4-#47]]], writeBuf=java.nio.DirectByteBuffer[pos=0 lim=1313280 cap=1313280], readBuf=java.nio.DirectByteBuffer[pos=8261 lim=8391 cap=65536], inRecovery=null, outRecovery=null, closeSocket=true, outboundMessagesQueueSizeMetric=o.a.i.i.processors.metric.impl.LongAdderMetric@63a61cb2, super=GridNioSessionImpl [locAddr=/172.19.0.2:10800, rmtAddr=/172.19.0.1:42546, createTime=1722617585739, closeTime=0, bytesSent=41510, bytesRcvd=5752852, bytesSent0=41510, bytesRcvd0=5752852, sndSchedTime=1722617586998, lastSndTime=1722617586998, lastRcvTime=1722617587245, readsPaused=false, filterChain=FilterChain[filters=[GridNioAsyncNotifyFilter, GridNioCodecFilter [parser=ClientListenerNioMessageParser, directMode=true]], accepted=true, markedForClose=false]]]
+java.io.IOException: Message size must be greater than 0: -1
+	at org.apache.ignite.internal.processors.odbc.ClientMessage.readFrom(ClientMessage.java:155)
+	at org.apache.ignite.internal.processors.odbc.ClientListenerNioMessageParser.decode(ClientListenerNioMessageParser.java:66)
+	at org.apache.ignite.internal.util.nio.GridNioCodecFilter.onMessageReceived(GridNioCodecFilter.java:113)
+	at org.apache.ignite.internal.util.nio.GridNioFilterAdapter.proceedMessageReceived(GridNioFilterAdapter.java:109)
+	at org.apache.ignite.internal.util.nio.GridNioServer$HeadFilter.onMessageReceived(GridNioServer.java:3753)
+	at org.apache.ignite.internal.util.nio.GridNioFilterChain.onMessageReceived(GridNioFilterChain.java:175)
+	at org.apache.ignite.internal.util.nio.GridNioServer$DirectNioClientWorker.processRead(GridNioServer.java:1379)
+	at org.apache.ignite.internal.util.nio.GridNioServer$AbstractNioClientWorker.processSelectedKeysOptimized(GridNioServer.java:2527)
+	at org.apache.ignite.internal.util.nio.GridNioServer$AbstractNioClientWorker.bodyInternal(GridNioServer.java:2282)
+	at org.apache.ignite.internal.util.nio.GridNioServer$AbstractNioClientWorker.body(GridNioServer.java:1911)
+	at org.apache.ignite.internal.util.worker.GridWorker.run(GridWorker.java:125)
+	at java.lang.Thread.run(Thread.java:750)
+[16:53:07,254][WARNING][grid-nio-worker-client-listener-4-#47][ClientListenerProcessor] Client disconnected abruptly due to network connection loss or because the connection was left open on application shutdown. [cls=class o.a.i.i.util.nio.GridNioException, msg=Message size must be greater than 0: -1]
+[16:54:02,885][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:23:00.133]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.37%, avgLoad=0.27%, GC=0%]
+    ^-- Heap [used=194MB, free=80.17%, comm=982MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:54:02,886][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[16:55:02,890][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:24:00.142]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.2%, avgLoad=0.27%, GC=0%]
+    ^-- Heap [used=251MB, free=74.43%, comm=982MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:55:02,890][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1426]
+[16:56:02,899][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:25:00.147]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.23%, avgLoad=0.27%, GC=0%]
+    ^-- Heap [used=73MB, free=92.49%, comm=980MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:56:02,899][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[16:57:02,898][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:26:00.149]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.27%, avgLoad=0.27%, GC=0%]
+    ^-- Heap [used=122MB, free=87.52%, comm=980MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:57:02,898][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[16:58:02,906][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:27:00.158]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.17%, avgLoad=0.26%, GC=0%]
+    ^-- Heap [used=168MB, free=82.79%, comm=980MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:58:02,906][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[16:59:02,914][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:28:00.159]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.1%, avgLoad=0.26%, GC=0%]
+    ^-- Heap [used=173MB, free=82.33%, comm=980MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[16:59:02,915][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[17:00:02,910][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:29:00.160]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.07%, avgLoad=0.25%, GC=0%]
+    ^-- Heap [used=175MB, free=82.1%, comm=980MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[17:00:02,910][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[17:01:02,917][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:30:00.166]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.1%, avgLoad=0.25%, GC=0%]
+    ^-- Heap [used=177MB, free=81.86%, comm=980MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[17:01:02,917][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[17:02:02,923][INFO][grid-timeout-worker-#30][IgniteKernal] 
+Metrics for local node (to disable set 'metricsLogFrequency' to 0)
+    ^-- Node [id=c2feee19, uptime=00:31:00.167]
+    ^-- Cluster [hosts=1, CPUs=12, servers=1, clients=0, topVer=1, minorTopVer=7]
+    ^-- Network [addrs=[0:0:0:0:0:0:0:1%lo, 127.0.0.1, 172.19.0.2], discoPort=47500, commPort=47100]
+    ^-- CPU [CPUs=12, curLoad=0.13%, avgLoad=0.24%, GC=0%]
+    ^-- Heap [used=180MB, free=81.62%, comm=980MB]
+    ^-- Outbound messages queue [size=0]
+    ^-- Public thread pool [active=0, idle=0, qSize=0]
+    ^-- System thread pool [active=0, idle=7, qSize=0]
+    ^-- Striped thread pool [active=0, idle=12, qSize=0]
+[17:02:02,923][INFO][grid-timeout-worker-#30][IgniteKernal] FreeList [name=default##FreeList, buckets=256, dataPages=2, reusePages=1427]
+[17:03:02,024][INFO][shutdown-hook][G] Invoking shutdown hook...
