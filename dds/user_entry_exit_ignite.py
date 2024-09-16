@@ -1,4 +1,4 @@
-from cyclonedds.domain import DomainParticipant
+from cyclonedds.domain import DomainParticipant, DomainParticipantQos
 from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
 from cyclonedds.pub import Publisher, DataWriter
@@ -24,8 +24,8 @@ from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, Occu
 from websocket_server import send_message, start_websocket_server
 
 # Constants (Set depending on the agent)
-HEARTBEAT_PERIOD = 2    # seconds
-HEARTBEAT_TIMEOUT = 15  # seconds
+HEARTBEAT_PERIOD = 10    # seconds
+HEARTBEAT_TIMEOUT = 31  # seconds
 UPDATE_FREQUENCY = 10  # Hz
 AGENT_CAPABILITIES = []
 AGENT_MESSAGE_TYPES = ['commands']
@@ -86,6 +86,7 @@ class Initialization(IdlStruct):
     sending_agent: str
     agents: str
     map: str
+    map_mod: str
     map_md: str
 
 
@@ -170,6 +171,7 @@ class EntryExitListener(Listener):
         self.my_ip = my_ip
         self.my_hash = my_hash
         self.map_msg = OccupancyGrid()
+        self.map_mod_msg = OccupancyGrid()
         self.map_md_msg = MapMetaData()
         self.init_writer = init_writer
 
@@ -217,11 +219,13 @@ class EntryExitListener(Listener):
 
                     map_dict = msg_to_dict(self.map_msg)
                     map_json = json.dumps(map_dict)
+                    map_mod_dict = msg_to_dict(self.map_mod_msg)
+                    map_mod_json = json.dumps(map_mod_dict)
                     map_md_dict = msg_to_dict(self.map_md_msg)
                     map_md_json = json.dumps(map_md_dict)
 
                     init_message = Initialization(target_agent=sample.agent_id, sending_agent=sending_agent,
-                                                  agents=agents_message, map=map_json, map_md=map_md_json)
+                                                  agents=agents_message, map=map_json, map_mod=map_mod_json, map_md=map_md_json)
                     self.init_writer.write(init_message)
 
                     print("Sent initialization message to new agent")
@@ -319,7 +323,7 @@ class EntryExitListener(Listener):
         if lost_agents is not None:
             self.lost_agents = lost_agents
 
-    def update_map(self, map, map_md):
+    def update_map(self, map, map_mod, map_md):
         """
         Updates the occupancy grid map and map metadata.
 
@@ -331,6 +335,7 @@ class EntryExitListener(Listener):
         - None
         """
         self.map_msg = map
+        self.map_mod_msg = map_mod
         self.map_md_msg = map_md
 
 
@@ -423,6 +428,7 @@ class InitializationListener(Listener):
         super().__init__()
         self.map_received = False
         self.map_msg = OccupancyGrid()
+        self.map_mod_msg = OccupancyGrid()
         self.map_md_msg = MapMetaData()
         self.agents = dict()
         self.my_id = my_id
@@ -477,6 +483,7 @@ class InitializationListener(Listener):
 
             # Load the map from the initialization message
             map_dict = json.loads(sample.map)
+            map_mod_dict = json.loads(sample.map_mod)
             map_md_dict = json.loads(sample.map_md)
 
             load_time = time.time()
@@ -505,6 +512,12 @@ class InitializationListener(Listener):
             self.map_msg.info = self.map_md_msg
             self.map_msg.data = map_dict['data']
 
+            self.map_mod_msg.header.stamp.sec = load_time_sec
+            self.map_mod_msg.header.stamp.nsec = load_time_nsec
+            self.map_mod_msg.header.frame_id = 'map'
+            self.map_mod_msg.info = self.map_md_msg
+            self.map_mod_msg.data = map_mod_dict['data']
+
             self.map_received = True
 
             print("Map received through initialization message")
@@ -525,7 +538,7 @@ class InitializationListener(Listener):
         Returns:
             tuple: A tuple containing the map message and map metadata message.
         """
-        return self.map_msg, self.map_md_msg
+        return self.map_msg, self.map_mod_msg, self.map_md_msg
 
     def get_agents(self):
         """
@@ -675,6 +688,7 @@ class EntryExitCommunication:
 
         # Map and Map Metadata messages, and publishers
         self.map_msg = OccupancyGrid()
+        self.map_mod_msg = OccupancyGrid()
         self.map_md_msg = MapMetaData()
 
         # Create different policies for the DDS entities
@@ -820,7 +834,7 @@ class EntryExitCommunication:
                         self.map_md_msg.origin.orientation.z = map_data.get('origin_orientation_z')
                         self.map_md_msg.origin.orientation.w = map_data.get('origin_orientation_w')
 
-                        self.entry_exit_listener.update_map(self.map_msg, self.map_md_msg)
+                        self.entry_exit_listener.update_map(self.map_msg, self.map_mod_msg, self.map_md_msg)
 
                         print("Map retrieved from GraphQL Server")
 
@@ -858,7 +872,7 @@ class EntryExitCommunication:
                     self.enter_exit_writer.write(entry_message)
 
             # Store the map, map metadata, and agents
-            self.map_msg, self.map_md_msg = self.init_listener.get_map()
+            self.map_msg, self.map_mod_msg, self.map_md_msg = self.init_listener.get_map()
 
             self.agents = self.init_listener.get_agents()
 
