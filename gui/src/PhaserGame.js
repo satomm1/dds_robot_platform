@@ -9,7 +9,7 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
     const objectSpritesRef = useRef({});
 
     useEffect(() => {
-        const maxGameSize = 800;
+        const maxGameSize = 1200;
         const mapResolution = resolution;
         let gameWidth, gameHeight, gameCellSize;
 
@@ -40,7 +40,7 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
             // Preload assets if necessary
             this.load.image('robot', '/assets/robot_sprite.png')
             this.load.image('goal', '/assets/goal_sprite.png')
-            this.load.image('object', '/assets/object_sprite.png')
+            this.load.image('object', '/assets/cone_sprite.png')
         }
 
         function create() {
@@ -93,9 +93,11 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
                 if (width * mapResolution > 10) {
                     if (x % 2) {
                         this.add.text((width*mapResolution - x)* cellSize/mapResolution-10, 0, x, textStyle).setOrigin(0, 0);
+                        this.add.text((width*mapResolution - x)* cellSize/mapResolution-10, (height*mapResolution-1)*cellSize/mapResolution-5, x, textStyle).setOrigin(0, 0);
                     }
                 } else {
                     this.add.text((width*mapResolution - x)* cellSize/mapResolution-10, 0, x, textStyle).setOrigin(0, 0);
+                    this.add.text((width*mapResolution - x)* cellSize/mapResolution-10, height*cellSize, x, textStyle).setOrigin(0, 0);
                 }
                 this.add.line(0, 0,  (width*mapResolution - x-1)*cellSize/mapResolution, 0, (width*mapResolution - x-1)* cellSize/mapResolution, gameHeight*2, gridLineColor)
             }
@@ -212,7 +214,9 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
                     const container = scene.add.container((width*resolution -object.x )* cellSize / resolution, object.y * cellSize / resolution);
 
                     const sprite = scene.add.sprite(0, 0, 'object');
-                    sprite.setDisplaySize(30, 30);
+
+                    const sprite_size = 800 / width * 10;
+                    sprite.setDisplaySize(sprite_size, sprite_size);
 
                     // const label = scene.add.text(0, 0, object.type, { font: '10px Arial', fill: '#ffffff' });
                     // label.setOrigin(0.5, 0.5); // Center the text on the sprite
