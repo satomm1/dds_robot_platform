@@ -204,6 +204,15 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
                 
             });
             
+            // Remove any object sprites that are no longer in the robotPositions array
+            Object.keys(objectSpritesRef.current).forEach(id => {
+                if (!objectPositions.some(object => object.id === id)) {
+                    objectSpritesRef.current[id].destroy();
+                    delete objectSpritesRef.current[id];
+                }
+            });
+
+            // Update the position of each object sprite
             objectPositions.forEach(object => {
                 const sprite = objectSpritesRef.current[object.id];
                 if (sprite) {
