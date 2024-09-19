@@ -150,7 +150,7 @@ class CommManager:
                     old_agents = self.subscribed_agents - agents_to_subscribe
 
                     for agent_id in new_agents:
-                        print("Location ubscribed to agent ", agent_id)
+                        print("Location subscribed to agent ", agent_id)
                         new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
                         self.location_listeners[agent_id] = LocationListener(self.my_id)
                         self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=self.best_effort_qos)
