@@ -80,6 +80,28 @@ class DataListener(Listener):
                 ignite_data = json.dumps(self.object_dict).encode('utf-8')
                 self.detected_object_cache.put(self.topic_id, ignite_data)
 
+                print(f"*********Detected object {class_name}")
+            elif message_type == "sensor_detected_objects":
+                x = data['x']
+                y = data['y']
+                w = data['w']
+                class_name = data['class']
+
+                sensor_id = sending_agent
+                i = 0
+                for _ in range(len(x)):
+                    object_id = str(sensor_id) + '_' + str(i)
+                    self.object_dict[object_id] = {'x': x[i], 'y': y[i], 'class_name': class_name[i]}
+                    i += 1
+                while (str(sensor_id) + '_' + str(i)) in self.object_dict:
+                    self.object_dict.pop(str(sensor_id) + '_' + str(i))
+                    i += 1
+
+                ignite_data = json.dumps(self.object_dict).encode('utf-8')
+                self.detected_object_cache.put(self.topic_id, ignite_data)
+                
+
+
 class CommManager:
     def __init__(self, my_id):
 
