@@ -99,13 +99,6 @@ class CommManager:
             Policy.History.KeepLast(depth=1)
         )
 
-        # Reliable data qos
-        self.reliable_data_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
-            Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=10)
-        )
-
         # self.best_effort_qos = Qos(
         #     Policy.Reliability.BestEffort,
         #     Policy.Durability.TransientLocal,
@@ -125,7 +118,8 @@ class CommManager:
         qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
 
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = DomainParticipant(qos=qos_profile)
+        self.participant = DomainParticipant()
+        # self.participant = DomainParticipant(qos=qos_profile)
         self.subscriber = Subscriber(self.participant)
         self.publisher = Publisher(self.participant)
 
@@ -136,7 +130,7 @@ class CommManager:
             print("Subscribed to agent ", agent_id)
             new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
             self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)
-            self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=self.reliable_data_qos)
+            self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=self.reliable_qos)
 
     def run(self):
         while True:
@@ -152,7 +146,7 @@ class CommManager:
                         print("Subscribed to agent ", agent_id)
                         new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
                         self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)
-                        self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=self.reliable_data_qos)
+                        self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=self.reliable_qos)
 
 
                     for agent_id in old_agents:
