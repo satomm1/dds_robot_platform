@@ -693,19 +693,31 @@ class EntryExitCommunication:
 
         # Create different policies for the DDS entities
         self.reliable_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=1)),
+            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
             Policy.Durability.TransientLocal,
             Policy.History.KeepLast(depth=1)
         )
+
+        # self.best_effort_qos = Qos(
+        #     Policy.Reliability.BestEffort,
+        #     Policy.Durability.TransientLocal,
+        #     Policy.History.KeepLast(depth=1)
+        # )
 
         self.best_effort_qos = Qos(
             Policy.Reliability.BestEffort,
-            Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=1)
+            Policy.Durability.Volatile,
+            Policy.Liveliness.ManualByParticipant(lease_duration=duration(milliseconds=30000))
+            # Policy.Deadline(duration(milliseconds=1000))
+            # Policy.History.KeepLast(depth=1)
         )
 
+        self.lease_duration_ms = 30000
+        qos_profile = DomainParticipantQos()
+        qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
+
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = DomainParticipant()
+        self.participant = DomainParticipant(qos=qos_profile)
         self.subscriber = Subscriber(self.participant)
         self.publisher = Publisher(self.participant)
 
