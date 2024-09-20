@@ -17,6 +17,7 @@ import socket
 import json
 import requests
 import numpy as np
+import signal
 
 from pyignite import Client
 
@@ -1079,7 +1080,7 @@ class EntryExitCommunication:
             time.sleep(0.2)
 
     def shutdown(self):
-        print('\nSending exit message...')
+        print('\nSending exit message...\n')
         # Write exit message
         exit_message = EntryExit(int(self.my_id), AGENT_TYPE, 'exit', [], [], self.my_ip, int(time.time()))
         self.enter_exit_writer.write(exit_message)
@@ -1095,6 +1096,14 @@ if __name__ == '__main__':
     robot_goal_cache = ignite_client.get_or_create_cache('robot_goal')
 
     entry_exit_obj = EntryExitCommunication('101', server_url='http://localhost:8000/graphql')
+
+    def handle_signal(sig, frame):
+        entry_exit_obj.shutdown()
+        exit(0)
+    
+    # Set up signal handlers for SIGINT (Ctrl+C) and SIGTERM
+    signal.signal(signal.SIGTERM, handle_signal) # Handles termination signal
+
     entry_exit_obj.setup()
     try:
         entry_exit_obj.run()
