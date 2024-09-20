@@ -31,6 +31,7 @@ UPDATE_FREQUENCY = 10  # Hz
 AGENT_CAPABILITIES = []
 AGENT_MESSAGE_TYPES = ['commands']
 AGENT_TYPE = 'human'
+SENSOR_AGENT_START = 200  # The id of agents which are sensor's only
 
 ROBOT_GOALS_QUERY = """
                     query {
@@ -276,12 +277,13 @@ class EntryExitListener(Listener):
         my_distance = abs(self.my_hash / num_agents - robot_hash / num_agents)
 
         for agent_id, agent_info in self.agents.items():
-            agent_hash = agent_info['hash']
+            if agent_id < SENSOR_AGENT_START:  # Sensor agents don't have full map so not eligible to be closest robot
+                agent_hash = agent_info['hash']
 
-            distance = abs(agent_hash / num_agents - robot_hash / num_agents)
-            if distance < my_distance:
-                print("I am not the closest robot")
-                return False
+                distance = abs(agent_hash / num_agents - robot_hash / num_agents)
+                if distance < my_distance:
+                    print("I am not the closest robot")
+                    return False
 
         print('I will provide initial details to the new agent')
         return True
