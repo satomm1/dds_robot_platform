@@ -1007,7 +1007,7 @@ class EntryExitCommunication:
 
         # Now store the transform in the ignite server
         transform_cache = ignite_client.get_or_create_cache('transform')
-        transform_data = {"R": R.tolist(), "t": t.tolist()}
+        transform_data = {"R": R.tolist(), "t": t.tolist(), "timestamp": int(time.time())}
         transform_data = json.dumps(transform_data).encode('utf-8')
         transform_cache.put(1, transform_data)
 

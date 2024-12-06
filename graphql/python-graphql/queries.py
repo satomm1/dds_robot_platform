@@ -236,3 +236,21 @@ def resolve_data(*_):
             })
             id += 1
     return all_objects
+
+@query.field("transform")
+def resolve_data(*_):
+    transform_cache = ignite_client.get_or_create_cache('transform')
+    transform = transform_cache.get(1)
+    if transform is None:
+        return {
+            "R": [0],
+            "t": [0],
+            "timestamp": 0
+        }
+    
+    transform = json.loads(transform)
+    return {
+        "R": transform["R"],
+        "t": transform["t"],
+        "timestamp": transform["timestamp"]
+    }

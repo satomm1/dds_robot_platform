@@ -57,6 +57,12 @@ type Objects {
     type: String
 }
 
+type Transform {
+    R: [Float]
+    t: [Float]
+    timestamp: Int
+}
+
 type Query {
     map: Map
     robotPosition(robot_id: Int): Robot
@@ -72,6 +78,7 @@ type Query {
     robotStatus(robot_id: Int): Robot
     stoppedRobotPositions: [Robot]
     objectPositions: [Objects]
+    transform: Transform
 }
 
 type Mutation {

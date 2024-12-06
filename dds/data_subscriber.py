@@ -39,6 +39,27 @@ class DataListener(Listener):
         self.path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
         self.detected_object_cache = ignite_client.get_or_create_cache('detected_objects')
 
+        self.R = None
+        self.t = None
+
+    def transform_point(self, point, forward=True):
+        if self.R is None:
+            return point
+
+        point_xy = np.array([point[0], point[1]])
+        if forward:
+            new_point_xy = self.R @ point_xy + self.t
+            new_point_theta = point[2] + np.arctan2(self.R[1, 0], self.R[0, 0])
+            return np.concatenate((new_point_xy, [new_point_theta]))
+        else:
+            new_point_xy = self.R.T @ (point_xy - self.t)
+            new_point_theta = point[2] - np.arctan2(self.R[1, 0], self.R[0, 0])
+            return np.concatenate((new_point_xy, [new_point_theta]))
+
+    def update_transformation(self, R, t):
+        self.R = R
+        self.t = t
+
     def on_data_available(self, reader):
         for sample in reader.read():
 
@@ -57,8 +78,9 @@ class DataListener(Listener):
                 y = []
                 t = []
                 for pose in poses:
-                    x.append(pose['pose']['position']['x'])
-                    y.append(pose['pose']['position']['y'])
+                    x_new, y_new, _ = self.transform_point([pose['pose']['position']['x'], pose['pose']['position']['y'], 0], forward=False)
+                    x.append(x_new)
+                    y.append(y_new)
                     t.append(pose['header']['stamp']['secs'] + pose['header']['stamp']['nsecs'] / 1e9)
 
                 # Write the data to Ignite always
@@ -70,8 +92,7 @@ class DataListener(Listener):
             elif message_type == "detected_object":
                 class_name = data['class_name']
                 pose = data['pose']
-                x = pose['position']['x']
-                y = pose['position']['y']
+                x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
                 width = data['width']
 
                 self.object_dict[self.detected_object_num] = {'x': x, 'y': y, 'class_name': class_name}
@@ -91,15 +112,15 @@ class DataListener(Listener):
                 i = 0
                 for _ in range(len(x)):
                     object_id = str(sensor_id) + '_' + str(i)
-                    self.object_dict[object_id] = {'x': x[i], 'y': y[i], 'class_name': class_name[i]}
+                    x_new, y_new, _ = self.transform_point([x[i], y[i], 0], forward=False)
+                    self.object_dict[object_id] = {'x': x_new, 'y': y_new, 'class_name': class_name[i]}
                     i += 1
                 while (str(sensor_id) + '_' + str(i)) in self.object_dict:
                     self.object_dict.pop(str(sensor_id) + '_' + str(i))
                     i += 1
 
                 ignite_data = json.dumps(self.object_dict).encode('utf-8')
-                self.detected_object_cache.put(self.topic_id, ignite_data)
-                
+                self.detected_object_cache.put(self.topic_id, ignite_data)  
 
 
 class CommManager:
@@ -113,6 +134,27 @@ class CommManager:
         agents_to_subscribe = json.loads(self.subscribed_agents_cache.get(1))
         if agents_to_subscribe[0] != -1:
             self.subscribed_agents = set(agents_to_subscribe)
+
+        # Get the transformation matrix from Ignite
+        self.R = None
+        self.t = None
+
+        transform_cache = ignite_client.get_or_create_cache('transform')
+        while self.R is None:
+            transform = json.loads(transform_cache.get(1))
+            timestamp = transform.get('timestamp', 0)
+            if time.time() - timestamp > 10:
+                time.sleep(1)
+                continue
+            R = transform.get('R', [])
+            t = transform.get('t', [])
+            if len(R) == 4 and len(t) == 2:
+                self.R = np.array(R).reshape((2, 2))
+                self.t = np.array(t)
+                print("Got the transformation matrix!")
+                break
+            else:
+                time.sleep(1)
 
         # Create different policies for the DDS entities
         self.reliable_qos = Qos(
@@ -152,6 +194,7 @@ class CommManager:
             print("Subscribed to agent ", agent_id)
             new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
             self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)
+            self.data_listeners[agent_id].update_transformation(self.R, self.t)
             self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=self.reliable_qos)
 
     def run(self):
@@ -168,6 +211,7 @@ class CommManager:
                         print("Subscribed to agent ", agent_id)
                         new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
                         self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)
+                        self.data_listeners[agent_id].update_transformation(self.R, self.t)
                         self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=self.reliable_qos)
 
 
