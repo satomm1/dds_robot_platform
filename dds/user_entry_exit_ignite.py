@@ -915,7 +915,6 @@ class EntryExitCommunication:
 
         # Update the entry/exit listener with the known points
         self.entry_exit_listener.update_known_points(self.reference_known_points)
-
             
         self.agents = self.init_listener.get_agents()
 
@@ -976,38 +975,42 @@ class EntryExitCommunication:
         """
         Determines the transform from my map to the reference map
         """
+        print("Creating Transform")
+
         self.R = None
         self.t = None
         if self.known_points == self.reference_known_points:
-            return
+            self.R = np.identity(2)
+            self.t = np.zeros((2,1))
+        else:
 
-        # Find the transform from the known points
-        known_points = np.array(self.known_points)
-        reference_known_points = np.array(self.reference_known_points)
+            # Find the transform from the known points
+            known_points = np.array(self.known_points)
+            reference_known_points = np.array(self.reference_known_points)
 
-        centroid1 = np.mean(known_points, axis=0)
-        centroid2 = np.mean(reference_known_points, axis=0)
-        centered_points1 = known_points - centroid1
-        centered_points2 = reference_known_points - centroid2
+            centroid1 = np.mean(known_points, axis=0)
+            centroid2 = np.mean(reference_known_points, axis=0)
+            centered_points1 = known_points - centroid1
+            centered_points2 = reference_known_points - centroid2
 
-        H = np.dot(centered_points1.T, centered_points2)
-        U, S, Vt = np.linalg.svd(H)
-        R = Vt.T @ U.T
-
-        if np.linalg.det(R) < 0:
-            Vt[1, :] *= -1
+            H = np.dot(centered_points1.T, centered_points2)
+            U, S, Vt = np.linalg.svd(H)
             R = Vt.T @ U.T
 
-        t = centroid2 - R @ centroid1
+            if np.linalg.det(R) < 0:
+                Vt[1, :] *= -1
+                R = Vt.T @ U.T
 
-        self.R = R
-        self.t = t
+            t = centroid2 - R @ centroid1
 
-        self.heartbeat_listener.update_transformation(R, t)
+            self.R = R
+            self.t = t
+
+        self.heartbeat_listener.update_transformation(self.R, self.t)
 
         # Now store the transform in the ignite server
         transform_cache = ignite_client.get_or_create_cache('transform')
-        transform_data = {"R": R.flatten().tolist(), "t": t.tolist(), "timestamp": int(time.time())}
+        transform_data = {"R": self.R.flatten().tolist(), "t": self.t.flatten().tolist(), "timestamp": int(time.time())}
         transform_data = json.dumps(transform_data).encode('utf-8')
         transform_cache.put(1, transform_data)
 
