@@ -129,7 +129,11 @@ class CommManager:
 
         transform_cache = ignite_client.get_or_create_cache('transform')
         while self.R is None:
-            transform = json.loads(transform_cache.get(1))
+            try: 
+                transform = json.loads(transform_cache.get(1))
+            except Exception as e:
+                time.sleep(1)
+                continue
             timestamp = transform.get('timestamp', 0)
             if time.time() - timestamp > 10:
                 time.sleep(1)
