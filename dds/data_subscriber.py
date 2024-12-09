@@ -141,7 +141,11 @@ class CommManager:
 
         transform_cache = ignite_client.get_or_create_cache('transform')
         while self.R is None:
-            transform = json.loads(transform_cache.get(1))
+            try: 
+                transform = json.loads(transform_cache.get(1))
+            except Exception as e:
+                time.sleep(1)
+                continue
             timestamp = transform.get('timestamp', 0)
             if time.time() - timestamp > 10:
                 time.sleep(1)
@@ -151,7 +155,7 @@ class CommManager:
             if len(R) == 4 and len(t) == 2:
                 self.R = np.array(R).reshape((2, 2))
                 self.t = np.array(t)
-                print("Got the transformation matrix!")
+                print("data_subscriber got the transformation matrix!")
                 break
             else:
                 time.sleep(1)
