@@ -38,6 +38,7 @@ class DataListener(Listener):
 
         self.path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
         self.detected_object_cache = ignite_client.get_or_create_cache('detected_objects')
+        self.goal_cache = ignite_client.get_or_create_cache('robot_goal')
 
         self.R = None
         self.t = None
@@ -121,6 +122,10 @@ class DataListener(Listener):
 
                 ignite_data = json.dumps(self.object_dict).encode('utf-8')
                 self.detected_object_cache.put(self.topic_id, ignite_data)  
+            elif message_type == "goal":
+                x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
+                ignite_data = json.dumps({"x": x, "y": y, "theta": theta, "timestamp": timestamp, "from_bot": True}).encode('utf-8')
+                self.goal_cache.put(self.topic_id, ignite_data)
 
 
 class CommManager:

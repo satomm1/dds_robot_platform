@@ -25,6 +25,7 @@ type Robot {
     v_y: Float
     v_theta: Float
     status: String
+    goal_from_bot: Int
 }
 
 type Path {

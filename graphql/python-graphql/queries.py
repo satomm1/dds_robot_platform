@@ -91,11 +91,15 @@ def resolve_data(*_, robot_id: int):
             "goal_timestamp": None
         }
     robot = json.loads(robot)
+    from_bot = 0
+    if "from_bot" in robot and robot["from_bot"]:
+        from_bot = 1
     return {
         "x_goal": robot["x"],
         "y_goal": robot["y"],
         "theta_goal": robot["theta"],
-        "goal_timestamp": robot["timestamp"]
+        "goal_timestamp": robot["timestamp"],
+        "goal_from_bot": from_bot
     }
 
 @query.field("robotGoals")
