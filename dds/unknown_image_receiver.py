@@ -31,8 +31,16 @@ class ImageDataListener(Listener):
         super().__init__()
         self.my_id = my_id
         self.topic_id = topic_id
-        self.img_num = 0
 
+        if not os.path.exists('new_data/images'):
+            os.makedirs('new_data/images')
+        if not os.path.exists('new_data/labels'):
+            os.makedirs('new_data/labels')
+        self.img_num = len(os.listdir('new_data/images'))
+
+        self.previous_timestamp = None
+        self.prev_objects = None
+        
     def on_data_available(self, reader):
         for sample in reader.read():
             
@@ -42,6 +50,12 @@ class ImageDataListener(Listener):
                 continue
 
             message_type = sample.message_type
+            timestamp = sample.timestamp
+
+            if self.previous_timestamp is not None and timestamp <= self.previous_timestamp:
+                # Ignore old messages
+                continue
+
             data = json.loads(sample.data)
 
             # Process the message
