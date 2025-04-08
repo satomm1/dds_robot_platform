@@ -202,10 +202,14 @@ if __name__ == '__main__':
     ignite_client.connect('localhost', 10800)
     robot_position_cache = ignite_client.get_or_create_cache('robot_position')
 
-    # Create an instance of the location subscriber
+    
     agent_id = os.getenv('AGENT_ID')
     if agent_id is None:
         raise ValueError("AGENT_ID environment variable not set")
+
+    time.sleep(10)  # Wait for the participant to do entry and initialization
+
+    # Create an instance of the location subscriber
     loc_subscriber = LocationSubscriber(agent_id)
 
     def handle_signal(sig, frame):
@@ -214,8 +218,6 @@ if __name__ == '__main__':
 
     # Set up signal handlers for SIGINT (Ctrl+C) and SIGTERM
     signal.signal(signal.SIGTERM, handle_signal) # Handles termination signal
-
-    time.sleep(10)  # Wait for the participant to do entry and initialization
 
     try:
         loc_subscriber.run()
