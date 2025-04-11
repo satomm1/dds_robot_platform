@@ -134,7 +134,7 @@ def hash_func(robot_id):
 
 class HeartbeatSubscriber:
 
-    def __init__(self):
+    def __init__(self, server_url='http://192.168.50.2:8000/graphql'):
 
         # Get the agent ID from the environment variable
         self.agent_id = os.getenv('AGENT_ID')
@@ -153,6 +153,24 @@ class HeartbeatSubscriber:
 
         # Dictionary to store agents in the environment
         self.agents = dict()
+
+        self.lease_duration_ms = 30000
+        qos_profile = DomainParticipantQos()
+        qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
+
+        # Create a DomainParticipant, Subscriber, and Publisher
+        self.participant = DomainParticipant(qos=qos_profile)
+        self.subscriber = Subscriber(self.participant)
+
+        self.heartbeat_topic = Topic(self.participant, 'HeartbeatTopic', Heartbeat)
+        self.heartbeat_listener = HeartbeatListener(self.my_id)
+        self.heartbeat_reader = None
+
+        # GraphQL server URL
+        self.graphql_server = server_url
+
+        self.subscribed_agents_cache = ignite_client.get_or_create_cache('subscribed_agents')
+        self.subscribed_agents_cache.clear()
 
     def run(self):
         pass

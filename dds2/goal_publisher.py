@@ -100,7 +100,7 @@ class GoalWriter:
                 if len(R) == 4 and len(t) == 2:
                     self.R = np.array(R).reshape((2, 2))
                     self.t = np.array(t)
-                    print("Got the transformation matrix!")
+                    print("Goal publisher got the transformation matrix!")
                     break
                 else:
                     time.sleep(1)
@@ -139,7 +139,7 @@ class GoalWriter:
                                 goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
                                 command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                                 message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                                message_writer = DataWriter(self.publisher, message_topic, qos=reliable_data_qos)
+                                message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
                                 message_writer.write(command_message)
                         elif self.robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
                            
@@ -148,7 +148,7 @@ class GoalWriter:
                             goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
                             command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                             message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                            message_writer = DataWriter(self.publisher, message_topic, qos=reliable_data_qos)
+                            message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
                             
                             message_writer.write(command_message)
                             print("Received new goal *********************")

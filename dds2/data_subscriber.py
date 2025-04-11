@@ -15,10 +15,29 @@ import os
 import json
 import numpy as np
 import signal
+import requests
 
 from pyignite import Client
 
 from message_defs import DataMessage, reliable_qos
+
+AGENTS_QUERY = """
+                    query {
+                        subscribed_agents {
+                            id
+                        }
+                    }
+               """ 
+
+TRANSFORM_QUERY =   """
+                        query {
+                            transform {
+                                R
+                                t
+                                timestamp
+                            }
+                        }   
+                    """
 
 class DataListener(Listener):
 
@@ -122,41 +141,18 @@ class DataListener(Listener):
 
 
 class DataSubscriber:
-    def __init__(self, my_id):
+    def __init__(self, my_id, server_url='http://192.168.50.2:8000/graphql'):
 
         self.my_id = my_id
+        self.graphql_server = server_url
 
-        self.subscribed_agents_cache = ignite_client.get_or_create_cache('subscribed_agents')
-        self.subscribed_agents = set()
-
-        agents_to_subscribe = json.loads(self.subscribed_agents_cache.get(1))
-        if agents_to_subscribe[0] != -1:
-            self.subscribed_agents = set(agents_to_subscribe)
+        self.subscribed_agents = self.get_agents()
 
         # Get the transformation matrix from Ignite
         self.R = None
         self.t = None
 
-        transform_cache = ignite_client.get_or_create_cache('transform')
-        while self.R is None:
-            try: 
-                transform = json.loads(transform_cache.get(1))
-            except Exception as e:
-                time.sleep(1)
-                continue
-            timestamp = transform.get('timestamp', 0)
-            if time.time() - timestamp > 10:
-                time.sleep(1)
-                continue
-            R = transform.get('R', [])
-            t = transform.get('t', [])
-            if len(R) == 4 and len(t) == 2:
-                self.R = np.array(R).reshape((2, 2))
-                self.t = np.array(t)
-                print("data_subscriber got the transformation matrix!")
-                break
-            else:
-                time.sleep(1)
+        self.get_transform()
 
         self.lease_duration_ms = 30000
         qos_profile = DomainParticipantQos()
@@ -182,32 +178,66 @@ class DataSubscriber:
         while True:
 
             try:            
-                agents_to_subscribe = json.loads(self.subscribed_agents_cache.get(1))
-                if agents_to_subscribe[0] != -1:
-                    agents_to_subscribe = set(agents_to_subscribe)
-                    new_agents = agents_to_subscribe - self.subscribed_agents
-                    old_agents = self.subscribed_agents - agents_to_subscribe
+                agents_to_subscribe = self.get_agents()
+                new_agents = agents_to_subscribe - self.subscribed_agents
+                old_agents = self.subscribed_agents - agents_to_subscribe
 
-                    for agent_id in new_agents:
-                        print("Subscribed to agent ", agent_id)
-                        new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
-                        self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)
-                        self.data_listeners[agent_id].update_transformation(self.R, self.t)
-                        self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
+                for agent_id in new_agents:
+                    print("Data subscribed to agent ", agent_id)
+                    new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
+                    self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)
+                    self.data_listeners[agent_id].update_transformation(self.R, self.t)
+                    self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
 
 
-                    for agent_id in old_agents:
-                        print("Unsubscribed from agent ", agent_id)
-                        self.data_listeners[agent_id] = None
-                        self.data_readers[agent_id] = None
-                        self.data_listeners.pop(agent_id)
-                        self.data_readers.pop(agent_id)
+                for agent_id in old_agents:
+                    print("Data unsubscribed from agent ", agent_id)
+                    self.data_listeners[agent_id] = None
+                    self.data_readers[agent_id] = None
+                    self.data_listeners.pop(agent_id)
+                    self.data_readers.pop(agent_id)
 
-                    self.subscribed_agents = agents_to_subscribe
+                self.subscribed_agents = agents_to_subscribe
             except Exception as e:
                 pass
 
             time.sleep(1)
+
+    def get_agents(self):
+        # Query for any agents
+        response = requests.post(self.graphql_server, json={'query': AGENTS_QUERY}, timeout=1)
+        if response.status_code == 200:
+            data = response.json()
+
+            # Get the agent ids from the response
+            agent_ids = data.get('data', {}).get('subscribed_agents', {}).get('id', [])
+
+            if len(agent_ids):
+                return set(agent_ids)
+            else:
+                return set()
+        else:
+            return set()
+        
+    def get_transform(self):
+        # Query for the transform
+        response = requests.post(self.graphql_server, json={'query': TRANSFORM_QUERY}, timeout=1)
+        data = response.json()
+        transform = data.get('data', {}).get('transform', {})
+        R = transform.get('R', [])
+        t = transform.get('t', [])
+        
+        while len(R) != 4 or len(t) != 2:
+            response = requests.post(self.graphql_server, json={'query': TRANSFORM_QUERY}, timeout=1)
+            data = response.json()
+            transform = data.get('data', {}).get('transform', {})
+            R = transform.get('R', [])
+            t = transform.get('t', [])
+            time.sleep(1)
+
+        self.R = np.array(R).reshape((2, 2))
+        self.t = np.array(t)
+        print("data_subscriber got the transformation matrix!")
 
     def shutdown(self):
         print('Data subscriber stopped\n')

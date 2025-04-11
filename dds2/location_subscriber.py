@@ -19,13 +19,23 @@ from pyignite import Client
 
 from message_defs import Location, best_effort_qos
 
-AGENTS_QUERY = """
+AGENTS_QUERY =  """
                     query {
                         subscribed_agents {
                             id
                         }
                     }
-                    """ 
+                """ 
+
+TRANSFORM_QUERY =   """
+                        query {
+                            transform {
+                                R
+                                t
+                                timestamp
+                            }
+                        }   
+                    """
 
 class LocationListener(Listener):
     """
@@ -112,26 +122,7 @@ class LocationSubscriber:
         self.R = None
         self.t = None
 
-        transform_cache = ignite_client.get_or_create_cache('transform')
-        while self.R is None:
-            try: 
-                transform = json.loads(transform_cache.get(1))
-            except Exception as e:
-                time.sleep(1)
-                continue
-            timestamp = transform.get('timestamp', 0)
-            if time.time() - timestamp > 10:
-                time.sleep(1)
-                continue
-            R = transform.get('R', [])
-            t = transform.get('t', [])
-            if len(R) == 4 and len(t) == 2:
-                self.R = np.array(R).reshape((2, 2))
-                self.t = np.array(t)
-                print("Got the transformation matrix!")
-                break
-            else:
-                time.sleep(1)
+        self.get_transform()
 
         self.lease_duration_ms = 30000
         qos_profile = DomainParticipantQos()
@@ -157,7 +148,6 @@ class LocationSubscriber:
             
             try:
                 agents_to_subscribe = self.get_agents()
-                # print("Agents to subscribe: ", agents_to_subscribe)
                 new_agents = agents_to_subscribe - self.subscribed_agents
                 old_agents = self.subscribed_agents - agents_to_subscribe
 
@@ -175,7 +165,7 @@ class LocationSubscriber:
                     self.location_listeners[agent_id] = None
                     self.location_readers.pop(agent_id)
 
-                    self.subscribed_agents = agents_to_subscribe
+                self.subscribed_agents = agents_to_subscribe
             except Exception as e:
                 pass
 
@@ -190,15 +180,32 @@ class LocationSubscriber:
             # Get the agent ids from the response
             agent_ids = data.get('data', {}).get('subscribed_agents', {}).get('id', [])
 
-            print("Data: ", data)
-            print("Agent_ids: ", agent_ids)
-
             if len(agent_ids):
                 return set(agent_ids)
             else:
                 return set()
         else:
             return set()
+        
+    def get_transform(self):
+        # Query for the transform
+        response = requests.post(self.graphql_server, json={'query': TRANSFORM_QUERY}, timeout=1)
+        data = response.json()
+        transform = data.get('data', {}).get('transform', {})
+        R = transform.get('R', [])
+        t = transform.get('t', [])
+        
+        while len(R) != 4 or len(t) != 2:
+            response = requests.post(self.graphql_server, json={'query': TRANSFORM_QUERY}, timeout=1)
+            data = response.json()
+            transform = data.get('data', {}).get('transform', {})
+            R = transform.get('R', [])
+            t = transform.get('t', [])
+            time.sleep(1)
+
+        self.R = np.array(R).reshape((2, 2))
+        self.t = np.array(t)
+        print("location_subscriber got the transformation matrix!")
 
     def shutdown(self):
         print('Location subscriber stopped\n')
