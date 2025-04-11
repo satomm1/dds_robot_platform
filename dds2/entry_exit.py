@@ -8,8 +8,6 @@ from cyclonedds.idl.types import sequence
 from cyclonedds.core import Qos, Policy, Listener
 from cyclonedds.builtin import BuiltinDataReader, BuiltinTopicDcpsParticipant
 
-from dataclasses import dataclass
-
 import time
 import os
 import hashlib
@@ -22,7 +20,7 @@ import signal
 from pyignite import Client
 
 from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, OccupancyGrid, msg_to_dict
-from message_defs import Heartbeat, EntryExit, Initialization
+from message_defs import Heartbeat, EntryExit, Initialization, reliable_qos, best_effort_qos
 
 
 # Constants (Set depending on the agent)
@@ -453,19 +451,6 @@ class EntryExitCommunication:
         self.map_mod_msg = OccupancyGrid()
         self.map_md_msg = MapMetaData()
 
-        # Create different policies for the DDS entities
-        self.reliable_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
-            Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=1)
-        )
-
-        self.best_effort_qos = Qos(
-            Policy.Reliability.BestEffort,
-            Policy.Durability.Volatile,
-            Policy.Liveliness.ManualByParticipant(lease_duration=duration(milliseconds=30000))
-        )
-
         self.lease_duration_ms = 30000
         qos_profile = DomainParticipantQos()
         qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
@@ -481,8 +466,8 @@ class EntryExitCommunication:
         self.init_topic = Topic(self.participant, 'InitializationTopic', Initialization)
 
         # Create the DataWriters and DataReaders
-        self.enter_exit_writer = DataWriter(self.publisher, self.entry_exit_topic, qos=self.reliable_qos)
-        self.init_writer = DataWriter(self.publisher, self.init_topic, qos=self.reliable_qos)
+        self.enter_exit_writer = DataWriter(self.publisher, self.entry_exit_topic, qos=reliable_qos)
+        self.init_writer = DataWriter(self.publisher, self.init_topic, qos=reliable_qos)
 
         self.entry_exit_listener = EntryExitListener(self.participant, self.publisher, self.subscriber, self.my_id,
                                                      self.my_ip, self.my_hash, self.init_writer)
@@ -545,8 +530,8 @@ class EntryExitCommunication:
         self.entry_exit_listener.update_known_points(self.known_points)
 
         self.enter_exit_reader = DataReader(self.subscriber, self.entry_exit_topic,
-                                                listener=self.entry_exit_listener, qos=self.reliable_qos)
-        self.init_reader = DataReader(self.subscriber, self.init_topic, listener=self.init_listener, qos=self.reliable_qos)
+                                                listener=self.entry_exit_listener, qos=reliable_qos)
+        self.init_reader = DataReader(self.subscriber, self.init_topic, listener=self.init_listener, qos=reliable_qos)
 
         # Broadcast an entry message
         entry_message = EntryExit(int(self.my_id), AGENT_TYPE, 'enter', self.my_ip, int(time.time()))
@@ -554,8 +539,8 @@ class EntryExitCommunication:
 
         # Wait for the reference points to become available
         num_tries = 0
-        while not self.init_listener.known_points_available() and num_tries < 6:
-            print("Reference Points not yet received (attempt {0}/6)".format(num_tries+1))
+        while not self.init_listener.known_points_available() and num_tries < 10:
+            print("Reference Points not yet received (attempt {0}/10)".format(num_tries+1))
             time.sleep(1)
             if not self.init_listener.known_points_available():
                 entry_message.timestamp = int(time.time())
@@ -601,7 +586,7 @@ class EntryExitCommunication:
         # Start the heartbeat reader now that we have the reference points, stop listening for initialization messages
         self.init_reader = None
         self.init_listener = None
-        self.heartbeat_reader = DataReader(self.subscriber, self.heartbeat_topic, listener=self.heartbeat_listener, qos=self.best_effort_qos)
+        self.heartbeat_reader = DataReader(self.subscriber, self.heartbeat_topic, listener=self.heartbeat_listener, qos=best_effort_qos)
 
         # Send confirmation message to entry_exit topic
         entry_message = EntryExit(int(self.my_id), AGENT_TYPE, 'initialized', self.my_ip, int(time.time()))
@@ -785,7 +770,13 @@ if __name__ == '__main__':
     ignite_client = Client()
     ignite_client.connect('localhost', 10800)
 
-    entry_exit_obj = EntryExitCommunication('101', server_url='http://localhost:8000/graphql')
+    # Get the agent ID from the environment variable
+    agent_id = os.getenv('AGENT_ID')
+    if agent_id is None:
+        raise ValueError("AGENT_ID environment variable not set")
+    
+    # Create an instance of the EntryExitCommunication class
+    entry_exit_obj = EntryExitCommunication(agent_id, server_url='http://localhost:8000/graphql')
 
     def handle_signal(sig, frame):
         entry_exit_obj.shutdown()

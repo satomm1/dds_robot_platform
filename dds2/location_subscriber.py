@@ -16,7 +16,7 @@ import os
 
 from pyignite import Client
 
-from message_defs import Location
+from message_defs import Location, best_effort_qos
 
 class LocationListener(Listener):
     """
@@ -128,19 +128,6 @@ class LocationSubscriber:
             else:
                 time.sleep(1)
 
-        # Create different policies for the DDS entities
-        self.reliable_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
-            Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=1)
-        )
-
-        self.best_effort_qos = Qos(
-            Policy.Reliability.BestEffort,
-            Policy.Durability.Volatile,
-            Policy.Liveliness.ManualByParticipant(lease_duration=duration(milliseconds=30000))
-        )
-
         self.lease_duration_ms = 30000
         qos_profile = DomainParticipantQos()
         qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
@@ -158,7 +145,7 @@ class LocationSubscriber:
             new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
             self.location_listeners[agent_id] = LocationListener(self.my_id)
             self.location_listeners[agent_id].update_transformation(self.R, self.t)
-            self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=self.best_effort_qos)
+            self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
     
     def run(self):
         while True:
@@ -175,7 +162,7 @@ class LocationSubscriber:
                         new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
                         self.location_listeners[agent_id] = LocationListener(self.my_id)
                         self.location_listeners[agent_id].update_transformation(self.R, self.t)
-                        self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=self.best_effort_qos)
+                        self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
 
                     for agent_id in old_agents:

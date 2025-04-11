@@ -8,14 +8,12 @@ from cyclonedds.idl.types import sequence
 from cyclonedds.core import Qos, Policy, Listener
 from cyclonedds.builtin import BuiltinDataReader, BuiltinTopicDcpsParticipant
 
-from dataclasses import dataclass
-
 import time
 import os
 import socket
 import signal
 
-from message_defs import Heartbeat
+from message_defs import Heartbeat, best_effort_qos
 
 HEARTBEAT_PERIOD = 10    # seconds
 AGENT_TYPE = 'human'
@@ -46,19 +44,6 @@ class HeartbeatPublisher:
         s.close()
         print(f"My IP address is {self.my_ip}")
 
-        # Create different policies for the DDS entities
-        self.reliable_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
-            Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=1)
-        )
-
-        self.best_effort_qos = Qos(
-            Policy.Reliability.BestEffort,
-            Policy.Durability.Volatile,
-            Policy.Liveliness.ManualByParticipant(lease_duration=duration(milliseconds=30000))
-        )
-
         self.lease_duration_ms = 30000
         qos_profile = DomainParticipantQos()
         qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
@@ -69,7 +54,7 @@ class HeartbeatPublisher:
 
         # Create a Topic and DataWriter for the heartbeat message
         self.heartbeat_topic = Topic(self.participant, 'HeartbeatTopic', Heartbeat)
-        self.heartbeat_writer = DataWriter(self.publisher, self.heartbeat_topic, qos=self.best_effort_qos)
+        self.heartbeat_writer = DataWriter(self.publisher, self.heartbeat_topic, qos=best_effort_qos)
 
     
     def run(self):

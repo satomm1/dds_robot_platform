@@ -15,7 +15,7 @@ import requests
 import numpy as np
 import signal
 
-from message_defs import DataMessage
+from message_defs import DataMessage, reliable_qos
 
 ROBOT_GOALS_QUERY = """
                     query {
@@ -46,26 +46,6 @@ class GoalWriter:
 
         self.graphql_server = graphql_server
         self.robot_goal_history = dict()
-
-        # Create different policies for the DDS entities
-        self.reliable_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
-            Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=1)
-        )
-
-        # Reliable data qos
-        self.reliable_data_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
-            Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=10)
-        )
-
-        self.best_effort_qos = Qos(
-            Policy.Reliability.BestEffort,
-            Policy.Durability.Volatile,
-            Policy.Liveliness.ManualByParticipant(lease_duration=duration(milliseconds=30000))
-        )
 
         self.lease_duration_ms = 30000
         qos_profile = DomainParticipantQos()
@@ -159,7 +139,7 @@ class GoalWriter:
                                 goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
                                 command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                                 message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                                message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_data_qos)
+                                message_writer = DataWriter(self.publisher, message_topic, qos=reliable_data_qos)
                                 message_writer.write(command_message)
                         elif self.robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
                            
@@ -168,7 +148,7 @@ class GoalWriter:
                             goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
                             command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                             message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                            message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_data_qos)
+                            message_writer = DataWriter(self.publisher, message_topic, qos=reliable_data_qos)
                             
                             message_writer.write(command_message)
                             print("Received new goal *********************")
