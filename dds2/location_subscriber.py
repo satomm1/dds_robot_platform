@@ -13,10 +13,19 @@ import json
 import numpy as np
 import signal
 import os
+import requests
 
 from pyignite import Client
 
 from message_defs import Location, best_effort_qos
+
+AGENTS_QUERY = """
+                    query {
+                        subscribed_agents {
+                            id
+                        }
+                    }
+                    """ 
 
 class LocationListener(Listener):
     """
@@ -92,16 +101,12 @@ class LocationListener(Listener):
         return self.locations
 
 class LocationSubscriber:
-    def __init__(self, my_id):
+    def __init__(self, my_id, server_url='http://192.168.50.2:8000/graphql'):
 
         self.my_id = my_id
-
-        self.subscribed_agents_cache = ignite_client.get_or_create_cache('subscribed_agents')
-        self.subscribed_agents = set()
-
-        agents_to_subscribe = json.loads(self.subscribed_agents_cache.get(1))
-        if agents_to_subscribe[0] != -1:
-            self.subscribed_agents = set(agents_to_subscribe)
+        self.graphql_server = server_url
+        
+        self.subscribed_agents = self.get_agents()
 
         # Get the transformation matrix from Ignite
         self.R = None
@@ -151,32 +156,49 @@ class LocationSubscriber:
         while True:
             
             try:
-                agents_to_subscribe = json.loads(self.subscribed_agents_cache.get(1))
-                if agents_to_subscribe[0] != -1:
-                    agents_to_subscribe = set(agents_to_subscribe)
-                    new_agents = agents_to_subscribe - self.subscribed_agents
-                    old_agents = self.subscribed_agents - agents_to_subscribe
+                agents_to_subscribe = self.get_agents()
+                # print("Agents to subscribe: ", agents_to_subscribe)
+                new_agents = agents_to_subscribe - self.subscribed_agents
+                old_agents = self.subscribed_agents - agents_to_subscribe
 
-                    for agent_id in new_agents:
-                        print("Location subscribed to agent ", agent_id)
-                        new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
-                        self.location_listeners[agent_id] = LocationListener(self.my_id)
-                        self.location_listeners[agent_id].update_transformation(self.R, self.t)
-                        self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
+                for agent_id in new_agents:
+                    print("Location subscribed to agent ", agent_id)
+                    new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
+                    self.location_listeners[agent_id] = LocationListener(self.my_id)
+                    self.location_listeners[agent_id].update_transformation(self.R, self.t)
+                    self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
-
-                    for agent_id in old_agents:
-                        print("Location unsubscribed from agent ", agent_id)
-                        self.location_readers[agent_id] = None
-                        self.location_listeners.pop(agent_id)
-                        self.location_listeners[agent_id] = None
-                        self.location_readers.pop(agent_id)
+                for agent_id in old_agents:
+                    print("Location unsubscribed from agent ", agent_id)
+                    self.location_readers[agent_id] = None
+                    self.location_listeners.pop(agent_id)
+                    self.location_listeners[agent_id] = None
+                    self.location_readers.pop(agent_id)
 
                     self.subscribed_agents = agents_to_subscribe
             except Exception as e:
                 pass
 
             time.sleep(1)
+
+    def get_agents(self):
+        # Query for any agents
+        response = requests.post(self.graphql_server, json={'query': AGENTS_QUERY}, timeout=1)
+        if response.status_code == 200:
+            data = response.json()
+
+            # Get the agent ids from the response
+            agent_ids = data.get('data', {}).get('subscribed_agents', {}).get('id', [])
+
+            print("Data: ", data)
+            print("Agent_ids: ", agent_ids)
+
+            if len(agent_ids):
+                return set(agent_ids)
+            else:
+                return set()
+        else:
+            return set()
 
     def shutdown(self):
         print('Location subscriber stopped\n')

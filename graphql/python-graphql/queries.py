@@ -258,3 +258,16 @@ def resolve_data(*_):
         "t": transform["t"],
         "timestamp": transform["timestamp"]
     }
+
+@query.field("subscribed_agents")
+def resolve_data(*_):
+    agent_cache = ignite_client.get_or_create_cache('subscribed_agents')
+    agents = agent_cache.get(1)
+    if agents is None:
+        return {"id": []}
+    agents = json.loads(agents)
+    
+    if len(agents)==0 or agents[0] == -1:
+        return {"id": []}
+    
+    return {"id": agents}

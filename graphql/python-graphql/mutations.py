@@ -34,3 +34,12 @@ def resolve_set_robot_position(_, info, robot_id, x, y, theta):
         return True
     except:
         return False
+    
+@mutation.field("setAgentList")
+def resolve_set_agent_list(_, info, agent_list):
+    agent_list_cache = ignite_client.get_or_create_cache('subscribed_agents')
+    try:
+        agent_list_cache.put(1, json.dumps(agent_list))
+        return True
+    except:
+        return False
