@@ -110,10 +110,9 @@ class EntryExitListener(Listener):
                     # Message containing details of all active agents
                     agents_message = json.dumps(self.agents)
 
-                    # FIXME: what is known_points
                     known_points_json = json.dumps(self.known_points)
 
-                    init_message = Initialization(target_agent=sample.agent_id, agents=agents_message, known_points=known_points_json)
+                    init_message = Initialization(target_agent=sample.agent_id, sending_agent=int(self.my_id), agents=agents_message, known_points=known_points_json)
                     self.init_writer.write(init_message)
 
                     print("Sent initialization message to new agent")
@@ -127,7 +126,8 @@ class EntryExitListener(Listener):
                     self.agents[sample.agent_id] = {
                         'agent_type': sample.agent_type,
                         'ip_address': sample.ip_address,
-                        'hash': new_robot_hash
+                        'hash': new_robot_hash,
+                        'timestamp': sample.timestamp
                     }  
                     
                     self.update_to_agents = True
@@ -155,7 +155,7 @@ class EntryExitListener(Listener):
             agent_hash = agent_info['hash']
 
             distance = abs(agent_hash - robot_hash)
-            if distance < my_distance:
+            if distance < my_distance and distance != 0:
                 print("I will not provide initialization.")
                 return False
 
@@ -339,24 +339,14 @@ class InitializationListener(Listener):
         """
         for sample in init_reader.read():
 
-            sending_agent_dict = json.loads(sample.sending_agent)
-            print(f'Initialization message received from agent {sending_agent_dict["id"]}')
-            if sending_agent_dict['id'] == int(self.my_id):
+            sending_agent = sample.sending_agent
+            if sending_agent == int(self.my_id):
                 continue
+
+            print(f'Initialization message received from agent {sending_agent}')
 
             if sample.target_agent != int(self.my_id):
                 continue
-
-            print(f'Initialization message received from agent {sending_agent_dict["id"]}')
-
-            self.agents[int(sending_agent_dict['id'])] = {
-                'agent_type': sending_agent_dict['agent_type'],
-                'capabilities': sending_agent_dict['capabilities'],
-                'message_types': sending_agent_dict['message_types'],
-                'ip_address': sending_agent_dict['ip_address'],
-                'hash': sending_agent_dict['hash'],
-                'timestamp': sending_agent_dict['timestamp']
-            }
 
             agent_dict = json.loads(sample.agents)
             if len(agent_dict) > 0:
@@ -364,15 +354,11 @@ class InitializationListener(Listener):
                 for agent_id, agent_info in agent_dict.items():
                     if agent_id != self.my_id:
                         agent_type = agent_info['agent_type']
-                        capabilities = agent_info['capabilities']
-                        message_types = agent_info['message_types']
                         ip_address = agent_info['ip_address']
                         agent_hash = agent_info['hash']
                         timestamp = agent_info['timestamp']
                         self.agents[int(agent_id)] = {
                             'agent_type': agent_type,
-                            'capabilities': capabilities,
-                            'message_types': message_types,
                             'ip_address': ip_address,
                             'hash': agent_hash,
                             'timestamp': timestamp
@@ -583,18 +569,31 @@ class EntryExitCommunication:
             self.reference_known_points = self.init_listener.get_known_points()
             self.agents = self.init_listener.get_agents()
 
+            # Add myself to the agents dictionary
+            self.agents[int(self.my_id)] = {
+                'agent_type': AGENT_TYPE,
+                'ip_address': self.my_ip,
+                'hash': self.my_hash,
+                'timestamp': int(time.time())
+            }
+
             # Update the agents in the entry/exit listener
             self.entry_exit_listener.update_agents(agents=self.agents)
         else: 
             print("I am the first agent, my map will be the reference map")
             self.reference_known_points = self.known_points
 
+            self.agents[int(self.my_id)] = {
+                'agent_type': AGENT_TYPE,
+                'ip_address': self.my_ip,
+                'hash': self.my_hash,
+                'timestamp': int(time.time())
+            }
+
         self.create_transform()  # Create the transform from the known points
 
         # Update the entry/exit listener with the known points
         self.entry_exit_listener.update_known_points(self.reference_known_points)
-            
-        self.agents = self.init_listener.get_agents()
 
         # Update the agents in the entry/exit listener
         self.entry_exit_listener.update_agents(agents=self.agents)  
@@ -742,6 +741,11 @@ class EntryExitCommunication:
                 # Check Periodically for Dead Agents
                 dead_agents = []
                 for agent_id, agent_info in self.agents.items():
+
+                    # Skip self
+                    if agent_id == int(self.my_id):
+                        continue
+
                     time_difference = current_time - agent_info['timestamp']
                 
                     if time_difference > HEARTBEAT_TIMEOUT:
@@ -757,8 +761,10 @@ class EntryExitCommunication:
                 if update_to_active_agents or dead_agents:
                     self.entry_exit_listener.update_agents(agents=self.agents)
 
-                if len(self.agents) > 0:
-                    self.subscribed_agents_cache.put(1, json.dumps(list(self.agents.keys())))
+                if len(self.agents) > 1:
+                    agent_list = list(self.agents.keys())
+                    agent_list.remove(int(self.my_id))  # Remove self from the list
+                    self.subscribed_agents_cache.put(1, json.dumps(agent_list))
                 else:
                     null_list = list()
                     null_list.append(-1)
