@@ -46,30 +46,10 @@ class HeartbeatListener(Listener):
         super().__init__()
         self.heartbeats = dict()
         self.new_heartbeats = dict()
-        self.locations = dict()
-        self.new_locations = dict()
         self.my_id = my_id
 
         self.R = None
         self.t = None
-
-    def transform_point(self, point, forward=True):
-        if self.R is None:
-            return point
-
-        point_xy = np.array([point[0], point[1]])
-        if forward:
-            new_point_xy = self.R @ point_xy + self.t
-            new_point_theta = point[2] + np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
-        else:
-            new_point_xy = self.R.T @ (point_xy - self.t)
-            new_point_theta = point[2] - np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
-
-    def update_transformation(self, R, t):
-        self.R = R
-        self.t = t
 
     def on_data_available(self, reader):
         """
@@ -90,19 +70,6 @@ class HeartbeatListener(Listener):
             self.new_heartbeats[sample.agent_id] = sample.timestamp
             self.heartbeats[sample.agent_id] = sample.timestamp
 
-            if sample.location_valid:
-
-                new_point = self.transform_point([sample.x, sample.y, sample.theta], forward=False)
-                x = new_point[0]
-                y = new_point[1]
-                theta = new_point[2]
-
-                self.locations[sample.agent_id] = (x, y, theta)
-                self.new_locations[sample.agent_id] = (x, y, theta)
-            else:
-                self.locations[sample.agent_id] = None
-                self.new_locations[sample.agent_id] = None
-
     def get_heartbeats(self):
         """
         Get a copy of the heartbeats dictionary.
@@ -112,24 +79,6 @@ class HeartbeatListener(Listener):
         """
         returned_heartbeats = self.new_heartbeats.copy()
         return returned_heartbeats
-
-    def get_heartbeats_and_locations(self):
-        """
-        Get a copy of the heartbeats and locations dictionaries.
-
-        Returns:
-            tuple: A tuple containing copies of the heartbeats and locations dictionaries.
-        """
-        returned_heartbeats = self.new_heartbeats.copy()
-        self.new_heartbeats = dict()
-
-        returned_locations = self.new_locations.copy() 
-        self.new_locations = dict()
-
-        return returned_heartbeats, returned_locations
-    
-    # TODO Should provide function to alert of new agents detected through heartbeats
-
 
 def hash_func(robot_id):
     """
@@ -264,16 +213,6 @@ class HeartbeatSubscriber:
             json={'query': mutation, 'variables': {'agentList': agent_list}},
             timeout=1
         )
-        
-        # if response.status_code == 200:
-        #     data = response.json()
-        #     if data.get('data', {}).get('setAgentList', False):
-        #         print("Agent list successfully updated.")
-        #     else:
-        #         print("Failed to update agent list.")
-        # else:
-        #     print(f"Failed to update agent list. HTTP status code: {response.status_code}")
-
 
     def shutdown(self):
         pass
