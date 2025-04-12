@@ -99,11 +99,10 @@ class HeartbeatSubscriber:
     def __init__(self, server_url='http://192.168.50.2:8000/graphql'):
 
         # Get the agent ID from the environment variable
-        self.agent_id = os.getenv('AGENT_ID')
-        if self.agent_id is None:
+        self.my_id = os.getenv('AGENT_ID')
+        if self.my_id is None:
             raise ValueError("AGENT_ID environment variable not set")
         
-        self.agent_id = int(self.agent_id)
         self.my_hash = hash_func(self.my_id)
         self.graphql_server = server_url
 
@@ -146,6 +145,11 @@ class HeartbeatSubscriber:
 
                 update_to_active_agents = False
                 for agent_id in heartbeats.keys():
+                    if agent_id not in self.agents:
+                        self.agents[agent_id] = {
+                            'timestamp': int(time.time())
+                        }
+
                     if agent_id in current_agents:
                         self.agents[agent_id]['timestamp'] = heartbeats[agent_id]
                     else:

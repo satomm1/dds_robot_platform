@@ -183,6 +183,9 @@ class DataSubscriber:
                 old_agents = self.subscribed_agents - agents_to_subscribe
 
                 for agent_id in new_agents:
+                    if int(agent_id) == int(self.my_id):
+                        continue
+
                     print("Data subscribed to agent ", agent_id)
                     new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
                     self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)

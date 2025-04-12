@@ -22,12 +22,18 @@ from pyignite import Client
 from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, OccupancyGrid, msg_to_dict
 from message_defs import Heartbeat, EntryExit, Initialization, reliable_qos, best_effort_qos
 
-
 # Constants (Set depending on the agent)
 HEARTBEAT_PERIOD = 10    # seconds
 HEARTBEAT_TIMEOUT = 31  # seconds
 AGENT_TYPE = 'human'
 
+AGENTS_QUERY =  """
+                    query {
+                        subscribed_agents {
+                            id
+                        }
+                    }
+                """ 
 
 class EntryExitListener(Listener):
     """
@@ -64,6 +70,7 @@ class EntryExitListener(Listener):
         self.subscriber = subscriber
 
         self.agents = dict()     
+        self.exited_agents = dict()
         self.agents[my_hash] = {
             'agent_type': AGENT_TYPE,
             'ip_address': my_ip,
@@ -127,13 +134,18 @@ class EntryExitListener(Listener):
                         'hash': new_robot_hash,
                         'timestamp': sample.timestamp
                     }  
+
+                    # Remove from exited agents if it exists
+                    if sample.agent_id in self.exited_agents:
+                        self.exited_agents.pop(sample.agent_id)
                     
                     self.update_to_agents = True
             elif sample.action == 'exit':
                 # Agent Exited, remove from agents dictionary
                 if sample.agent_id in self.agents:
                     print(f'Agent {sample.agent_id} exited the environment')
-                    self.agents.pop(sample.agent_id)
+                    self.agents.pop(sample.agent_id)  # Pop from agents dictionary
+                    self.exited_agents[sample.agent_id] = int(time.time())  # Add to exited agents dictionary
                     self.update_to_agents = True
 
     def find_if_closest_robot(self, robot_hash):
@@ -177,7 +189,9 @@ class EntryExitListener(Listener):
         - tuple: A tuple containing the active agents, exited agents, and lost agents.
         """
         self.update_to_agents = False
-        return self.agents
+        exited_agents = self.exited_agents.copy()
+        self.exited_agents.clear()
+        return self.agents, exited_agents
     
     def update_agents(self, agents=None):
         """
@@ -204,104 +218,6 @@ class EntryExitListener(Listener):
         """
         self.known_points = known_points
 
-
-class HeartbeatListener(Listener):
-    """
-    Listener class that handles heartbeat data from agents.
-
-    Attributes:
-        heartbeats (dict): A dictionary to store the heartbeats of agents.
-        my_id (int): The ID of the current agent.
-        agents (dict): A dictionary to store information about all agents in the environment.
-    """
-
-    def __init__(self, my_id):
-        super().__init__()
-        self.heartbeats = dict()
-        self.new_heartbeats = dict()
-        self.locations = dict()
-        self.new_locations = dict()
-        self.my_id = my_id
-
-        self.R = None
-        self.t = None
-
-    def transform_point(self, point, forward=True):
-        if self.R is None:
-            return point
-
-        point_xy = np.array([point[0], point[1]])
-        if forward:
-            new_point_xy = self.R @ point_xy + self.t
-            new_point_theta = point[2] + np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
-        else:
-            new_point_xy = self.R.T @ (point_xy - self.t)
-            new_point_theta = point[2] - np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
-
-    def update_transformation(self, R, t):
-        self.R = R
-        self.t = t
-
-    def on_data_available(self, reader):
-        """
-        Callback method called when data is available in the reader.
-
-        Args:
-            reader (DataReader): The DataReader object.
-
-        Returns:
-            None
-        """
-        for sample in reader.read():
-
-            # Skip messages from self
-            if sample.agent_id == int(self.my_id):
-                continue
-
-            self.new_heartbeats[sample.agent_id] = sample.timestamp
-            self.heartbeats[sample.agent_id] = sample.timestamp
-
-            if sample.location_valid:
-
-                new_point = self.transform_point([sample.x, sample.y, sample.theta], forward=False)
-                x = new_point[0]
-                y = new_point[1]
-                theta = new_point[2]
-
-                self.locations[sample.agent_id] = (x, y, theta)
-                self.new_locations[sample.agent_id] = (x, y, theta)
-            else:
-                self.locations[sample.agent_id] = None
-                self.new_locations[sample.agent_id] = None
-
-    def get_heartbeats(self):
-        """
-        Get a copy of the heartbeats dictionary.
-
-        Returns:
-            dict: A copy of the heartbeats dictionary.
-        """
-        returned_heartbeats = self.new_heartbeats.copy()
-        return returned_heartbeats
-
-    def get_heartbeats_and_locations(self):
-        """
-        Get a copy of the heartbeats and locations dictionaries.
-
-        Returns:
-            tuple: A tuple containing copies of the heartbeats and locations dictionaries.
-        """
-        returned_heartbeats = self.new_heartbeats.copy()
-        self.new_heartbeats = dict()
-
-        returned_locations = self.new_locations.copy() 
-        self.new_locations = dict()
-
-        return returned_heartbeats, returned_locations
-    
-    # TODO Should provide function to alert of new agents detected through heartbeats
 
 class InitializationListener(Listener):
     """
@@ -462,7 +378,6 @@ class EntryExitCommunication:
 
         # Create the topics needed
         self.entry_exit_topic = Topic(self.participant, 'EntryExitTopic', EntryExit)
-        self.heartbeat_topic = Topic(self.participant, 'HeartbeatTopic', Heartbeat)
         self.init_topic = Topic(self.participant, 'InitializationTopic', Initialization)
 
         # Create the DataWriters and DataReaders
@@ -471,35 +386,33 @@ class EntryExitCommunication:
 
         self.entry_exit_listener = EntryExitListener(self.participant, self.publisher, self.subscriber, self.my_id,
                                                      self.my_ip, self.my_hash, self.init_writer)
-        self.heartbeat_listener = HeartbeatListener(self.my_id)
         self.init_listener = InitializationListener(self.my_id)
 
         # We will start the readers later when it is necessary
         self.enter_exit_reader = None
         self.init_reader = None
-        self.heartbeat_reader = None
-        self.location_readers = dict()
-        self.location_listeners = dict()
-        self.data_readers = dict()
-        self.data_listeners = dict()
 
         # GraphQL server URL
         self.graphql_server = server_url
 
         self.last_time = int(time.time())
 
+        # Clear any detected objects from the cache
         detected_objects_cache = ignite_client.get_or_create_cache('detected_objects') 
         detected_objects_cache.clear()
 
-        self.location_cache = ignite_client.get_or_create_cache('robot_position')
-        self.path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
-        self.goal_cache = ignite_client.get_or_create_cache('robot_goal')
-
-        self.subscribed_agents_cache = ignite_client.get_or_create_cache('subscribed_agents')
-        self.subscribed_agents_cache.clear()
-        null_list = list()
-        null_list.append(-1)
-        self.subscribed_agents_cache.put(1, json.dumps(null_list))
+        # Clear the subscribed agents cache
+        mutation = """
+            mutation($agentList: [Int!]!) {
+            setAgentList(agent_list: $agentList)
+            }
+        """
+        agent_list = [-1]
+        response = requests.post(
+            self.graphql_server,
+            json={'query': mutation, 'variables': {'agentList': agent_list}},
+            timeout=1
+        )
 
     def setup(self):
         """
@@ -586,7 +499,6 @@ class EntryExitCommunication:
         # Start the heartbeat reader now that we have the reference points, stop listening for initialization messages
         self.init_reader = None
         self.init_listener = None
-        self.heartbeat_reader = DataReader(self.subscriber, self.heartbeat_topic, listener=self.heartbeat_listener, qos=best_effort_qos)
 
         # Send confirmation message to entry_exit topic
         entry_message = EntryExit(int(self.my_id), AGENT_TYPE, 'initialized', self.my_ip, int(time.time()))
@@ -657,8 +569,6 @@ class EntryExitCommunication:
             self.R = R
             self.t = t
 
-        self.heartbeat_listener.update_transformation(self.R, self.t)
-
         # Now store the transform in the ignite server
         transform_cache = ignite_client.get_or_create_cache('transform')
         transform_data = {"R": self.R.flatten().tolist(), "t": self.t.flatten().tolist(), "timestamp": int(time.time())}
@@ -691,71 +601,78 @@ class EntryExitCommunication:
 
     def run(self):
 
+        prev_agent_set = set()
         while True:
             current_time = int(time.time())
 
             # Periodically perform some updates
             if current_time - self.last_time >= HEARTBEAT_PERIOD:  # FIXME different period...
                 self.last_time = current_time
+                update_to_active_agents = False
 
                 # Check for new agents
                 if self.entry_exit_listener.agent_update_available():
-                    self.agents = self.entry_exit_listener.get_agents()
+                    self.agents, exited_agents = self.entry_exit_listener.get_agents()
                 current_agents_list = list(self.agents.keys())
 
-                # Update agents with new heartbeats
-                heartbeats = self.heartbeat_listener.get_heartbeats()
+                # Get agents from the GraphQL server
+                heartbeat_agents = list(self.get_agents())
 
-                update_to_active_agents = False
-                for agent_id in heartbeats.keys():
-                    if agent_id in current_agents_list:
-                        self.agents[agent_id]['timestamp'] = heartbeats[agent_id]
-                    else:
-                        print(f'Detected heartbeat from unknown agent {agent_id}')
-                        agent_hash = hash_func(str(agent_id))
-
-                        # FIXME: Add correct agent_type and ip_address
+                new_agents = set(heartbeat_agents) - set(current_agents_list)
+                for agent_id in new_agents:
+                    if agent_id not in exited_agents:
                         self.agents[agent_id] = {
-                            'agent_type': 'unknown',
-                            'ip_address': 'unknown',
-                            'hash': agent_hash,
-                            'timestamp': heartbeats[agent_id]
+                            'agent_type': "unknown",
+                            'ip_address': "unknown",
+                            'hash': hash_func(str(agent_id)),
+                            'timestamp': int(time.time())
                         }
                         update_to_active_agents = True
 
-                # Check Periodically for Dead Agents
-                dead_agents = []
-                for agent_id, agent_info in self.agents.items():
-
-                    # Skip self
-                    if agent_id == int(self.my_id):
-                        continue
-
-                    time_difference = current_time - agent_info['timestamp']
-                
-                    if time_difference > HEARTBEAT_TIMEOUT:
-                        # Agent has timed out
-                        print(f'Agent {agent_id} has timed out')
-                        dead_agents.append(agent_id)
-                
-                # Remove Dead Agents
+                dead_agents = prev_agent_set - set(heartbeat_agents)
+                prev_agent_set = set(heartbeat_agents)
                 for agent_id in dead_agents:
-                    self.agents.pop(agent_id)
+                    if agent_id in self.agents:
+                        self.agents.pop(agent_id)
+                        update_to_active_agents = True
 
                 # Update the entry/exit listener with the new agents
-                if update_to_active_agents or dead_agents:
+                if update_to_active_agents:
                     self.entry_exit_listener.update_agents(agents=self.agents)
 
-                if len(self.agents) > 1:
-                    agent_list = list(self.agents.keys())
-                    agent_list.remove(int(self.my_id))  # Remove self from the list
-                    self.subscribed_agents_cache.put(1, json.dumps(agent_list))
-                else:
-                    null_list = list()
-                    null_list.append(-1)
-                    self.subscribed_agents_cache.put(1, json.dumps(null_list))
+                self.update_agents()
 
             time.sleep(0.2)
+
+    def get_agents(self):
+        # Query for any agents
+        response = requests.post(self.graphql_server, json={'query': AGENTS_QUERY}, timeout=1)
+        if response.status_code == 200:
+            data = response.json()
+
+            # Get the agent ids from the response
+            agent_ids = data.get('data', {}).get('subscribed_agents', {}).get('id', [])
+
+            if len(agent_ids):
+                return set(agent_ids)
+            else:
+                return set()
+        else:
+            return set()
+        
+    def update_agents(self):
+        mutation = """
+            mutation($agentList: [Int!]!) {
+            setAgentList(agent_list: $agentList)
+            }
+        """
+        agent_list = list(self.agents.keys())
+
+        response = requests.post(
+            self.graphql_server,
+            json={'query': mutation, 'variables': {'agentList': agent_list}},
+            timeout=1
+        )
 
     def shutdown(self):
         print('\nSending exit message...\n')
