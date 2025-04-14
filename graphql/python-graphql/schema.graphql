@@ -93,6 +93,9 @@ type Mutation {
     setAgentList(agent_list: [Int]): Boolean
     clearDetectedObjects: Boolean
     setTransform(R: [Float], t: [Float], timestamp: Float): Boolean
+    setMap(data: String!): Boolean 
+    setMapMetadata(resolution: Float, width: Int, height: Int, origin_pos_x: Float, origin_pos_y: Float, origin_pos_z: Float, origin_ori_x: Float,
+                        origin_ori_y: Float, origin_ori_z: Float, origin_ori_w: Float): Boolean
 }
 
 type Subscription {

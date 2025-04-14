@@ -16,8 +16,7 @@ import json
 import requests
 import numpy as np
 import signal
-
-from pyignite import Client
+import base64
 
 from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, OccupancyGrid, msg_to_dict
 from message_defs import Heartbeat, EntryExit, Initialization, reliable_qos, best_effort_qos
@@ -40,6 +39,18 @@ TRANSFORM_MUTATION =   """
                                 setTransform(R: $R, t: $t, timestamp: $timestamp)
                             }
                         """
+
+MAP_MUTATION =  """
+                    mutation($data: String!) {
+                        setMap(data: $data)
+                    }
+                """
+
+MD_MUTATION =   """
+                    mutation($resolution: Float!, $width: Int!, $height: Int!, $origin_pos_x: Float!, $origin_pos_y: Float!, $origin_pos_z: Float!, $origin_ori_x: Float!, $origin_ori_y: Float!, $origin_ori_z: Float!, $origin_ori_w: Float!) {
+                        setMapMetadata(resolution: $resolution, width: $width, height: $height, origin_pos_x: $origin_pos_x, origin_pos_y: $origin_pos_y, origin_pos_z: $origin_pos_z, origin_ori_x: $origin_ori_x, origin_ori_y: $origin_ori_y, origin_ori_z: $origin_ori_z, origin_ori_w: $origin_ori_w)
+                    }
+                """
 
 class EntryExitListener(Listener):
     """
@@ -527,24 +538,20 @@ class EntryExitCommunication:
 
         map_data = map_data['data']['map'] 
         map_data_str = np.array(map_data['occupancy']).tobytes()
-        ignite_map_md_msg = dict()
-        ignite_map_md_msg['resolution'] = map_data['resolution']
-        ignite_map_md_msg['width'] = map_data['width']
-        ignite_map_md_msg['height'] = map_data['height']
-        ignite_map_md_msg['origin.position.x'] = map_data['origin_x']
-        ignite_map_md_msg['origin.position.y'] = map_data['origin_y']
-        ignite_map_md_msg['origin.position.z'] = map_data['origin_z']
-        ignite_map_md_msg['origin.orientation.x'] = map_data['origin_orientation_x']
-        ignite_map_md_msg['origin.orientation.y'] = map_data['origin_orientation_y']
-        ignite_map_md_msg['origin.orientation.z'] = map_data['origin_orientation_z']
-        ignite_map_md_msg['origin.orientation.w'] = map_data['origin_orientation_w']
-        ignite_map_md_msg = json.dumps(ignite_map_md_msg)
 
         # Send the map to ignite server
-        map_cache = ignite_client.get_or_create_cache('map')
-        map_metadata_cache = ignite_client.get_or_create_cache('map_metadata')
-        map_cache.put(1, map_data_str)
-        map_metadata_cache.put(1, ignite_map_md_msg)
+        response = requests.post(
+            self.graphql_server,
+            json={'query': MAP_MUTATION, 'variables': {'data': base64.b64encode(map_data_str).decode('utf-8')}},
+            timeout=1
+        )
+
+        # Send the map metadata to ignite server
+        response = requests.post(
+            self.graphql_server,
+            json={'query': MD_MUTATION, 'variables': {'resolution': map_data['resolution'], 'width': map_data['width'], 'height': map_data['height'], 'origin_pos_x': map_data['origin_x'], 'origin_pos_y': map_data['origin_y'], 'origin_pos_z': map_data['origin_z'], 'origin_ori_x': map_data['origin_orientation_x'], 'origin_ori_y': map_data['origin_orientation_y'], 'origin_ori_z': map_data['origin_orientation_z'], 'origin_ori_w': map_data['origin_orientation_w']}},   
+            timeout=1
+        )
 
         print("Map loaded from user_map.json")
 
@@ -705,10 +712,6 @@ class EntryExitCommunication:
 
 if __name__ == '__main__':
 
-    # Set up the Ignite Client
-    ignite_client = Client()
-    ignite_client.connect('localhost', 10800)
-
     # Get the agent ID from the environment variable
     agent_id = os.getenv('AGENT_ID')
     if agent_id is None:
@@ -729,6 +732,5 @@ if __name__ == '__main__':
         entry_exit_obj.run()
     except KeyboardInterrupt:
         entry_exit_obj.shutdown()
-        ignite_client.close()
         print('Exiting...')
         exit(0)

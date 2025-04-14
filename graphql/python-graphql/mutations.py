@@ -1,13 +1,14 @@
 from ariadne import load_schema_from_path, make_executable_schema, gql, MutationType
 import json
 import numpy as np
+import base64
 
 from ignite import ignite_client
 
 mutation = MutationType()
 
 @mutation.field("setRobotGoal")
-def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_timestamp):
+def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_timestamp, from_bot=None):
     goal_cache = ignite_client.get_or_create_cache('robot_goal')
     goal = {
         "x": x_goal,
@@ -15,6 +16,8 @@ def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_t
         "theta": theta_goal,
         "timestamp": goal_timestamp
     }
+    if from_bot is not None:
+        goal["from_bot"] = from_bot
     try:
         goal_cache.put(robot_id, json.dumps(goal))
         return True
@@ -49,6 +52,52 @@ def resolve_clear_detected_objects(_, info):
     detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')
     try:
         detected_objects_cache.clear()
+        return True
+    except:
+        return False
+    
+@mutation.field("setTransform")
+def resolve_set_transform(_, info, R, t, timestamp):
+    transform_cache = ignite_client.get_or_create_cache('transform')
+    transform = {
+        "R": R,
+        "t": t,
+        "timestamp": timestamp
+    }
+    try:
+        transform_cache.put(1, json.dumps(transform))
+        return True
+    except:
+        return False
+    
+@mutation.field("setMap")
+def resolve_set_map(_, info, data):
+    map_cache = ignite_client.get_or_create_cache('map')
+
+    array_bytes = base64.b64decode(data)
+    try:
+        map_cache.put(1, array_bytes)
+        return True
+    except:
+        return False
+    
+@mutation.field("setMapMetadata")
+def resolve_set_map_metdata(_, info, resolution, width, height, origin_pos_x, origin_pos_y, origin_pos_z, origin_ori_x, origin_ori_y, origin_ori_z, origin_ori_w):
+    md_cache = ignite_client.get_or_create_cache('map_metadata')
+    metadata = {
+        "resolution": resolution,
+        "width": width,
+        "height": height,
+        "origin.position.x": origin_pos_x,
+        "origin.position.y": origin_pos_y,
+        "origin.position.z": origin_pos_z,
+        "origin.orientation.x": origin_ori_x,
+        "origin.orientation.y": origin_ori_y,
+        "origin.orientation.z": origin_ori_z,
+        "origin.orientation.w": origin_ori_w
+    }
+    try:
+        md_cache.put(1, json.dumps(metadata))
         return True
     except:
         return False
