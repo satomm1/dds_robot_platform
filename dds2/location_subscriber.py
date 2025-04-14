@@ -152,9 +152,6 @@ class LocationSubscriber:
                 old_agents = self.subscribed_agents - agents_to_subscribe
 
                 for agent_id in new_agents:
-                    if int(agent_id) == int(self.my_id):
-                        continue
-
                     print("Location subscribed to agent ", agent_id)
                     new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
                     self.location_listeners[agent_id] = LocationListener(self.my_id)
@@ -169,6 +166,7 @@ class LocationSubscriber:
                     self.location_readers.pop(agent_id)
 
                 self.subscribed_agents = agents_to_subscribe
+                
             except Exception as e:
                 pass
 
@@ -182,6 +180,11 @@ class LocationSubscriber:
 
             # Get the agent ids from the response
             agent_ids = data.get('data', {}).get('subscribed_agents', {}).get('id', [])
+
+            if int(self.my_id) in agent_ids:
+                agent_ids.remove(int(self.my_id))
+            elif self.my_id in agent_ids:
+                agent_ids.remove(self.my_id)
 
             if len(agent_ids):
                 return set(agent_ids)

@@ -215,6 +215,11 @@ class DataSubscriber:
             # Get the agent ids from the response
             agent_ids = data.get('data', {}).get('subscribed_agents', {}).get('id', [])
 
+            if int(self.my_id) in agent_ids:
+                agent_ids.remove(int(self.my_id))
+            elif self.my_id in agent_ids:
+                agent_ids.remove(self.my_id)
+
             if len(agent_ids):
                 return set(agent_ids)
             else:
