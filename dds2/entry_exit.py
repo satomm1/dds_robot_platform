@@ -35,6 +35,12 @@ AGENTS_QUERY =  """
                     }
                 """ 
 
+TRANSFORM_MUTATION =   """
+                            mutation($R: [Float]!, $t: [Float]!, $timestamp: Float!) {
+                                setTransform(R: $R, t: $t, timestamp: $timestamp)
+                            }
+                        """
+
 class EntryExitListener(Listener):
     """
     Listener class for handling entry and exit events of agents in the environment.
@@ -578,10 +584,18 @@ class EntryExitCommunication:
             self.t = t
 
         # Now store the transform in the ignite server
-        transform_cache = ignite_client.get_or_create_cache('transform')
-        transform_data = {"R": self.R.flatten().tolist(), "t": self.t.flatten().tolist(), "timestamp": int(time.time())}
-        transform_data = json.dumps(transform_data).encode('utf-8')
-        transform_cache.put(1, transform_data)
+        response =  requests.post(
+                                self.graphql_server,
+                                json={
+                                    'query': TRANSFORM_MUTATION,
+                                    'variables': {
+                                        'R': self.R.flatten().tolist(),
+                                        't': self.t.flatten().tolist(),
+                                        'timestamp': int(time.time())
+                                    }
+                                },
+                                timeout=1
+                            )
 
     def transform_point(self, point, forward=True):
         """
