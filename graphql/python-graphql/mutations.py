@@ -115,3 +115,28 @@ def resolve_set_path(_, info, robot_id, x, y, t):
         return True
     except:
         return False
+    
+@mutation.field("setObjects")
+def resolve_set_objects(_, info, agent_id, x, y, class_name, object_num):
+    detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')
+    
+    # Get existing objects
+    detected_objects = detected_objects_cache.get(agent_id)
+
+    if detected_objects is None:
+        detected_objects = dict()
+    else:
+        detected_objects = json.loads(detected_objects)
+
+    # Add new object
+    detected_objects[object_num] = {
+        "x": x,
+        "y": y,
+        "class_name": class_name
+    }
+
+    try:
+        detected_objects_cache.put(agent_id, json.dumps(detected_objects))
+        return True
+    except:
+        return False

@@ -17,8 +17,6 @@ import numpy as np
 import signal
 import requests
 
-from pyignite import Client
-
 from message_defs import DataMessage, reliable_qos
 
 AGENTS_QUERY = """
@@ -51,6 +49,11 @@ PATH_MUTATION =  """
                     }
                 """
 
+OBJECT_MUTATION =   """
+                        mutation($agent_id: Int!, $x: Float!, $y: Float!, $class_name: String!, $object_num: Int!) {
+                            setObjects(agent_id: $agent_id, x: $x, y: $y, class_name: $class_name, object_num: $object_num)
+                    """
+
 class DataListener(Listener):
 
     def __init__(self, my_id, topic_id, graphql_server):
@@ -60,8 +63,6 @@ class DataListener(Listener):
         self.graphql_server = graphql_server
         self.detected_object_num = 0
         self.object_dict = dict()
-
-        self.detected_object_cache = ignite_client.get_or_create_cache('detected_objects')
 
         self.R = None
         self.t = None
@@ -131,9 +132,23 @@ class DataListener(Listener):
 
                 self.object_dict[self.detected_object_num] = {'x': x, 'y': y, 'class_name': class_name}
 
+                # Write object to database
+                response =  requests.post(
+                                self.graphql_server,
+                                json={
+                                    'query': OBJECT_MUTATION,
+                                    'variables': {
+                                        'agent_id': self.topic_id,
+                                        'x': x,
+                                        'y': y,
+                                        'class_name': class_name,
+                                        'object_num': self.detected_object_num
+                                    }
+                                },
+                                timeout=1
+                            )
+
                 self.detected_object_num += 1
-                ignite_data = json.dumps(self.object_dict).encode('utf-8')
-                self.detected_object_cache.put(self.topic_id, ignite_data)
 
                 print(f"*********Detected object {class_name}")
             elif message_type == "sensor_detected_objects":
@@ -153,8 +168,28 @@ class DataListener(Listener):
                     self.object_dict.pop(str(sensor_id) + '_' + str(i))
                     i += 1
 
-                ignite_data = json.dumps(self.object_dict).encode('utf-8')
-                self.detected_object_cache.put(self.topic_id, ignite_data)  
+                # Write object to database
+                for i in range(len(x)):
+                    class_name = self.object_dict[str(sensor_id) + '_' + str(i)]['class_name']
+                    x = self.object_dict[str(sensor_id) + '_' + str(i)]['x']
+                    y = self.object_dict[str(sensor_id) + '_' + str(i)]['y']
+
+                    # Write object to database
+                    response =  requests.post(
+                                    self.graphql_server,
+                                    json={
+                                        'query': OBJECT_MUTATION,
+                                        'variables': {
+                                            'agent_id': self.topic_id,
+                                            'x': x,
+                                            'y': y,
+                                            'class_name': class_name,
+                                            'object_num': i
+                                        }
+                                    },
+                                    timeout=1
+                                )
+                
             elif message_type == "goal":
                 x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
                 response =  requests.post(
@@ -282,14 +317,8 @@ class DataSubscriber:
 
     def shutdown(self):
         print('Data subscriber stopped\n')
-        ignite_client.close()
                             
 if __name__ == '__main__':
-
-    ignite_client = Client()
-    ignite_client.connect('localhost', 10800)
-    
-    
 
     def handle_signal(sig, frame):
         data_sub.shutdown()
@@ -315,7 +344,6 @@ if __name__ == '__main__':
     try:
         data_sub.run()
     except KeyboardInterrupt:
-        ignite_client.close()
         print('Exiting...')
         exit(0)
     

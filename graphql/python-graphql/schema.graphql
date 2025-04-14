@@ -97,6 +97,7 @@ type Mutation {
     setMapMetadata(resolution: Float, width: Int, height: Int, origin_pos_x: Float, origin_pos_y: Float, origin_pos_z: Float, origin_ori_x: Float,
                         origin_ori_y: Float, origin_ori_z: Float, origin_ori_w: Float): Boolean
     setPath(robot_id: Int, x: [Float], y: [Float], t: [Float]): Boolean
+    setObjects(agent_id: Int, x: Float, y: Float, class_name: String, object_num: Int): Boolean
 }
 
 type Subscription {
