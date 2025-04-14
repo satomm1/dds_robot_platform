@@ -43,3 +43,12 @@ def resolve_set_agent_list(_, info, agent_list):
         return True
     except:
         return False
+    
+@mutation.field("clearDetectedObjects")
+def resolve_clear_detected_objects(_, info):
+    detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')
+    try:
+        detected_objects_cache.clear()
+        return True
+    except:
+        return False

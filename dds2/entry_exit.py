@@ -398,8 +398,16 @@ class EntryExitCommunication:
         self.last_time = int(time.time())
 
         # Clear any detected objects from the cache
-        detected_objects_cache = ignite_client.get_or_create_cache('detected_objects') 
-        detected_objects_cache.clear()
+        mutation = """
+            mutation {
+            clearDetectedObjects
+            }
+        """
+        response = requests.post(
+            self.graphql_server,
+            json={'query': mutation},
+            timeout=1
+        )
 
         # Clear the subscribed agents cache
         mutation = """
