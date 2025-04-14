@@ -19,8 +19,6 @@ import json
 
 from message_defs import Heartbeat, reliable_qos, best_effort_qos
 
-from pyignite import Client
-
 HEARTBEAT_PERIOD = 10    # seconds
 HEARTBEAT_TIMEOUT = 30   # seconds
 

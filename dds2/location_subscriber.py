@@ -15,8 +15,6 @@ import signal
 import os
 import requests
 
-from pyignite import Client
-
 from message_defs import Location, best_effort_qos
 
 AGENTS_QUERY =  """
@@ -36,6 +34,11 @@ TRANSFORM_QUERY =   """
                             }
                         }   
                     """
+ROBOT_POSITION_MUTATION =   """
+                                mutation($robot_id: Int!, $x: Float!, $y: Float!, $theta: Float!) {
+                                    setRobotPosition(robot_id: $robot_id, x: $x, y: $y, theta: $theta)
+                                }
+                            """
 
 class LocationListener(Listener):
     """
@@ -99,7 +102,22 @@ class LocationListener(Listener):
                 self.locations = (x, y, theta)
                 ignite_data = {"x": x, "y": y, "theta": theta, "timestamp": sample.timestamp}
                 ignite_data = json.dumps(ignite_data).encode('utf-8')
-                robot_position_cache.put(int(sample.agent_id), ignite_data)
+
+                # Update the robot position in Ignite
+                agent_id = int(sample.agent_id)
+                response =  requests.post(
+                                self.graphql_server,
+                                json={
+                                    'query': ROBOT_POSITION_MUTATION,
+                                    'variables': {
+                                        'robot_id': agent_id,
+                                        'x': x,
+                                        'y': y,
+                                        'theta': theta
+                                    }
+                                },
+                                timeout=1
+                            )
 
     def get_locations(self):
         """
@@ -215,15 +233,9 @@ class LocationSubscriber:
 
     def shutdown(self):
         print('Location subscriber stopped\n')
-        ignite_client.close()
                             
 
 if __name__ == '__main__':
-
-    ignite_client = Client()
-    ignite_client.connect('localhost', 10800)
-    robot_position_cache = ignite_client.get_or_create_cache('robot_position')
-
     
     agent_id = os.getenv('AGENT_ID')
     if agent_id is None:
