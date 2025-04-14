@@ -101,3 +101,17 @@ def resolve_set_map_metdata(_, info, resolution, width, height, origin_pos_x, or
         return True
     except:
         return False
+    
+@mutation.field("setPath")
+def resolve_set_path(_, info, robot_id, x, y, t):
+    path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
+    path = {
+        "x": x,
+        "y": y,
+        "t": t
+    }
+    try:
+        path_cache.put(robot_id, json.dumps(path).encode('utf-8'))
+        return True
+    except:
+        return False

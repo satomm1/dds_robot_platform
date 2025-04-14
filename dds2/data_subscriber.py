@@ -45,16 +45,22 @@ ROBOT_GOAL_MUTATION =   """
                             }
                         """
 
+PATH_MUTATION =  """
+                    mutation($robot_id: Int!, $x: [Float!]!, $y: [Float!]!, $t: [Float!]!) {
+                        setPath(robot_id: $robot_id, x: $x, y: $y, t: $t)
+                    }
+                """
+
 class DataListener(Listener):
 
-    def __init__(self, my_id, topic_id):
+    def __init__(self, my_id, topic_id, graphql_server):
         super().__init__()
         self.my_id = my_id
         self.topic_id = topic_id
+        self.graphql_server = graphql_server
         self.detected_object_num = 0
         self.object_dict = dict()
 
-        self.path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
         self.detected_object_cache = ignite_client.get_or_create_cache('detected_objects')
 
         self.R = None
@@ -102,11 +108,21 @@ class DataListener(Listener):
                     t.append(pose['header']['stamp']['secs'] + pose['header']['stamp']['nsecs'] / 1e9)
 
                 # Write the data to Ignite always
-                ignite_data = {"x": x, "y": y, "t": t, "timestamp": timestamp}
-                ignite_data = json.dumps(ignite_data).encode('utf-8')
+                # ignite_data = {"x": x, "y": y, "t": t, "timestamp": timestamp}
+                # ignite_data = json.dumps(ignite_data).encode('utf-8')
 
                 print(f"Writing path data to Ignite for agent {sending_agent}")
-                self.path_cache.put(sending_agent, ignite_data)
+                response = requests.post(self.graphql_server,
+                                json={'query': PATH_MUTATION,
+                                    'variables': {
+                                        'robot_id': sending_agent,
+                                        'x': x,
+                                        'y': y,
+                                        't': t
+                                    }
+                                },
+                                timeout=1
+                            )
             elif message_type == "detected_object":
                 class_name = data['class_name']
                 pose = data['pose']
@@ -187,7 +203,7 @@ class DataSubscriber:
         for agent_id in self.subscribed_agents:
             print("Subscribed to agent ", agent_id)
             new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
-            self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)
+            self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server)
             self.data_listeners[agent_id].update_transformation(self.R, self.t)
             self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
 
@@ -205,7 +221,7 @@ class DataSubscriber:
 
                     print("Data subscribed to agent ", agent_id)
                     new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
-                    self.data_listeners[agent_id] = DataListener(self.my_id, agent_id)
+                    self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server)
                     self.data_listeners[agent_id].update_transformation(self.R, self.t)
                     self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
 
