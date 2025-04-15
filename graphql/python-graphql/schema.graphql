@@ -85,12 +85,15 @@ type Query {
     objectPositions: [Objects]
     transform: Transform
     subscribed_agents: Agents
+    exitedAgents: Agents
+    subscribedAndExitedAgents: [Agents]
 }
 
 type Mutation {
     setRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float, from_bot: Boolean): Boolean
     setRobotPosition(robot_id: Int, x: Float, y: Float, theta: Float): Boolean
     setAgentList(agent_list: [Int]): Boolean
+    setExitedAgentList(agent_list: [Int]): Boolean
     clearDetectedObjects: Boolean
     setTransform(R: [Float], t: [Float], timestamp: Float): Boolean
     setMap(data: String!): Boolean 

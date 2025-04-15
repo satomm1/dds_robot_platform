@@ -24,7 +24,7 @@ HEARTBEAT_TIMEOUT = 30   # seconds
 
 AGENTS_QUERY =  """
                     query {
-                        subscribed_agents {
+                        subscribedAndExitedAgents {
                             id
                         }
                     }
@@ -76,6 +76,7 @@ class HeartbeatListener(Listener):
             dict: A copy of the heartbeats dictionary.
         """
         returned_heartbeats = self.new_heartbeats.copy()
+        self.new_heartbeats.clear()
         return returned_heartbeats
 
 def hash_func(robot_id):
@@ -129,6 +130,7 @@ class HeartbeatSubscriber:
     def run(self):
         
         last_time = int(time.time())
+        prev_exited_agents = set()
         while True:
             current_time = int(time.time())
 
@@ -136,7 +138,7 @@ class HeartbeatSubscriber:
                 last_time = current_time
 
                 # Get Current List of Agents:
-                current_agents = self.get_agents()
+                current_agents, exited_agents = self.get_agents()
 
                 # Update agents with new heartbeats
                 heartbeats = self.heartbeat_listener.get_heartbeats()
@@ -150,6 +152,15 @@ class HeartbeatSubscriber:
 
                     if agent_id in current_agents:
                         self.agents[agent_id]['timestamp'] = heartbeats[agent_id]
+                        if agent_id in prev_exited_agents:
+                            prev_exited_agents.remove(agent_id)
+                    elif agent_id in exited_agents and agent_id not in prev_exited_agents:
+                        prev_exited_agents.add(agent_id)
+                        
+                        # Remove agent from active agents
+                        if agent_id in self.agents:
+                            self.agents.pop(agent_id)
+                            update_to_active_agents = True
                     else:
                         print(f'Detected heartbeat from unknown agent {agent_id}')
                         agent_hash = hash_func(str(agent_id))
@@ -162,6 +173,17 @@ class HeartbeatSubscriber:
                             'timestamp': heartbeats[agent_id]
                         }
                         update_to_active_agents = True
+
+                        if agent_id in prev_exited_agents:
+                            prev_exited_agents.remove(agent_id)
+
+                # Move newly exited agents to exited agents and remove from active agents
+                for agent_id in exited_agents:
+                    if agent_id not in prev_exited_agents:
+                        prev_exited_agents.add(agent_id)
+                        if agent_id in self.agents:
+                            self.agents.pop(agent_id)
+                            update_to_active_agents = True
 
                 # Check Periodically for Dead Agents
                 dead_agents = []
@@ -196,14 +218,22 @@ class HeartbeatSubscriber:
             data = response.json()
 
             # Get the agent ids from the response
-            agent_ids = data.get('data', {}).get('subscribed_agents', {}).get('id', [])
-
-            if len(agent_ids):
-                return set(agent_ids)
+            subscribed_agents = data.get('data', {}).get('subscribedAndExitedAgents', [])[0].get('id', [])
+            exited_agents = data.get('data', {}).get('subscribedAndExitedAgents', [])[1].get('id', [])
+            
+            if len(subscribed_agents):
+                subscribed_agents = set(subscribed_agents)
             else:
-                return set()
+                subscribed_agents = set()
+
+            if len(exited_agents):
+                exited_agents = set(exited_agents)
+            else:
+                exited_agents = set()
+
+            return subscribed_agents, exited_agents
         else:
-            return set()
+            return set(), set()
         
     def update_agents(self):
         mutation = """

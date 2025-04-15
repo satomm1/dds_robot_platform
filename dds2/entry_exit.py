@@ -632,6 +632,7 @@ class EntryExitCommunication:
     def run(self):
 
         prev_agent_set = set()
+        exited_agents = dict()
         while True:
             current_time = int(time.time())
 
@@ -642,8 +643,19 @@ class EntryExitCommunication:
 
                 # Check for new agents
                 if self.entry_exit_listener.agent_update_available():
-                    self.agents, exited_agents = self.entry_exit_listener.get_agents()
+                    self.agents, newly_exited_agents = self.entry_exit_listener.get_agents()
+
+                    if len(newly_exited_agents):
+                        for agent_id in newly_exited_agents:
+                            exited_agents[agent_id] = newly_exited_agents[agent_id]
+
                 current_agents_list = list(self.agents.keys())
+
+                
+
+                for agent_id in current_agents_list:
+                    if agent_id in exited_agents:
+                        exited_agents.pop(agent_id)  # Remove from exited agents dictionary if reentered
 
                 # Get agents from the GraphQL server
                 heartbeat_agents = list(self.get_agents())
@@ -659,6 +671,7 @@ class EntryExitCommunication:
                         }
                         update_to_active_agents = True
 
+                # Check for dead agents that haven't exited gracefully
                 dead_agents = prev_agent_set - set(heartbeat_agents)
                 prev_agent_set = set(heartbeat_agents)
                 for agent_id in dead_agents:
@@ -670,7 +683,7 @@ class EntryExitCommunication:
                 if update_to_active_agents:
                     self.entry_exit_listener.update_agents(agents=self.agents)
 
-                self.update_agents()
+                self.update_agents(exited_agents=exited_agents)
 
             time.sleep(0.2)
 
@@ -690,7 +703,7 @@ class EntryExitCommunication:
         else:
             return set()
         
-    def update_agents(self):
+    def update_agents(self, exited_agents=None):
         mutation = """
             mutation($agentList: [Int!]!) {
             setAgentList(agent_list: $agentList)
@@ -703,6 +716,20 @@ class EntryExitCommunication:
             json={'query': mutation, 'variables': {'agentList': agent_list}},
             timeout=1
         )
+
+        if exited_agents is not None:
+            mutation = """
+                mutation($agentList: [Int!]!) {
+                setExitedAgentList(agent_list: $agentList)
+                }
+            """
+            exited_agent_list = list(exited_agents.keys())
+
+            response = requests.post(
+                self.graphql_server,
+                json={'query': mutation, 'variables': {'agentList': exited_agent_list}},
+                timeout=1
+            )
 
     def shutdown(self):
         print('\nSending exit message...\n')

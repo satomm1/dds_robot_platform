@@ -271,3 +271,37 @@ def resolve_data(*_):
         return {"id": []}
     
     return {"id": agents}
+
+@query.field("exitedAgents")
+def resolve_data(*_):
+    agent_cache = ignite_client.get_or_create_cache('exited_agents')
+    agents = agent_cache.get(1)
+    if agents is None:
+        return {"id": []}
+    agents = json.loads(agents)
+    
+    if len(agents)==0 or agents[0] == -1:
+        return {"id": []}
+    
+    return {"id": agents}
+
+@query.field("subscribedAndExitedAgents")
+def resolve_data(*_):
+    agent_cache = ignite_client.get_or_create_cache('subscribed_agents')
+    exited_agent_cache = ignite_client.get_or_create_cache('exited_agents')
+    agents = agent_cache.get(1)
+    exited_agents = exited_agent_cache.get(1)
+    
+    if agents is None:
+        agents = []
+    else:
+        agents = json.loads(agents)
+    
+    if exited_agents is None:
+        exited_agents = []
+    else:
+        exited_agents = json.loads(exited_agents)
+    
+    return [
+        {"id": agents},   {"id": exited_agents}
+        ]
