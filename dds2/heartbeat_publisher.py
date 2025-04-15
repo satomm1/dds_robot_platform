@@ -42,7 +42,6 @@ class HeartbeatPublisher:
         s.connect(("8.8.8.8", 80))
         self.my_ip = s.getsockname()[0]
         s.close()
-        print(f"My IP address is {self.my_ip}")
 
         self.lease_duration_ms = 30000
         qos_profile = DomainParticipantQos()
@@ -66,7 +65,7 @@ class HeartbeatPublisher:
             current_time = int(time.time())
             heartbeat_message = Heartbeat(self.agent_id, current_time, self.agent_type, self.my_ip, self.location_valid, 0.0, 0.0, 0.0, [])
             self.heartbeat_writer.write(heartbeat_message)
-            print("Heartbeat Sent")
+            print("                Heartbeat Sent")
             time.sleep(HEARTBEAT_PERIOD)
 
     def shutdown(self):
@@ -84,7 +83,7 @@ if __name__ == "__main__":
     # Set up signal handlers for SIGINT (Ctrl+C) and SIGTERM
     signal.signal(signal.SIGTERM, handle_signal) # Handles termination signal
 
-    time.sleep(10)  # Wait for the participant to do entry and initialization
+    time.sleep(11)  # Wait for the participant to do entry and initialization
     try:
         publisher.run()
     except KeyboardInterrupt:

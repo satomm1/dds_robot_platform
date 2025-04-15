@@ -185,6 +185,9 @@ class HeartbeatSubscriber:
                 if update_to_active_agents or dead_agents:
                     # Update the list of agents in the environment
                     self.update_agents()
+            
+            # Sleep for a short duration to avoid busy waiting
+            time.sleep(1)
 
     def get_agents(self):
         # Query for any agents

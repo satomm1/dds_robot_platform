@@ -155,7 +155,7 @@ class LocationSubscriber:
         self.location_readers = dict()
 
         for agent_id in self.subscribed_agents:
-            print("Location subscribed to agent ", agent_id)
+            print(f"Subscribed to agent {agent_id} location")
             new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
             self.location_listeners[agent_id] = LocationListener(self.my_id)
             self.location_listeners[agent_id].update_transformation(self.R, self.t)
@@ -170,14 +170,14 @@ class LocationSubscriber:
                 old_agents = self.subscribed_agents - agents_to_subscribe
 
                 for agent_id in new_agents:
-                    print("Location subscribed to agent ", agent_id)
+                    print(f"Subscribed to agent {agent_id} location")
                     new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
                     self.location_listeners[agent_id] = LocationListener(self.my_id)
                     self.location_listeners[agent_id].update_transformation(self.R, self.t)
                     self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
                 for agent_id in old_agents:
-                    print("Location unsubscribed from agent ", agent_id)
+                    print(f"Unubscribed from agent {agent_id} location")
                     self.location_readers[agent_id] = None
                     self.location_listeners.pop(agent_id)
                     self.location_listeners[agent_id] = None
@@ -229,7 +229,7 @@ class LocationSubscriber:
 
         self.R = np.array(R).reshape((2, 2))
         self.t = np.array(t)
-        print("location_subscriber got the transformation matrix!")
+        # print("location_subscriber got the transformation matrix!")
 
     def shutdown(self):
         print('Location subscriber stopped\n')

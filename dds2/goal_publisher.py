@@ -100,7 +100,7 @@ class GoalWriter:
                 if len(R) == 4 and len(t) == 2:
                     self.R = np.array(R).reshape((2, 2))
                     self.t = np.array(t)
-                    print("Goal publisher got the transformation matrix!")
+                    # print("Goal publisher got the transformation matrix!")
                     break
                 else:
                     time.sleep(1)

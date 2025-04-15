@@ -236,7 +236,7 @@ class DataSubscriber:
         self.data_readers = dict()
 
         for agent_id in self.subscribed_agents:
-            print("Subscribed to agent ", agent_id)
+            print(f"Subscribed to agent {agent_id} data")
             new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
             self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server)
             self.data_listeners[agent_id].update_transformation(self.R, self.t)
@@ -254,7 +254,7 @@ class DataSubscriber:
                     if int(agent_id) == int(self.my_id):
                         continue
 
-                    print("Data subscribed to agent ", agent_id)
+                    print(f"Subscribed to agent {agent_id} data")
                     new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
                     self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server)
                     self.data_listeners[agent_id].update_transformation(self.R, self.t)
@@ -262,7 +262,7 @@ class DataSubscriber:
 
 
                 for agent_id in old_agents:
-                    print("Data unsubscribed from agent ", agent_id)
+                    print(f"Unubscribed from agent {agent_id} location")
                     self.data_listeners[agent_id] = None
                     self.data_readers[agent_id] = None
                     self.data_listeners.pop(agent_id)
@@ -313,7 +313,7 @@ class DataSubscriber:
 
         self.R = np.array(R).reshape((2, 2))
         self.t = np.array(t)
-        print("data_subscriber got the transformation matrix!")
+        # print("data_subscriber got the transformation matrix!")
 
     def shutdown(self):
         print('Data subscriber stopped\n')

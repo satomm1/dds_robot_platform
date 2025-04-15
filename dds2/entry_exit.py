@@ -137,7 +137,7 @@ class EntryExitListener(Listener):
                     init_message = Initialization(target_agent=sample.agent_id, sending_agent=int(self.my_id), agents=agents_message, known_points=known_points_json)
                     self.init_writer.write(init_message)
 
-                    print("Sent initialization message to new agent")
+                    # print("Sent initialization message to new agent")
             elif sample.action == "initialized":
                 # Only if the sample.timestamp is recent
                 if int(time.time()) - sample.timestamp < 10: 
@@ -186,7 +186,7 @@ class EntryExitListener(Listener):
                 print("I will not provide initialization.")
                 return False
 
-        print('I will provide initialization.')
+        # print('I will provide initialization.')
         return True
 
     def agent_update_available(self):
@@ -366,6 +366,7 @@ class EntryExitCommunication:
 
         # Get agent ID, Hash, and IP Address
         self.my_id = agent_id
+        print(f"\nMy Agent ID is {self.my_id}")
         self.my_hash = hash_func(self.my_id)
 
         # Get IP Address
@@ -374,7 +375,7 @@ class EntryExitCommunication:
         s.connect(("8.8.8.8", 80))
         self.my_ip = s.getsockname()[0]
         s.close()
-        print(f"My IP address is {self.my_ip}")
+        print(f"My IP address is {self.my_ip}\n")
 
         # Dictionary to store agents in the environment
         self.agents = dict()
@@ -453,7 +454,7 @@ class EntryExitCommunication:
         Returns:
             None
         """
-        print("Starting Setup")
+        print("Starting Setup:")
 
         # load the map from file
         self.load_map()
@@ -478,7 +479,7 @@ class EntryExitCommunication:
         # Wait for the reference points to become available
         num_tries = 0
         while not self.init_listener.known_points_available() and num_tries < 10:
-            print("Reference Points not yet received (attempt {0}/10)".format(num_tries+1))
+            print("    Reference Points not yet received (attempt {0}/10)".format(num_tries+1))
             time.sleep(1)
             if not self.init_listener.known_points_available():
                 entry_message.timestamp = int(time.time())
@@ -486,7 +487,7 @@ class EntryExitCommunication:
                 num_tries += 1
 
         if self.init_listener.known_points_available():
-            print("I am not the first agent, received reference points")
+            print("    I am not the first agent, received reference points")
 
             # Store the map, map metadata, and agents
             self.reference_known_points = self.init_listener.get_known_points()
@@ -503,7 +504,7 @@ class EntryExitCommunication:
             # Update the agents in the entry/exit listener
             self.entry_exit_listener.update_agents(agents=self.agents)
         else: 
-            print("I am the first agent, my map will be the reference map")
+            print("    I am the first agent, my map will be the reference map")
             self.reference_known_points = self.known_points
 
             self.agents[int(self.my_id)] = {
@@ -529,7 +530,7 @@ class EntryExitCommunication:
         entry_message = EntryExit(int(self.my_id), AGENT_TYPE, 'initialized', self.my_ip, int(time.time()))
         self.enter_exit_writer.write(entry_message)
 
-        print("Setup complete")
+        print("Setup complete\n")
 
     def load_map(self):
         # Load the map from the user_map.json file
@@ -553,13 +554,13 @@ class EntryExitCommunication:
             timeout=1
         )
 
-        print("Map loaded from user_map.json")
+        print("    Map loaded from user_map.json")
 
     def create_transform(self):
         """
         Determines the transform from my map to the reference map
         """
-        print("Creating Transform")
+        print("    Creating Transform")
 
         self.R = None
         self.t = None
