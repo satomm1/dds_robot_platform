@@ -651,8 +651,6 @@ class EntryExitCommunication:
 
                 current_agents_list = list(self.agents.keys())
 
-                
-
                 for agent_id in current_agents_list:
                     if agent_id in exited_agents:
                         exited_agents.pop(agent_id)  # Remove from exited agents dictionary if reentered

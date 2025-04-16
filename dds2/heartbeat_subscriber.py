@@ -13,14 +13,13 @@ import os
 import socket
 import signal
 import hashlib
-import numpy as np
 import requests
-import json
 
-from message_defs import Heartbeat, reliable_qos, best_effort_qos
+
+from message_defs import Heartbeat, best_effort_qos
 
 HEARTBEAT_PERIOD = 10    # seconds
-HEARTBEAT_TIMEOUT = 30   # seconds
+HEARTBEAT_TIMEOUT = 31   # seconds
 
 AGENTS_QUERY =  """
                     query {

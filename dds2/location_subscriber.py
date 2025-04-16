@@ -177,7 +177,7 @@ class LocationSubscriber:
                     self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
                 for agent_id in old_agents:
-                    print(f"Unubscribed from agent {agent_id} location")
+                    print(f"Unsubscribed from agent {agent_id} location")
                     self.location_readers[agent_id] = None
                     self.location_listeners.pop(agent_id)
                     self.location_listeners[agent_id] = None

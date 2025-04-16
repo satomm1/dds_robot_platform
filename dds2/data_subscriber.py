@@ -262,7 +262,7 @@ class DataSubscriber:
 
 
                 for agent_id in old_agents:
-                    print(f"Unubscribed from agent {agent_id} location")
+                    print(f"Unsubscribed from agent {agent_id} data")
                     self.data_listeners[agent_id] = None
                     self.data_readers[agent_id] = None
                     self.data_listeners.pop(agent_id)
