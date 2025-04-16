@@ -149,7 +149,6 @@ class LocationSubscriber:
         # Create a DomainParticipant, Subscriber, and Publisher
         self.participant = DomainParticipant(qos=qos_profile)
         self.subscriber = Subscriber(self.participant)
-        self.publisher = Publisher(self.participant)
 
         self.location_listeners = dict()
         self.location_readers = dict()
@@ -179,8 +178,8 @@ class LocationSubscriber:
                 for agent_id in old_agents:
                     print(f"Unsubscribed from agent {agent_id} location")
                     self.location_readers[agent_id] = None
-                    self.location_listeners.pop(agent_id)
                     self.location_listeners[agent_id] = None
+                    self.location_listeners.pop(agent_id)
                     self.location_readers.pop(agent_id)
 
                 self.subscribed_agents = agents_to_subscribe
