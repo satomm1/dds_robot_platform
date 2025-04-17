@@ -5,6 +5,8 @@ from cyclonedds.core import Qos, Policy
 
 from dataclasses import dataclass
 
+import socket
+
 @dataclass
 class Heartbeat(IdlStruct):
     """
@@ -91,3 +93,12 @@ best_effort_qos = Qos(
     Policy.Durability.Volatile,
     Policy.Liveliness.ManualByParticipant(lease_duration=duration(milliseconds=30000))
 )
+
+def get_ip():
+    # Get IP Address
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # This doesn't have to be reachable; it just has to be a valid address
+    s.connect(("8.8.8.8", 80))
+    my_ip = s.getsockname()[0]
+    s.close()
+    return my_ip

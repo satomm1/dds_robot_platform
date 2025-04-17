@@ -15,7 +15,7 @@ import signal
 import os
 import requests
 
-from message_defs import Location, best_effort_qos
+from message_defs import Location, best_effort_qos, get_ip
 
 AGENTS_QUERY =  """
                     query {
@@ -129,10 +129,16 @@ class LocationListener(Listener):
         return self.locations
 
 class LocationSubscriber:
-    def __init__(self, my_id, server_url='http://192.168.50.2:8000/graphql'):
+    def __init__(self, my_id, server_url=None):
 
         self.my_id = my_id
-        self.graphql_server = server_url
+        
+        self.my_ip = get_ip()
+        # GraphQL server URL
+        if server_url is None:
+            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
+        else:
+            self.graphql_server = server_url
         
         self.subscribed_agents = self.get_agents()
 
@@ -255,7 +261,6 @@ if __name__ == '__main__':
     try:
         loc_subscriber.run()
     except KeyboardInterrupt:
-        ignite_client.close()
         print('Exiting...')
         exit(0)
     

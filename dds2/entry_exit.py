@@ -19,7 +19,7 @@ import signal
 import base64
 
 from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, OccupancyGrid, msg_to_dict
-from message_defs import Heartbeat, EntryExit, Initialization, reliable_qos, best_effort_qos
+from message_defs import Heartbeat, EntryExit, Initialization, reliable_qos, best_effort_qos, get_ip
 
 # Constants (Set depending on the agent)
 HEARTBEAT_PERIOD = 10    # seconds
@@ -362,7 +362,7 @@ def hash_func(robot_id):
 
 class EntryExitCommunication:
 
-    def __init__(self, agent_id, server_url='http://192.168.50.2:8000/graphql'):
+    def __init__(self, agent_id, server_url=None):
 
         # Get agent ID, Hash, and IP Address
         self.my_id = agent_id
@@ -370,11 +370,7 @@ class EntryExitCommunication:
         self.my_hash = hash_func(self.my_id)
 
         # Get IP Address
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # This doesn't have to be reachable; it just has to be a valid address
-        s.connect(("8.8.8.8", 80))
-        self.my_ip = s.getsockname()[0]
-        s.close()
+        self.my_ip = get_ip()
         print(f"My IP address is {self.my_ip}\n")
 
         # Dictionary to store agents in the environment
@@ -411,7 +407,10 @@ class EntryExitCommunication:
         self.init_reader = None
 
         # GraphQL server URL
-        self.graphql_server = server_url
+        if server_url is None:
+            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
+        else:
+            self.graphql_server = server_url
 
         self.last_time = int(time.time())
 

@@ -16,7 +16,7 @@ import hashlib
 import requests
 
 
-from message_defs import Heartbeat, best_effort_qos
+from message_defs import Heartbeat, best_effort_qos, get_ip
 
 HEARTBEAT_PERIOD = 10    # seconds
 HEARTBEAT_TIMEOUT = 31   # seconds
@@ -94,22 +94,22 @@ def hash_func(robot_id):
 
 class HeartbeatSubscriber:
 
-    def __init__(self, server_url='http://192.168.50.2:8000/graphql'):
+    def __init__(self, server_url=None):
 
         # Get the agent ID from the environment variable
         self.my_id = os.getenv('AGENT_ID')
         if self.my_id is None:
             raise ValueError("AGENT_ID environment variable not set")
         
+        # Get hash
         self.my_hash = hash_func(self.my_id)
-        self.graphql_server = server_url
-
-        # Get IP Address
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # This doesn't have to be reachable; it just has to be a valid address
-        s.connect(("8.8.8.8", 80))
-        self.my_ip = s.getsockname()[0]
-        s.close()
+        
+        # GraphQL server URL
+        self.my_ip = get_ip()
+        if server_url is None:
+            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
+        else:
+            self.graphql_server = server_url
 
         # Dictionary to store agents in the environment
         self.agents = dict()

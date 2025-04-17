@@ -14,8 +14,9 @@ import json
 import requests
 import numpy as np
 import signal
+import os
 
-from message_defs import DataMessage, reliable_qos
+from message_defs import DataMessage, reliable_qos, get_ip
 
 ROBOT_GOALS_QUERY = """
                     query {
@@ -40,11 +41,17 @@ TRANSFORMATION_MATRIX_QUERY = """
                             """
 
 class GoalWriter:
-    def __init__(self, my_id, graphql_server):
+    def __init__(self, my_id, server_url=None):
 
         self.my_id = my_id
 
-        self.graphql_server = graphql_server
+        # GraphQL server URL
+        self.my_ip = get_ip()
+        if server_url is None:
+            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
+        else:
+            self.graphql_server = server_url
+
         self.robot_goal_history = dict()
 
         self.lease_duration_ms = 30000
@@ -163,7 +170,11 @@ class GoalWriter:
                             
 if __name__ == '__main__':
 
-    goal_writer = GoalWriter(101, 'http://localhost:8000/graphql')
+    agent_id = os.getenv('AGENT_ID')
+    if agent_id is None:
+        raise ValueError("AGENT_ID environment variable not set")
+
+    goal_writer = GoalWriter(agent_id)
 
     def handle_signal(sig, frame):
         goal_writer.shutdown()
