@@ -8,8 +8,6 @@ from cyclonedds.idl.types import sequence
 from cyclonedds.core import Qos, Policy, Listener
 from cyclonedds.builtin import BuiltinDataReader, BuiltinTopicDcpsParticipant
 
-from dataclasses import dataclass
-
 import time
 import os
 import json
@@ -230,7 +228,6 @@ class DataSubscriber:
         self.participant = DomainParticipant()
         # self.participant = DomainParticipant(qos=qos_profile)
         self.subscriber = Subscriber(self.participant)
-        self.publisher = Publisher(self.participant)
 
         self.data_listeners = dict()
         self.data_readers = dict()
@@ -254,7 +251,7 @@ class DataSubscriber:
                     if int(agent_id) == int(self.my_id):
                         continue
 
-                    print(f"Subscribed to agent {agent_id} data")
+                    print(f"    Subscribed to agent {agent_id} data")
                     new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
                     self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server)
                     self.data_listeners[agent_id].update_transformation(self.R, self.t)
@@ -262,7 +259,7 @@ class DataSubscriber:
 
 
                 for agent_id in old_agents:
-                    print(f"Unsubscribed from agent {agent_id} data")
+                    print(f"    Unsubscribed from agent {agent_id} data")
                     self.data_listeners[agent_id] = None
                     self.data_readers[agent_id] = None
                     self.data_listeners.pop(agent_id)
