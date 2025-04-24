@@ -106,10 +106,6 @@ class DataListener(Listener):
                     y.append(y_new)
                     t.append(pose['header']['stamp']['secs'] + pose['header']['stamp']['nsecs'] / 1e9)
 
-                # Write the data to Ignite always
-                # ignite_data = {"x": x, "y": y, "t": t, "timestamp": timestamp}
-                # ignite_data = json.dumps(ignite_data).encode('utf-8')
-
                 print(f"Writing path data to Ignite for agent {sending_agent}")
                 response = requests.post(self.graphql_server,
                                 json={'query': PATH_MUTATION,

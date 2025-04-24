@@ -55,13 +55,20 @@ class LocationListener(Listener):
         set_agent_ids(agent_ids): Sets the agent IDs and updates the locations dictionary.
     """
 
-    def __init__(self, my_id):
+    def __init__(self, my_id, my_ip, server_url=None):
         super().__init__()
         self.my_id = my_id
+        self.my_ip = my_ip
         self.locations = (None, None, None)
 
         self.R = None
         self.t = None
+
+        # GraphQL server URL
+        if server_url is None:
+            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
+        else:
+            self.graphql_server = server_url
 
     def transform_point(self, point, forward=True):
         if self.R is None:
@@ -162,7 +169,7 @@ class LocationSubscriber:
         for agent_id in self.subscribed_agents:
             print(f"Subscribed to agent {agent_id} location")
             new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
-            self.location_listeners[agent_id] = LocationListener(self.my_id)
+            self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip)
             self.location_listeners[agent_id].update_transformation(self.R, self.t)
             self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
     
@@ -177,7 +184,7 @@ class LocationSubscriber:
                 for agent_id in new_agents:
                     print(f"    Subscribed to agent {agent_id} location")
                     new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
-                    self.location_listeners[agent_id] = LocationListener(self.my_id)
+                    self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip)
                     self.location_listeners[agent_id].update_transformation(self.R, self.t)
                     self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
