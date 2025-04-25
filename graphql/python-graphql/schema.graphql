@@ -25,6 +25,7 @@ type Robot {
     v_y: Float
     v_theta: Float
     status: String
+    goal_from_bot: Int
 }
 
 type Path {
@@ -57,6 +58,16 @@ type Objects {
     type: String
 }
 
+type Transform {
+    R: [Float]
+    t: [Float]
+    timestamp: Int
+}
+
+type Agents {
+    id: [Int]
+}
+
 type Query {
     map: Map
     robotPosition(robot_id: Int): Robot
@@ -72,11 +83,24 @@ type Query {
     robotStatus(robot_id: Int): Robot
     stoppedRobotPositions: [Robot]
     objectPositions: [Objects]
+    transform: Transform
+    subscribed_agents: Agents
+    exitedAgents: Agents
+    subscribedAndExitedAgents: [Agents]
 }
 
 type Mutation {
-    setRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float): Boolean
+    setRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float, from_bot: Boolean): Boolean
     setRobotPosition(robot_id: Int, x: Float, y: Float, theta: Float): Boolean
+    setAgentList(agent_list: [Int]): Boolean
+    setExitedAgentList(agent_list: [Int]): Boolean
+    clearDetectedObjects: Boolean
+    setTransform(R: [Float], t: [Float], timestamp: Float): Boolean
+    setMap(data: String!): Boolean 
+    setMapMetadata(resolution: Float, width: Int, height: Int, origin_pos_x: Float, origin_pos_y: Float, origin_pos_z: Float, origin_ori_x: Float,
+                        origin_ori_y: Float, origin_ori_z: Float, origin_ori_w: Float): Boolean
+    setPath(robot_id: Int, x: [Float], y: [Float], t: [Float]): Boolean
+    setObjects(agent_id: Int, x: Float, y: Float, class_name: String, object_num: Int): Boolean
 }
 
 type Subscription {

@@ -8,17 +8,15 @@ from cyclonedds.idl.types import sequence
 from cyclonedds.core import Qos, Policy, Listener
 from cyclonedds.builtin import BuiltinDataReader, BuiltinTopicDcpsParticipant
 
-from dataclasses import dataclass
-
 import time
-import os
-import hashlib
-import socket
+
 import json
 import requests
 import numpy as np
+import signal
+import os
 
-from pyignite import Client
+from message_defs import DataMessage, reliable_qos, get_ip
 
 ROBOT_GOALS_QUERY = """
                     query {
@@ -42,48 +40,19 @@ TRANSFORMATION_MATRIX_QUERY = """
                             }
                             """
 
-@dataclass
-class DataMessage(IdlStruct):
-    message_type: str
-    sending_agent: int
-    timestamp: int
-    data: str
-
 class GoalWriter:
-    def __init__(self, my_id, graphql_server):
+    def __init__(self, my_id, server_url=None):
 
         self.my_id = my_id
 
-        self.graphql_server = graphql_server
+        # GraphQL server URL
+        self.my_ip = get_ip()
+        if server_url is None:
+            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
+        else:
+            self.graphql_server = server_url
+
         self.robot_goal_history = dict()
-
-        # Create different policies for the DDS entities
-        self.reliable_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
-            Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=1)
-        )
-
-        # Reliable data qos
-        self.reliable_data_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
-            Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=10)
-        )
-
-        # self.best_effort_qos = Qos(
-        #     Policy.Reliability.BestEffort,
-        #     Policy.Durability.TransientLocal,
-        #     Policy.History.KeepLast(depth=1)
-        # )
-
-        self.best_effort_qos = Qos(
-            Policy.Reliability.BestEffort,
-            Policy.Durability.Volatile,
-            Policy.Liveliness.ManualByParticipant(lease_duration=duration(milliseconds=30000))
-            # Policy.Deadline(duration(milliseconds=1000))
-            # Policy.History.KeepLast(depth=1)
-        )
 
         self.lease_duration_ms = 30000
         qos_profile = DomainParticipantQos()
@@ -97,7 +66,6 @@ class GoalWriter:
         self.R = None
         self.t = None
 
-        # Get the transformation matrix from graphQL
 
     def transform_point(self, point, forward=True):
         """
@@ -139,7 +107,7 @@ class GoalWriter:
                 if len(R) == 4 and len(t) == 2:
                     self.R = np.array(R).reshape((2, 2))
                     self.t = np.array(t)
-                    print("Got the transformation matrix!")
+                    # print("Goal publisher got the transformation matrix!")
                     break
                 else:
                     time.sleep(1)
@@ -148,13 +116,14 @@ class GoalWriter:
         while True:
             try:
                 current_time = int(time.time())
+
+                # Query for any robot goals
                 response = requests.post(self.graphql_server, json={'query': ROBOT_GOALS_QUERY}, timeout=1)
                 if response.status_code == 200:
                     data = response.json()
                     
-                    # print(current_time)
+                    # Get the robot goals from the response
                     robot_goals = data.get('data', {}).get('robotGoals', [])
-                    # print(robot_goals)
 
                     for robot_goal in robot_goals:
                         robot_goal_id = int(robot_goal['id'])
@@ -169,13 +138,15 @@ class GoalWriter:
                         if robot_goal_id not in self.robot_goal_history:
                             # Store goal in history
                             self.robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+
+                            # Check if the goal is recent
                             if abs(current_time - robot_goal_timestamp) < 10: 
                                 
                                 # Send the goal to the robot
                                 goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
                                 command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                                 message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                                message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_data_qos)
+                                message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
                                 message_writer.write(command_message)
                         elif self.robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
                            
@@ -184,7 +155,7 @@ class GoalWriter:
                             goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
                             command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                             message_topic = Topic(self.participant, 'DataTopic' + str(robot_goal_id), DataMessage)
-                            message_writer = DataWriter(self.publisher, message_topic, qos=self.reliable_data_qos)
+                            message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
                             
                             message_writer.write(command_message)
                             print("Received new goal *********************")
@@ -193,11 +164,26 @@ class GoalWriter:
                 pass
 
             time.sleep(0.2)
+
+    def shutdown(self):
+        print('Goal publisher stopped\n')
                             
 if __name__ == '__main__':
 
-    goal_writer = GoalWriter(101, 'http://localhost:8000/graphql')
+    agent_id = os.getenv('AGENT_ID')
+    if agent_id is None:
+        raise ValueError("AGENT_ID environment variable not set")
 
+    goal_writer = GoalWriter(agent_id)
+
+    def handle_signal(sig, frame):
+        goal_writer.shutdown()
+        exit(0)
+
+    # Set up signal handlers for SIGINT (Ctrl+C) and SIGTERM
+    signal.signal(signal.SIGTERM, handle_signal) # Handles termination signal
+
+    time.sleep(10)  # Wait for the participant to do entry and initialization
     try:
         goal_writer.run()
     except KeyboardInterrupt:

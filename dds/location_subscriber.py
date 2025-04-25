@@ -58,6 +58,27 @@ class LocationListener(Listener):
         self.my_id = my_id
         self.locations = (None, None, None)
 
+        self.R = None
+        self.t = None
+
+    def transform_point(self, point, forward=True):
+        if self.R is None:
+            return point
+
+        point_xy = np.array([point[0], point[1]])
+        if forward:
+            new_point_xy = self.R @ point_xy + self.t
+            new_point_theta = point[2] + np.arctan2(self.R[1, 0], self.R[0, 0])
+            return np.concatenate((new_point_xy, [new_point_theta]))
+        else:
+            new_point_xy = self.R.T @ (point_xy - self.t)
+            new_point_theta = point[2] - np.arctan2(self.R[1, 0], self.R[0, 0])
+            return np.concatenate((new_point_xy, [new_point_theta]))
+
+    def update_transformation(self, R, t):
+        self.R = R
+        self.t = t
+
     def on_data_available(self, reader):
         """
         Callback method called when data is available.
@@ -75,8 +96,9 @@ class LocationListener(Listener):
                 continue
 
             if sample.x is not None and sample.y is not None and sample.theta is not None:
-                self.locations = (sample.x, sample.y, sample.theta)
-                ignite_data = {"x": sample.x, "y": sample.y, "theta": sample.theta, "timestamp": sample.timestamp}
+                x, y, theta = self.transform_point((sample.x, sample.y, sample.theta), forward=False)
+                self.locations = (x, y, theta)
+                ignite_data = {"x": x, "y": y, "theta": theta, "timestamp": sample.timestamp}
                 ignite_data = json.dumps(ignite_data).encode('utf-8')
                 robot_position_cache.put(int(sample.agent_id), ignite_data)
 
@@ -100,6 +122,31 @@ class CommManager:
         agents_to_subscribe = json.loads(self.subscribed_agents_cache.get(1))
         if agents_to_subscribe[0] != -1:
             self.subscribed_agents = set(agents_to_subscribe)
+
+        # Get the transformation matrix from Ignite
+        self.R = None
+        self.t = None
+
+        transform_cache = ignite_client.get_or_create_cache('transform')
+        while self.R is None:
+            try: 
+                transform = json.loads(transform_cache.get(1))
+            except Exception as e:
+                time.sleep(1)
+                continue
+            timestamp = transform.get('timestamp', 0)
+            if time.time() - timestamp > 10:
+                time.sleep(1)
+                continue
+            R = transform.get('R', [])
+            t = transform.get('t', [])
+            if len(R) == 4 and len(t) == 2:
+                self.R = np.array(R).reshape((2, 2))
+                self.t = np.array(t)
+                print("Got the transformation matrix!")
+                break
+            else:
+                time.sleep(1)
 
         # Create different policies for the DDS entities
         self.reliable_qos = Qos(
@@ -138,7 +185,9 @@ class CommManager:
             print("Location subscribed to agent ", agent_id)
             new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
             self.location_listeners[agent_id] = LocationListener(self.my_id)
+            self.location_listeners[agent_id].update_transformation(self.R, self.t)
             self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=self.best_effort_qos)
+    
     def run(self):
         while True:
             
@@ -153,6 +202,7 @@ class CommManager:
                         print("Location subscribed to agent ", agent_id)
                         new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
                         self.location_listeners[agent_id] = LocationListener(self.my_id)
+                        self.location_listeners[agent_id].update_transformation(self.R, self.t)
                         self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=self.best_effort_qos)
 
 

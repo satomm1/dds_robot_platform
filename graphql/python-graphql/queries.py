@@ -91,11 +91,15 @@ def resolve_data(*_, robot_id: int):
             "goal_timestamp": None
         }
     robot = json.loads(robot)
+    from_bot = 0
+    if "from_bot" in robot and robot["from_bot"]:
+        from_bot = 1
     return {
         "x_goal": robot["x"],
         "y_goal": robot["y"],
         "theta_goal": robot["theta"],
-        "goal_timestamp": robot["timestamp"]
+        "goal_timestamp": robot["timestamp"],
+        "goal_from_bot": from_bot
     }
 
 @query.field("robotGoals")
@@ -236,3 +240,68 @@ def resolve_data(*_):
             })
             id += 1
     return all_objects
+
+@query.field("transform")
+def resolve_data(*_):
+    transform_cache = ignite_client.get_or_create_cache('transform')
+    transform = transform_cache.get(1)
+    if transform is None:
+        return {
+            "R": [0],
+            "t": [0],
+            "timestamp": 0
+        }
+    
+    transform = json.loads(transform)
+    return {
+        "R": transform["R"],
+        "t": transform["t"],
+        "timestamp": transform["timestamp"]
+    }
+
+@query.field("subscribed_agents")
+def resolve_data(*_):
+    agent_cache = ignite_client.get_or_create_cache('subscribed_agents')
+    agents = agent_cache.get(1)
+    if agents is None:
+        return {"id": []}
+    agents = json.loads(agents)
+    
+    if len(agents)==0 or agents[0] == -1:
+        return {"id": []}
+    
+    return {"id": agents}
+
+@query.field("exitedAgents")
+def resolve_data(*_):
+    agent_cache = ignite_client.get_or_create_cache('exited_agents')
+    agents = agent_cache.get(1)
+    if agents is None:
+        return {"id": []}
+    agents = json.loads(agents)
+    
+    if len(agents)==0 or agents[0] == -1:
+        return {"id": []}
+    
+    return {"id": agents}
+
+@query.field("subscribedAndExitedAgents")
+def resolve_data(*_):
+    agent_cache = ignite_client.get_or_create_cache('subscribed_agents')
+    exited_agent_cache = ignite_client.get_or_create_cache('exited_agents')
+    agents = agent_cache.get(1)
+    exited_agents = exited_agent_cache.get(1)
+    
+    if agents is None:
+        agents = []
+    else:
+        agents = json.loads(agents)
+    
+    if exited_agents is None:
+        exited_agents = []
+    else:
+        exited_agents = json.loads(exited_agents)
+    
+    return [
+        {"id": agents},   {"id": exited_agents}
+        ]
