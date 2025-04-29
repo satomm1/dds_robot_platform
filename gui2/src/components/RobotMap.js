@@ -5,7 +5,8 @@ import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS } from '../queries';
 
 const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [mapSize, setMapSize] = useState({ width: 600, height: 400 });
-  const [goalMarker, setGoalMarker] = useState(null);
+  // Replace single goalMarker with a map of robot IDs to goal markers
+  const [goalMarkers, setGoalMarkers] = useState({});
   const [robots, setRobots] = useState([]);
   const containerRef = useRef(null);
   const stageRef = useRef(null);
@@ -14,7 +15,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const goalLayerRef = useRef(null);
   
   // Polling interval (in milliseconds)
-  const POLL_INTERVAL = 1000; // Fetch every 5 seconds
+  const POLL_INTERVAL = 1000; // Fetch every 1 seconds
   
   // Grid properties
   const gridCellSize = 20;
@@ -117,16 +118,16 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       robotsLayerRef.current.batchDraw();
     }
     
-    // If we have a goal marker, redraw the goal layer too
-    // since it depends on robot positions for the dotted line
-    if (goalLayerRef.current && goalMarker && selectedRobotId) {
+    // If we have goal markers, redraw the goal layer too
+    // since it depends on robot positions for the dotted lines
+    if (goalLayerRef.current && Object.keys(goalMarkers).length > 0) {
       console.log('Redrawing goal layer due to robot position update');
       goalLayerRef.current.batchDraw();
     }
-  }, [robots, selectedRobotId, goalMarker]);
+  }, [robots, goalMarkers]);
 
   const handleMapClick = (e) => {
-    if (!stageRef.current) return;
+    if (!stageRef.current || !selectedRobotId) return;
     
     const stage = stageRef.current;
     const pointerPosition = stage.getPointerPosition();
@@ -137,11 +138,17 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       // Convert screen coordinates to world coordinates
       const worldPos = transform.point(pointerPosition);
       
-      console.log('Setting new goal marker at', worldPos.x, worldPos.y);
-      setGoalMarker({
-        x: worldPos.x,
-        y: worldPos.y
-      });
+      console.log(`Setting new goal marker for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
+      
+      // Update goalMarkers with a new entry for this robot
+      setGoalMarkers(prevMarkers => ({
+        ...prevMarkers,
+        [selectedRobotId]: {
+          x: worldPos.x,
+          y: worldPos.y,
+          color: getRobotColor(selectedRobotId) // Function to determine color based on robot ID
+        }
+      }));
       
       // Send goal to backend using world coordinates
       onSetGoal(selectedRobotId, worldPos.x, worldPos.y);
@@ -151,6 +158,14 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         goalLayerRef.current.batchDraw();
       }
     }
+  };
+
+  // Helper function to get unique color for each robot
+  const getRobotColor = (robotId) => {
+    // Generate a color based on the robot ID
+    // This is a simple hash function to generate a color
+    const hash = Number(robotId) * 137 % 360;
+    return `hsl(${hash}, 70%, 50%)`; // Use HSL for more distinct colors
   };
   
   const handleWheel = (e) => {
@@ -196,14 +211,34 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     // Optional: Add any behavior you want when dragging ends
   };
 
+  // Clear goal for the selected robot
+  const clearGoal = () => {
+    if (!selectedRobotId) return;
+    
+    setGoalMarkers(prevMarkers => {
+      const newMarkers = { ...prevMarkers };
+      delete newMarkers[selectedRobotId];
+      return newMarkers;
+    });
+    
+    if (goalLayerRef.current) {
+      goalLayerRef.current.batchDraw();
+    }
+  };
+
+  // Clear all goals
+  const clearAllGoals = () => {
+    setGoalMarkers({});
+    if (goalLayerRef.current) {
+      goalLayerRef.current.batchDraw();
+    }
+  };
+
   // Display loading or error states
   if (mapLoading && !mapData) return <div>Loading map...</div>;
   if (mapError) return <div>Error loading map: {mapError.message}</div>;
   if (robotsLoading && !robots.length) return <div>Loading robot positions...</div>;
   if (robotsError) return <div>Error loading robot positions: {robotsError.message}</div>;
-
-  // Find the selected robot
-  const selectedRobot = robots.find(r => r.id === selectedRobotId);
 
   return (
     <div 
@@ -262,84 +297,101 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
           ))}
         </Layer>
         
-        {/* Separate layer for the goal marker - only this layer is redrawn on clicks */}
+        {/* Separate layer for the goal markers - only this layer is redrawn on clicks */}
         <Layer ref={goalLayerRef}>
-          {goalMarker && selectedRobotId && selectedRobot && (
-            <>
-              <Circle
-                x={goalMarker.x}
-                y={goalMarker.y}
-                radius={8}
-                fill="green"
-                opacity={0.6}
-              />
-              <Line
-                points={[
-                  selectedRobot.x * gridCellSize,
-                  selectedRobot.y * gridCellSize,
-                  goalMarker.x,
-                  goalMarker.y
-                ]}
-                stroke="green"
-                strokeWidth={2}
-                dash={[5, 5]}
-              />
-            </>
-          )}
+          {Object.entries(goalMarkers).map(([robotId, marker]) => {
+            const robot = robots.find(r => r.id === Number(robotId));
+            if (!robot) return null;
+            
+            return (
+              <React.Fragment key={`goal-${robotId}`}>
+                <Circle
+                  x={marker.x}
+                  y={marker.y}
+                  radius={8}
+                  fill={marker.color || "green"}
+                  opacity={0.6}
+                />
+                <Line
+                  points={[
+                    robot.x * gridCellSize,
+                    robot.y * gridCellSize,
+                    marker.x,
+                    marker.y
+                  ]}
+                  stroke={marker.color || "green"}
+                  strokeWidth={2}
+                  dash={[5, 5]}
+                />
+              </React.Fragment>
+            );
+          })}
         </Layer>
       </Stage>
       
-      {/* Controls for zoom */}
+      {/* Controls for zoom and goal management */}
       <div style={{ position: 'absolute', bottom: '20px', right: '20px', background: 'white', padding: '5px', borderRadius: '5px', boxShadow: '0 0 5px rgba(0,0,0,0.3)' }}>
-        <button 
-          onClick={() => {
-            if (stageRef.current) {
-              const stage = stageRef.current;
-              const oldScale = stage.scaleX();
-              const newScale = Math.min(maxScale, oldScale * 1.2);
-              stage.scale({ x: newScale, y: newScale });
-              stage.batchDraw();
-            }
-          }}
-          style={{ margin: '2px', padding: '5px 10px' }}
-        >
-          +
-        </button>
-        <button 
-          onClick={() => {
-            if (stageRef.current) {
-              const stage = stageRef.current;
-              const oldScale = stage.scaleX();
-              const newScale = Math.max(minScale, oldScale / 1.2);
-              stage.scale({ x: newScale, y: newScale });
-              stage.batchDraw();
-            }
-          }}
-          style={{ margin: '2px', padding: '5px 10px' }}
-        >
-          -
-        </button>
-        <button 
-          onClick={() => {
-            if (stageRef.current) {
-              const stage = stageRef.current;
-              stage.scale({ x: 1, y: 1 });
-              stage.position({ x: 0, y: 0 });
-              stage.batchDraw();
-            }
-          }}
-          style={{ margin: '2px', padding: '5px 10px' }}
-        >
-          Reset
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '10px' }}>
+          <button 
+            onClick={clearGoal}
+            disabled={!selectedRobotId}
+            style={{ margin: '2px', padding: '5px 10px' }}
+          >
+            Clear Selected Goal
+          </button>
+          <button 
+            onClick={clearAllGoals}
+            style={{ margin: '2px', padding: '5px 10px' }}
+          >
+            Clear All Goals
+          </button>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <button 
+            onClick={() => {
+              if (stageRef.current) {
+                const stage = stageRef.current;
+                const oldScale = stage.scaleX();
+                const newScale = Math.min(maxScale, oldScale * 1.2);
+                stage.scale({ x: newScale, y: newScale });
+                stage.batchDraw();
+              }
+            }}
+            style={{ margin: '2px', padding: '5px 10px' }}
+          >
+            +
+          </button>
+          <button 
+            onClick={() => {
+              if (stageRef.current) {
+                const stage = stageRef.current;
+                const oldScale = stage.scaleX();
+                const newScale = Math.max(minScale, oldScale / 1.2);
+                stage.scale({ x: newScale, y: newScale });
+                stage.batchDraw();
+              }
+            }}
+            style={{ margin: '2px', padding: '5px 10px' }}
+          >
+            -
+          </button>
+          <button 
+            onClick={() => {
+              if (stageRef.current) {
+                const stage = stageRef.current;
+                stage.scale({ x: 1, y: 1 });
+                stage.position({ x: 0, y: 0 });
+                stage.batchDraw();
+              }
+            }}
+            style={{ margin: '2px', padding: '5px 10px' }}
+          >
+            Reset
+          </button>
+        </div>
       </div>
       
-      {/* For debugging - show last update time */}
-      <div style={{ position: 'absolute', bottom: '20px', left: '20px', background: 'rgba(255,255,255,0.7)', padding: '5px', borderRadius: '5px' }}>
-        Last update: {new Date().toLocaleTimeString()}
-      </div>
     </div>
   );
-};
-
+}
 export default RobotMap;
