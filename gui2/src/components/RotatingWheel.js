@@ -118,7 +118,7 @@ const RotatingWheel = ({ size = 200, value = 0, onChange }) => {
           
           {/* Display current angle */}
           <Text 
-            x={radius}
+            x={radius-10}
             y={radius-25}
             text={`${value}°`}
             fontSize={20}
