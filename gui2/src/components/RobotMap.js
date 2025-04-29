@@ -4,7 +4,7 @@ import { useQuery } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS } from '../queries';
 
 const RobotMap = ({ selectedRobotId, onSetGoal }) => {
-  const [mapSize, setMapSize] = useState({ width: 600, height: 400 });
+  const [mapSize, setMapSize] = useState({ width: 1000, height: 550 });
   // Replace single goalMarker with a map of robot IDs to goal markers
   const [goalMarkers, setGoalMarkers] = useState({});
   const [robots, setRobots] = useState([]);
@@ -27,7 +27,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   // Zoom scale limits
   const minScale = 0.5;
   const maxScale = 3;
-  
+
   // Update container size based on parent element
   useEffect(() => {
     if (containerRef.current) {
