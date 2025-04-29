@@ -1,14 +1,18 @@
 // src/components/RobotMap.js
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Rect, Circle, Line } from 'react-konva';
+import { Stage, Layer, Rect, Circle, Line, Text } from 'react-konva';
 import { useQuery } from '@apollo/client';
-import { GET_OCCUPANCY_GRID } from '../queries';
+import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS } from '../queries';
 
-const RobotMap = ({ robots, selectedRobotId, onSetGoal }) => {
+const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [mapSize, setMapSize] = useState({ width: 600, height: 400 });
   const [goalMarker, setGoalMarker] = useState(null);
+  const [robots, setRobots] = useState([]);
   const containerRef = useRef(null);
   const stageRef = useRef(null);
+  
+  // Polling interval (in milliseconds)
+  const POLL_INTERVAL = 5000; // Fetch every 5 seconds
   
   // Grid properties
   const gridCellSize = 20;
@@ -32,14 +36,30 @@ const RobotMap = ({ robots, selectedRobotId, onSetGoal }) => {
     }
   }, []);
 
-  const { loading, error, data } = useQuery(GET_OCCUPANCY_GRID);
-
-  if (loading) return <p>Loading map...</p>;
-  if (error) return <p>Error loading map: {error.message}</p>;
-
+  // Query for occupancy grid
+  const { loading: mapLoading, error: mapError, data: mapData } = useQuery(GET_OCCUPANCY_GRID);
+  
+  // Query for robot positions with polling
+  const { loading: robotsLoading, error: robotsError, data: robotsData } = useQuery(GET_ROBOT_POSITIONS, {
+    pollInterval: POLL_INTERVAL,
+    fetchPolicy: 'network-only', // Don't use cache for robot positions
+    onCompleted: (data) => {
+      if (data) {
+        console.log('Fetched robot positions:', data);
+        setRobots(data.robotPositions);
+      }
+    },
+    onError: (error) => {
+      console.error('Error fetching robot positions:', error);
+    }
+  });
+  
+  // Create grid cells based on occupancy grid data
   const createGrid = () => {
+    if (!mapData || !mapData.map) return [];
+    
     const grid = [];
-    const { width, height, resolution, occupancy } = data.map;
+    const { width, height, resolution, occupancy } = mapData.map;
 
     const cellSize = 5; // Size of each grid cell in pixels
   
@@ -141,6 +161,12 @@ const RobotMap = ({ robots, selectedRobotId, onSetGoal }) => {
     // Optional: Add any behavior you want when dragging ends
   };
 
+  // Display loading or error states
+  if (mapLoading) return <div>Loading map...</div>;
+  if (mapError) return <div>Error loading map: {mapError.message}</div>;
+  if (robotsLoading && !robots.length) return <div>Loading robot positions...</div>;
+  if (robotsError) return <div>Error loading robot positions: {robotsError.message}</div>;
+
   return (
     <div 
       ref={containerRef} 
@@ -161,23 +187,46 @@ const RobotMap = ({ robots, selectedRobotId, onSetGoal }) => {
           {createGrid()}
           
           {/* Robot Markers */}
+          {console.log('Rendering robots:', robots)}
           {robots.map(robot => (
-            <Circle
-              key={robot.id}
-              x={robot.x}
-              y={robot.y}
-              radius={12}
-              fill={robot.id === selectedRobotId ? '#ff4444' : '#4444ff'}
-              stroke="#000"
-              strokeWidth={2}
-            />
+            <React.Fragment key={robot.id}>
+              <Circle
+                x={robot.x * gridCellSize}
+                y={robot.y * gridCellSize}
+                radius={12}
+                fill={robot.id === selectedRobotId ? '#ff4444' : '#4444ff'}
+                stroke="#000"
+                strokeWidth={2}
+              />
+              {/* Arrow to indicate direction */}
+              <Line
+                points={[
+                  robot.x * gridCellSize, // Start x
+                  robot.y * gridCellSize, // Start y
+                  (robot.x + Math.cos(robot.theta))* gridCellSize, // Arrow tip x
+                  (robot.y + Math.sin(robot.theta))* gridCellSize  // Arrow tip y
+                ]}
+                stroke="#000"
+                strokeWidth={2}
+                pointerLength={5}
+                pointerWidth={5}
+                tension={0.5}
+              />
+              <Text
+                x={robot.x * gridCellSize-3} // Adjust position to center the text
+                y={robot.y * gridCellSize-3} // Adjust position to center the text
+                text={robot.id.toString()}
+                fontSize={12}
+                fill="#fff"
+              />
+            </React.Fragment>
           ))}
           
           {/* Goal marker */}
           {goalMarker && selectedRobotId && (
             <>
               <Circle
-                x={goalMarker.x}
+                x={goalMarker.x }
                 y={goalMarker.y}
                 radius={8}
                 fill="green"
@@ -185,8 +234,8 @@ const RobotMap = ({ robots, selectedRobotId, onSetGoal }) => {
               />
               <Line
                 points={[
-                  robots.find(r => r.id === selectedRobotId)?.x || 0,
-                  robots.find(r => r.id === selectedRobotId)?.y || 0,
+                  robots.find(r => r.id === selectedRobotId)?.x * gridCellSize || 0,
+                  robots.find(r => r.id === selectedRobotId)?.y * gridCellSize || 0,
                   goalMarker.x,
                   goalMarker.y
                 ]}

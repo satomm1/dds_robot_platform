@@ -7,19 +7,19 @@ import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import RobotTypedGoals from './components/RobotTypedGoals';
 
-// Mock robot data (replace with actual data from your GraphQL API)
-const mockRobots = [
-  { id: 'robot1', name: 'Robot 1', x: 50, y: 50 },
-  { id: 'robot2', name: 'Robot 2', x: 150, y: 100 },
-  { id: 'robot3', name: 'Robot 3', x: 200, y: 200 },
-];
+// // Mock robot data (replace with actual data from your GraphQL API)
+// const mockRobots = [
+//   { id: '1', name: 'Robot 1', x: 50, y: 50, theta: 0 },
+//   { id: '2', name: 'Robot 2', x: 150, y: 100, theta: 1.5 },
+//   { id: '3', name: 'Robot 3', x: 200, y: 200, theta: 3.14 },
+// ];
 
 function App() {
-  const [robots, setRobots] = useState(mockRobots);
-  const [selectedRobotId, setSelectedRobotId] = useState(mockRobots[0].id);
+  // const [robots, setRobots] = useState(mockRobots);
+  const [selectedRobotId, setSelectedRobotId] = useState('');
   
   // This function will be replaced with a GraphQL mutation
-  const setRobotGoal = (robotId, x, y) => {
+  const handleSetRobotGoal = (robotId, x, y) => {
     console.log(`Setting goal for robot ${robotId} to position (${x}, ${y})`);
     // In a real application, you would send this to your GraphQL API
   };
@@ -33,23 +33,21 @@ function App() {
         <div className="control-container">
           <div className="sidebar">
             <RobotSelector 
-              robots={robots} 
               selectedRobotId={selectedRobotId} 
               onSelectRobot={setSelectedRobotId} 
             />
             <RobotControls 
-              selectedRobot={robots.find(r => r.id === selectedRobotId)} 
+              selectedRobotId={selectedRobotId}  
             />
             <RobotTypedGoals
-              selectedRobot={robots.find(r => r.id === selectedRobotId)} 
+              selectedRobotId={selectedRobotId} 
               // onSetGoal={setRobotGoal}
             />
           </div>
           <div className="map-container">
             <RobotMap 
-              robots={robots} 
               selectedRobotId={selectedRobotId}
-              onSetGoal={setRobotGoal}
+              onSetGoal={handleSetRobotGoal }
             />
           </div>
         </div>
