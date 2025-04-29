@@ -29,17 +29,6 @@ const RobotTypedGoals = ({ selectedRobotId, onSetGoal }) => {
             value={thetaGoal} 
             onChange={setThetaGoal} 
           />
-          <input
-            type="range"
-            min="0"
-            max="359"
-            value={thetaGoal}
-            onChange={(e) => setThetaGoal(parseInt(e.target.value))}
-            style={{ width: '100%', marginTop: '10px' }}
-          />
-          <div className="angle-display">
-            <span>Current angle: {thetaGoal}°</span>
-          </div>
         </div>
         <button 
           type="submit" 

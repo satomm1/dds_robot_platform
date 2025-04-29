@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Rect, Circle, Line, Text } from 'react-konva';
 import { useQuery } from '@apollo/client';
-import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS } from '../queries';
+import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS } from '../queries';
 
 const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [mapSize, setMapSize] = useState({ width: 1000, height: 550 });
@@ -59,14 +59,28 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       console.error('Error fetching robot positions:', error);
     }
   });
-  
-  // Use an additional effect to ensure polling is working
-  useEffect(() => {
-    if (robotsData && robotsData.robotPositions) {
-      console.log('Robot positions updated from query data:', robotsData.robotPositions);
-      setRobots(robotsData.robotPositions);
+
+  // Query for robot goals with explicit polling
+  const { data: goalsData } = useQuery(GET_ROBOT_GOALS, {
+    pollInterval: POLL_INTERVAL,
+    fetchPolicy: 'network-only',
+    notifyOnNetworkStatusChange: true, // This will notify us of poll events
+    onCompleted: (data) => {
+      console.log('Fetched robot goals:', data);
+      if (data && data.robotGoals) {
+        // Update goal markers based on server data
+        const newGoalMarkers = {};
+        data.robotGoals.forEach(goal => {
+          newGoalMarkers[goal.id] = {
+            x: goal.x_goal * gridCellSize, // Convert grid coordinates to pixels
+            y: goal.y_goal * gridCellSize,
+            color: getRobotColor(goal.id)
+          };
+        });
+        setGoalMarkers(newGoalMarkers);
+      }
     }
-  }, [robotsData]);
+  });
   
   // Create grid cells based on occupancy grid data - only render when map data changes
   const [gridCells, setGridCells] = useState([]);
