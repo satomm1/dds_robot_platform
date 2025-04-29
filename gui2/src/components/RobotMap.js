@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Rect, Circle, Line, Text } from 'react-konva';
 import { useQuery } from '@apollo/client';
-import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS } from '../queries';
+import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS } from '../queries';
 
 const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [mapSize, setMapSize] = useState({ width: 1000, height: 550 });
@@ -19,10 +19,6 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   
   // Grid properties
   const gridCellSize = 20;
-  
-  // Map dimensions - can be larger than visible area
-  const mapWidth = 2000;
-  const mapHeight = 1500;
   
   // Zoom scale limits
   const minScale = 0.5;
@@ -89,7 +85,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     if (!mapData || !mapData.map) return;
     
     const newGrid = [];
-    const { width, height, resolution, occupancy } = mapData.map;
+    const { width, height, occupancy } = mapData.map;
     const cellSize = 5; // Size of each grid cell in pixels
   
     for (let x = 0; x < width; x++) {

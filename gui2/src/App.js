@@ -24,7 +24,7 @@ function AppContent() {
   const [currentTheta, setCurrentTheta] = useState(0);
   
   // Now this hook is inside the ApolloProvider context
-  const [setRobotGoal, { loading: goalLoading, error: goalError }] = useMutation(SET_ROBOT_GOAL);
+  const [setRobotGoal] = useMutation(SET_ROBOT_GOAL);
   
   const handleSetRobotGoal = (robotId, x, y) => {
     console.log(`Setting goal for robot ${robotId} to position (${x}, ${y}, ${currentTheta}°)`);
