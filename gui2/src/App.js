@@ -19,25 +19,36 @@ function App() {
 // Create a new component that's wrapped by ApolloProvider
 function AppContent() {
   const [selectedRobotId, setSelectedRobotId] = useState('');
+
+  // State for theta, if needed
+  const [currentTheta, setCurrentTheta] = useState(0);
   
   // Now this hook is inside the ApolloProvider context
   const [setRobotGoal, { loading: goalLoading, error: goalError }] = useMutation(SET_ROBOT_GOAL);
   
   const handleSetRobotGoal = (robotId, x, y) => {
-    console.log(`Setting goal for robot ${robotId} to position (${x}, ${y})`);
+    console.log(`Setting goal for robot ${robotId} to position (${x}, ${y}, ${currentTheta}°)`);
     
     const timestamp = new Date().getTime() / 1000; // Convert to seconds
+    const theta_rad = (currentTheta * Math.PI) / 180; // Convert degrees to radians
     setRobotGoal({
       variables: {
         robotId: robotId,
         xGoal: x,
         yGoal: y,
-        thetaGoal: 0,
+        thetaGoal: theta_rad,
         timestamp: timestamp
       }
     }).catch(error => {
       console.error('Error setting robot goal:', error);
     });
+  };
+
+  const handleUpdateTheta = (robotId, thetaDegrees) => {
+    console.log(`Updating orientation for robot ${robotId} to ${thetaDegrees}°`);
+    
+    // Update the current theta value
+    setCurrentTheta(thetaDegrees);
   };
 
   return (
@@ -56,7 +67,7 @@ function AppContent() {
           />
           <RobotTypedGoals
             selectedRobotId={selectedRobotId} 
-            // onSetGoal={setRobotGoal}
+            onSetGoal={handleUpdateTheta}
           />
         </div>
         <div className="map-container">

@@ -169,3 +169,35 @@
 .map-controls button:hover {
   background-color: #e9ecef;
 }
+
+.rotating-wheel {
+  display: flex;
+  justify-content: center;
+  margin: 10px 0;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.angle-display {
+  text-align: center;
+  margin-top: 5px;
+  font-weight: bold;
+}
+
+.btn-set-orientation {
+  background-color: #0066CC;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  width: 100%;
+}
+
+.btn-set-orientation:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}

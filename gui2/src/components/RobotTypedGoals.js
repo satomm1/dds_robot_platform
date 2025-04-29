@@ -1,35 +1,54 @@
-import React from 'react';
+// src/components/RobotTypedGoals.js
+import React, { useState } from 'react';
+import RotatingWheel from './RotatingWheel';
 
-const RobotTypedGoals = ({ selectedRobot }) => {
-  if (!selectedRobot) {
-    return <div>No robot selected</div>;
-  }
+const RobotTypedGoals = ({ selectedRobotId, onSetGoal }) => {
+  const [thetaGoal, setThetaGoal] = useState(0);
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    if (!selectedRobotId) {
+      alert('Please select a robot first');
+      return;
+    }
+    
+    // Call the parent component's onSetGoal function, passing only the theta value
+    // The x and y coordinates will be handled elsewhere
+    onSetGoal(selectedRobotId, thetaGoal);
+  };
 
   return (
-    <div className="manual-goal-input">
-        {/* <h3>Set Goal for: {selectedRobot.name}</h3> */}
-        <div className="goal-inputs">
-            <label>
-            X Position:
-            <input 
-                type="number" 
-                placeholder="X coordinate" 
-                style={{ width: '100px' }} // Set the input box size
-            />
-            </label>
-            <br />
-            <label>
-            Y Position:
-            <input 
-                type="number" 
-                placeholder="Y coordinate" 
-                style={{ width: '100px' }} // Set the input box size
-            />
-            </label>
+    <div className="robot-typed-goals">
+      <h3>Set Robot Orientation</h3>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Orientation (θ):</label>
+          <RotatingWheel 
+            size={150} 
+            value={thetaGoal} 
+            onChange={setThetaGoal} 
+          />
+          <input
+            type="range"
+            min="0"
+            max="359"
+            value={thetaGoal}
+            onChange={(e) => setThetaGoal(parseInt(e.target.value))}
+            style={{ width: '100%', marginTop: '10px' }}
+          />
+          <div className="angle-display">
+            <span>Current angle: {thetaGoal}°</span>
+          </div>
         </div>
-        <button onClick={() => console.log('Set goal for robot')}>
-            Set Goal
+        <button 
+          type="submit" 
+          disabled={!selectedRobotId}
+          className="btn-set-orientation"
+        >
+          Set Orientation
         </button>
+      </form>
     </div>
   );
 };
