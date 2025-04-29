@@ -151,7 +151,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       }));
       
       // Send goal to backend using world coordinates
-      onSetGoal(selectedRobotId, worldPos.x, worldPos.y);
+      onSetGoal(selectedRobotId, worldPos.x/gridCellSize , worldPos.y/gridCellSize);
       
       // Only redraw the goal layer
       if (goalLayerRef.current) {
@@ -237,7 +237,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   // Display loading or error states
   if (mapLoading && !mapData) return <div>Loading map...</div>;
   if (mapError) return <div>Error loading map: {mapError.message}</div>;
-  if (robotsLoading && !robots.length) return <div>Loading robot positions...</div>;
+  if (robotsLoading && !robots.length && !mapData) return <div>Loading robot positions...</div>;
   if (robotsError) return <div>Error loading robot positions: {robotsError.message}</div>;
 
   return (
