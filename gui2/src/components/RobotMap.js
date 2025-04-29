@@ -1,4 +1,3 @@
-// src/components/RobotMap.js
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Rect, Circle, Line, Text } from 'react-konva';
 import { useQuery } from '@apollo/client';
@@ -10,9 +9,12 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [robots, setRobots] = useState([]);
   const containerRef = useRef(null);
   const stageRef = useRef(null);
+  const gridLayerRef = useRef(null);
+  const robotsLayerRef = useRef(null);
+  const goalLayerRef = useRef(null);
   
   // Polling interval (in milliseconds)
-  const POLL_INTERVAL = 5000; // Fetch every 5 seconds
+  const POLL_INTERVAL = 1000; // Fetch every 5 seconds
   
   // Grid properties
   const gridCellSize = 20;
@@ -36,16 +38,19 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     }
   }, []);
 
-  // Query for occupancy grid
-  const { loading: mapLoading, error: mapError, data: mapData } = useQuery(GET_OCCUPANCY_GRID);
+  // Query for occupancy grid - only once
+  const { loading: mapLoading, error: mapError, data: mapData } = useQuery(GET_OCCUPANCY_GRID, {
+    fetchPolicy: 'cache-and-network'
+  });
   
-  // Query for robot positions with polling
+  // Query for robot positions with explicit polling
   const { loading: robotsLoading, error: robotsError, data: robotsData } = useQuery(GET_ROBOT_POSITIONS, {
     pollInterval: POLL_INTERVAL,
-    fetchPolicy: 'network-only', // Don't use cache for robot positions
+    fetchPolicy: 'network-only', // This forces it to always go to the network
+    notifyOnNetworkStatusChange: true, // This will notify us of poll events
     onCompleted: (data) => {
-      if (data) {
-        console.log('Fetched robot positions:', data);
+      if (data && data.robotPositions) {
+        console.log('Fetched robot positions:', data.robotPositions);
         setRobots(data.robotPositions);
       }
     },
@@ -54,13 +59,22 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     }
   });
   
-  // Create grid cells based on occupancy grid data
-  const createGrid = () => {
-    if (!mapData || !mapData.map) return [];
-    
-    const grid = [];
-    const { width, height, resolution, occupancy } = mapData.map;
+  // Use an additional effect to ensure polling is working
+  useEffect(() => {
+    if (robotsData && robotsData.robotPositions) {
+      console.log('Robot positions updated from query data:', robotsData.robotPositions);
+      setRobots(robotsData.robotPositions);
+    }
+  }, [robotsData]);
+  
+  // Create grid cells based on occupancy grid data - only render when map data changes
+  const [gridCells, setGridCells] = useState([]);
 
+  useEffect(() => {
+    if (!mapData || !mapData.map) return;
+    
+    const newGrid = [];
+    const { width, height, resolution, occupancy } = mapData.map;
     const cellSize = 5; // Size of each grid cell in pixels
   
     for (let x = 0; x < width; x++) {
@@ -79,7 +93,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         const xPos = (width - x - 1) * cellSize; // Invert x for correct orientation
         const yPos = y * cellSize; // Keep y as is for correct orientation
 
-        grid.push(
+        newGrid.push(
           <Rect
             key={`${xPos}-${yPos}`}
             x={xPos}
@@ -93,8 +107,23 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         );
       }
     }
-    return grid;
-  };
+    setGridCells(newGrid);
+  }, [mapData]);
+
+  // Update robots layer when robot positions change
+  useEffect(() => {
+    if (robotsLayerRef.current && robots.length > 0) {
+      console.log('Redrawing robots layer with', robots.length, 'robots');
+      robotsLayerRef.current.batchDraw();
+    }
+    
+    // If we have a goal marker, redraw the goal layer too
+    // since it depends on robot positions for the dotted line
+    if (goalLayerRef.current && goalMarker && selectedRobotId) {
+      console.log('Redrawing goal layer due to robot position update');
+      goalLayerRef.current.batchDraw();
+    }
+  }, [robots, selectedRobotId, goalMarker]);
 
   const handleMapClick = (e) => {
     if (!stageRef.current) return;
@@ -108,6 +137,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       // Convert screen coordinates to world coordinates
       const worldPos = transform.point(pointerPosition);
       
+      console.log('Setting new goal marker at', worldPos.x, worldPos.y);
       setGoalMarker({
         x: worldPos.x,
         y: worldPos.y
@@ -115,6 +145,11 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       
       // Send goal to backend using world coordinates
       onSetGoal(selectedRobotId, worldPos.x, worldPos.y);
+      
+      // Only redraw the goal layer
+      if (goalLayerRef.current) {
+        goalLayerRef.current.batchDraw();
+      }
     }
   };
   
@@ -162,10 +197,13 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   };
 
   // Display loading or error states
-  if (mapLoading) return <div>Loading map...</div>;
+  if (mapLoading && !mapData) return <div>Loading map...</div>;
   if (mapError) return <div>Error loading map: {mapError.message}</div>;
   if (robotsLoading && !robots.length) return <div>Loading robot positions...</div>;
   if (robotsError) return <div>Error loading robot positions: {robotsError.message}</div>;
+
+  // Find the selected robot
+  const selectedRobot = robots.find(r => r.id === selectedRobotId);
 
   return (
     <div 
@@ -182,12 +220,13 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <Layer>
-          {/* Occupancy Grid */}
-          {createGrid()}
-          
-          {/* Robot Markers */}
-          {console.log('Rendering robots:', robots)}
+        {/* Separate layer for the grid - doesn't need to update frequently */}
+        <Layer ref={gridLayerRef}>
+          {gridCells}
+        </Layer>
+        
+        {/* Separate layer for robots - updates with robot positions */}
+        <Layer ref={robotsLayerRef}>
           {robots.map(robot => (
             <React.Fragment key={robot.id}>
               <Circle
@@ -221,12 +260,14 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
               />
             </React.Fragment>
           ))}
-          
-          {/* Goal marker */}
-          {goalMarker && selectedRobotId && (
+        </Layer>
+        
+        {/* Separate layer for the goal marker - only this layer is redrawn on clicks */}
+        <Layer ref={goalLayerRef}>
+          {goalMarker && selectedRobotId && selectedRobot && (
             <>
               <Circle
-                x={goalMarker.x }
+                x={goalMarker.x}
                 y={goalMarker.y}
                 radius={8}
                 fill="green"
@@ -234,8 +275,8 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
               />
               <Line
                 points={[
-                  robots.find(r => r.id === selectedRobotId)?.x * gridCellSize || 0,
-                  robots.find(r => r.id === selectedRobotId)?.y * gridCellSize || 0,
+                  selectedRobot.x * gridCellSize,
+                  selectedRobot.y * gridCellSize,
                   goalMarker.x,
                   goalMarker.y
                 ]}
@@ -291,6 +332,11 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         >
           Reset
         </button>
+      </div>
+      
+      {/* For debugging - show last update time */}
+      <div style={{ position: 'absolute', bottom: '20px', left: '20px', background: 'rgba(255,255,255,0.7)', padding: '5px', borderRadius: '5px' }}>
+        Last update: {new Date().toLocaleTimeString()}
       </div>
     </div>
   );
