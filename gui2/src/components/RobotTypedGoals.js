@@ -1,21 +1,23 @@
-// src/components/RobotTypedGoals.js
 import React, { useState } from 'react';
 import RotatingWheel from './RotatingWheel';
 
 const RobotTypedGoals = ({ selectedRobotId, onSetGoal }) => {
   const [thetaGoal, setThetaGoal] = useState(0);
-  
+  const [confirmationMessage, setConfirmationMessage] = useState('');
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!selectedRobotId) {
       alert('Please select a robot first');
       return;
     }
-    
-    // Call the parent component's onSetGoal function, passing only the theta value
-    // The x and y coordinates will be handled elsewhere
+
     onSetGoal(selectedRobotId, thetaGoal);
+
+    // Show confirmation message
+    setConfirmationMessage('Orientation set successfully!');
+    setTimeout(() => setConfirmationMessage(''), 3000); // Clear message after 3 seconds
   };
 
   return (
@@ -38,6 +40,9 @@ const RobotTypedGoals = ({ selectedRobotId, onSetGoal }) => {
           Set Orientation
         </button>
       </form>
+      {confirmationMessage && (
+        <p className="confirmation-message">{confirmationMessage}</p>
+      )}
     </div>
   );
 };

@@ -47,8 +47,11 @@ function AppContent() {
   const handleUpdateTheta = (robotId, thetaDegrees) => {
     console.log(`Updating orientation for robot ${robotId} to ${thetaDegrees}°`);
     
+    // Flip the angle about the y-axis
+    const flippedTheta = (180 - thetaDegrees) % 360;
+
     // Update the current theta value
-    setCurrentTheta(thetaDegrees);
+    setCurrentTheta(flippedTheta);
   };
 
   return (
