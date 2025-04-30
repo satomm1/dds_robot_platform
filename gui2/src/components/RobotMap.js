@@ -71,8 +71,8 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         const newGoalMarkers = {};
         data.robotGoals.forEach(goal => {
           newGoalMarkers[goal.id] = {
-            x: goal.x_goal * gridCellSize, // Convert grid coordinates to pixels
-            y: goal.y_goal * gridCellSize,
+            x: (occGridWidth - goal.x_goal/occGridResolution) * gridCellSize, // Convert grid coordinates to pixels
+            y: goal.y_goal * gridCellSize / occGridResolution, // Convert grid coordinates to pixels
             color: getRobotColor(goal.id)
           };
         });
@@ -169,8 +169,8 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         }
       }));
       
-      // Send goal to backend using world coordinates
-      onSetGoal(selectedRobotId, worldPos.x/gridCellSize , worldPos.y/gridCellSize);
+      // Send goal to backend using world coordinates (occGridWidth - worldPos.x/occGridResolution)*gridCellSize
+      onSetGoal(selectedRobotId, (occGridWidth - worldPos.x/gridCellSize)*occGridResolution, worldPos.y*occGridResolution/gridCellSize);
       
       // Only redraw the goal layer
       if (goalLayerRef.current) {
