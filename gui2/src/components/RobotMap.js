@@ -13,12 +13,15 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const gridLayerRef = useRef(null);
   const robotsLayerRef = useRef(null);
   const goalLayerRef = useRef(null);
+  const [occGridWidth, setOccGridWidth] = useState(0);
+  const [occGridHeight, setOccGridHeight] = useState(0);
+  const [occGridResolution, setOccGridResolution] = useState(1);
   
   // Polling interval (in milliseconds)
   const POLL_INTERVAL = 1000; // Fetch every 1 seconds
   
   // Grid properties
-  const gridCellSize = 20;
+  const gridCellSize = 5;
   
   // Zoom scale limits
   const minScale = 0.5;
@@ -85,8 +88,14 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     if (!mapData || !mapData.map) return;
     
     const newGrid = [];
-    const { width, height, occupancy } = mapData.map;
+    const { width, height, resolution, occupancy } = mapData.map;
     const cellSize = 5; // Size of each grid cell in pixels
+
+    setOccGridWidth(width);
+    setOccGridHeight(height);
+    setOccGridResolution(resolution);
+
+    console.log('Creating grid cells for map:', width, 'x', height, 'with resolution', resolution);
   
     for (let x = 0; x < width; x++) {
       for (let y = 0; y < height; y++) {
@@ -275,8 +284,8 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
           {robots.map(robot => (
             <React.Fragment key={robot.id}>
               <Circle
-                x={robot.x * gridCellSize}
-                y={robot.y * gridCellSize}
+                x={(occGridWidth*occGridResolution - robot.x)*gridCellSize/occGridResolution} // Invert x for correct orientation
+                y={(robot.y)*gridCellSize/occGridResolution} // Keep y as is for correct orientation
                 radius={12}
                 fill={robot.id === selectedRobotId ? '#ff4444' : '#4444ff'}
                 stroke="#000"
@@ -285,10 +294,10 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
               {/* Arrow to indicate direction */}
               <Line
                 points={[
-                  robot.x * gridCellSize, // Start x
-                  robot.y * gridCellSize, // Start y
-                  (robot.x + Math.cos(robot.theta))* gridCellSize, // Arrow tip x
-                  (robot.y + Math.sin(robot.theta))* gridCellSize  // Arrow tip y
+                  (occGridWidth - robot.x/occGridResolution)*gridCellSize, // Start x
+                  (robot.y)*gridCellSize/occGridResolution, // Start y
+                  (occGridWidth - robot.x/occGridResolution)*gridCellSize - Math.cos(robot.theta)*15, // Arrow tip x
+                  (robot.y)*gridCellSize/occGridResolution + Math.sin(robot.theta)*15 // Arrow tip y
                 ]}
                 stroke="#000"
                 strokeWidth={2}
@@ -297,8 +306,8 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
                 tension={0.5}
               />
               <Text
-                x={robot.x * gridCellSize-3} // Adjust position to center the text
-                y={robot.y * gridCellSize-3} // Adjust position to center the text
+                x={(occGridWidth - robot.x/occGridResolution)*gridCellSize-3} // Adjust position to center the text
+                y={(robot.y)*gridCellSize/occGridResolution-3} // Adjust position to center the text
                 text={robot.id.toString()}
                 fontSize={12}
                 fill="#fff"
@@ -324,8 +333,8 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
                 />
                 <Line
                   points={[
-                    robot.x * gridCellSize,
-                    robot.y * gridCellSize,
+                    (occGridWidth - robot.x/occGridResolution)*gridCellSize,
+                    (robot.y)*gridCellSize/occGridResolution,
                     marker.x,
                     marker.y
                   ]}
