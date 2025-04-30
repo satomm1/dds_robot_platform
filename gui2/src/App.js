@@ -57,7 +57,7 @@ function AppContent() {
         <h1>Robot Control Interface</h1>
       </header>
       <div className="control-container">
-        <div className="sidebar">
+        <div className="sidebar" style={{ overflowY: 'auto', maxHeight: '100vh' }}>
           <RobotSelector 
             selectedRobotId={selectedRobotId} 
             onSelectRobot={setSelectedRobotId} 
