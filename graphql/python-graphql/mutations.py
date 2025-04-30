@@ -47,6 +47,19 @@ def resolve_clear_robot_position(_, info, robot_id):
     except:
         return False
     
+@mutation.field("clearRobot")
+def resolve_clear_robot(_, info, robot_id):
+    position_cache = ignite_client.get_or_create_cache('robot_position')
+    path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
+    goal_cache = ignite_client.get_or_create_cache('robot_goal')
+    try:
+        position_cache.remove_key(robot_id)
+        path_cache.remove_key(robot_id)
+        goal_cache.remove_key(robot_id)
+        return True
+    except:
+        return False
+    
 @mutation.field("setAgentList")
 def resolve_set_agent_list(_, info, agent_list):
     agent_list_cache = ignite_client.get_or_create_cache('subscribed_agents')

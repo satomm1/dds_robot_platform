@@ -52,9 +52,9 @@ MD_MUTATION =   """
                     }
                 """
 
-CLEAR_POSITION_MUTATION = """
+CLEAR_ROBOT_MUTATION = """
                         mutation($robot_id: Int!) {
-                            clearRobotPosition(robot_id: $robot_id)
+                            clearRobot(robot_id: $robot_id)
                         }
                     """
 
@@ -657,7 +657,7 @@ class EntryExitCommunication:
                             # Remove exited agent position from the GraphQL server    
                             response = requests.post(
                                 self.graphql_server,
-                                json={'query': CLEAR_POSITION_MUTATION, 'variables': {'robot_id': agent_id}},
+                                json={'query': CLEAR_ROBOT_MUTATION, 'variables': {'robot_id': agent_id}},
                                 timeout=1
                             )
 
