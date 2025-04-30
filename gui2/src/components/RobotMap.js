@@ -44,6 +44,11 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const { loading: mapLoading, error: mapError, data: mapData } = useQuery(GET_OCCUPANCY_GRID, {
     fetchPolicy: 'cache-and-network'
   });
+
+  // Calculate distance between two points
+  const calculateDistance = (x1, y1, x2, y2) => {
+    return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+  };
   
   // Query for robot positions with explicit polling
   const { loading: robotsLoading, error: robotsError, data: robotsData } = useQuery(GET_ROBOT_POSITIONS, {
@@ -344,17 +349,35 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         
         {/* Layer for robot paths - updates when paths change */}
         <Layer ref={pathLayerRef} visible={showPaths}>
-          {Object.entries(robotPaths).map(([robotId, path]) => (
-            <Line
-              key={`path-${robotId}`}
-              points={path.points}
-              stroke={path.color}
-              strokeWidth={2}
-              lineJoin="round"
-              tension={0.3}
-              opacity={0.7}
-            />
-          ))}
+          {Object.entries(robotPaths).map(([robotId, path]) => {
+            // Check if this robot has a goal
+            const goal = goalMarkers[robotId];
+            const robot = robots.find(r => r.id === Number(robotId));
+            
+            // If robot is close to goal, don't show the path
+            if (goal && robot) {
+              const robotX = (occGridWidth - robot.x/occGridResolution)*gridCellSize;
+              const robotY = (robot.y)*gridCellSize/occGridResolution;
+              const distance = calculateDistance(robotX, robotY, goal.x, goal.y);
+              
+              // Define threshold distance for hiding path (adjust as needed)
+              const hidePathThreshold = 30; // in pixels
+              
+              if (distance < hidePathThreshold) {
+                return null;
+              }
+            }
+            
+            return (
+              <Line
+                key={`path-${robotId}`}
+                points={path.points}
+                stroke={path.color}
+                strokeWidth={2}
+                opacity={0.7}
+              />
+            );
+          })}
         </Layer>
         
         {/* Separate layer for robots - updates with robot positions */}
