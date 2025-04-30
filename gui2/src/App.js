@@ -47,8 +47,11 @@ function AppContent() {
   const handleUpdateTheta = (robotId, thetaDegrees) => {
     console.log(`Updating orientation for robot ${robotId} to ${thetaDegrees}°`);
     
+    // Flip the angle about the y-axis
+    const flippedTheta = (180 - thetaDegrees) % 360;
+
     // Update the current theta value
-    setCurrentTheta(thetaDegrees);
+    setCurrentTheta(flippedTheta);
   };
 
   return (
@@ -57,7 +60,7 @@ function AppContent() {
         <h1>Robot Control Interface</h1>
       </header>
       <div className="control-container">
-        <div className="sidebar">
+        <div className="sidebar" style={{ overflowY: 'auto', maxHeight: '100vh' }}>
           <RobotSelector 
             selectedRobotId={selectedRobotId} 
             onSelectRobot={setSelectedRobotId} 
