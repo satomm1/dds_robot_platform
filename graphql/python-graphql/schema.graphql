@@ -92,6 +92,7 @@ type Query {
 type Mutation {
     setRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float, from_bot: Boolean): Boolean
     setRobotPosition(robot_id: Int, x: Float, y: Float, theta: Float): Boolean
+    clearRobotPosition(robot_id: Int): Boolean
     setAgentList(agent_list: [Int]): Boolean
     setExitedAgentList(agent_list: [Int]): Boolean
     clearDetectedObjects: Boolean

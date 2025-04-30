@@ -52,6 +52,12 @@ MD_MUTATION =   """
                     }
                 """
 
+CLEAR_POSITION_MUTATION = """
+                        mutation($robot_id: Int!) {
+                            clearRobotPosition(robot_id: $robot_id)
+                        }
+                    """
+
 class EntryExitListener(Listener):
     """
     Listener class for handling entry and exit events of agents in the environment.
@@ -647,6 +653,13 @@ class EntryExitCommunication:
                     if len(newly_exited_agents):
                         for agent_id in newly_exited_agents:
                             exited_agents[agent_id] = newly_exited_agents[agent_id]
+
+                            # Remove exited agent position from the GraphQL server    
+                            response = requests.post(
+                                self.graphql_server,
+                                json={'query': CLEAR_POSITION_MUTATION, 'variables': {'robot_id': agent_id}},
+                                timeout=1
+                            )
 
                 current_agents_list = list(self.agents.keys())
 
