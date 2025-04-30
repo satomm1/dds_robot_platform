@@ -8,11 +8,13 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   // Replace single goalMarker with a map of robot IDs to goal markers
   const [goalMarkers, setGoalMarkers] = useState({});
   const [robots, setRobots] = useState([]);
+  const [robotPaths, setRobotPaths] = useState({});
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const gridLayerRef = useRef(null);
   const robotsLayerRef = useRef(null);
   const goalLayerRef = useRef(null);
+  const pathLayerRef = useRef(null);
   const [occGridWidth, setOccGridWidth] = useState(0);
   const [occGridHeight, setOccGridHeight] = useState(0);
   const [occGridResolution, setOccGridResolution] = useState(1);
@@ -81,6 +83,52 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     }
   });
   
+  // Query for robot paths with explicit polling
+  const { data: pathsData } = useQuery(GET_ROBOT_PATHS, {
+    pollInterval: POLL_INTERVAL,
+    fetchPolicy: 'network-only',
+    notifyOnNetworkStatusChange: true,
+    onCompleted: (data) => {
+      console.log('Fetched robot paths:', data);
+      if (data && data.robotPaths) {
+        // Process the path data
+        // Group path points by robot ID
+        const pathsByRobot = {};
+        
+        data.robotPaths.forEach(point => {
+          if (!pathsByRobot[point.id]) {
+            pathsByRobot[point.id] = [];
+          }
+          
+          // Apply the same coordinate transformation as we do for robots
+          point.x.forEach((xValue, index) => {
+            const yValue = point.y[index];
+            const transformedX = (occGridWidth - xValue / occGridResolution) * gridCellSize;
+            const transformedY = yValue * gridCellSize / occGridResolution;
+
+            // Add the transformed coordinates to the robot's path
+            pathsByRobot[point.id].push(transformedX, transformedY);
+          });
+          
+        });
+        
+        // Create the final path objects with color
+        const newPaths = {};
+        Object.entries(pathsByRobot).forEach(([robotId, points]) => {
+          newPaths[robotId] = {
+            points: points,
+            color: getRobotColor(robotId)
+          };
+        });
+        
+        setRobotPaths(newPaths);
+      }
+    },
+    onError: (error) => {
+      console.error('Error fetching robot paths:', error);
+    }
+  });
+  
   // Create grid cells based on occupancy grid data - only render when map data changes
   const [gridCells, setGridCells] = useState([]);
 
@@ -144,6 +192,14 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       goalLayerRef.current.batchDraw();
     }
   }, [robots, goalMarkers]);
+
+  // Update path layer when robot paths change
+  useEffect(() => {
+    if (pathLayerRef.current && Object.keys(robotPaths).length > 0) {
+      console.log('Redrawing path layer with', Object.keys(robotPaths).length, 'paths');
+      pathLayerRef.current.batchDraw();
+    }
+  }, [robotPaths]);
 
   const handleMapClick = (e) => {
     if (!stageRef.current || !selectedRobotId) return;
@@ -253,6 +309,13 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     }
   };
 
+  // Toggle path visibility
+  const [showPaths, setShowPaths] = useState(true);
+  
+  const togglePaths = () => {
+    setShowPaths(!showPaths);
+  };
+
   // Display loading or error states
   if (mapLoading && !mapData) return <div>Loading map...</div>;
   if (mapError) return <div>Error loading map: {mapError.message}</div>;
@@ -277,6 +340,21 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         {/* Separate layer for the grid - doesn't need to update frequently */}
         <Layer ref={gridLayerRef}>
           {gridCells}
+        </Layer>
+        
+        {/* Layer for robot paths - updates when paths change */}
+        <Layer ref={pathLayerRef} visible={showPaths}>
+          {Object.entries(robotPaths).map(([robotId, path]) => (
+            <Line
+              key={`path-${robotId}`}
+              points={path.points}
+              stroke={path.color}
+              strokeWidth={2}
+              lineJoin="round"
+              tension={0.3}
+              opacity={0.7}
+            />
+          ))}
         </Layer>
         
         {/* Separate layer for robots - updates with robot positions */}
@@ -306,7 +384,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
                 tension={0.5}
               />
               <Text
-                x={(occGridWidth - robot.x/occGridResolution)*gridCellSize-3} // Adjust position to center the text
+                x={(occGridWidth - robot.x/occGridResolution)* gridCellSize-3} // Adjust position to center the text
                 y={(robot.y)*gridCellSize/occGridResolution-3} // Adjust position to center the text
                 text={robot.id.toString()}
                 fontSize={12}
@@ -363,6 +441,12 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
             style={{ margin: '2px', padding: '5px 10px' }}
           >
             Clear All Goals
+          </button>
+          <button 
+            onClick={togglePaths}
+            style={{ margin: '2px', padding: '5px 10px' }}
+          >
+            {showPaths ? 'Hide Paths' : 'Show Paths'}
           </button>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
