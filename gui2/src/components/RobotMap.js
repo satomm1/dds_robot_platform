@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Rect, Circle, Line, Text } from 'react-konva';
 import { useQuery } from '@apollo/client';
-import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS } from '../queries';
+import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 
 const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [mapSize, setMapSize] = useState({ width: 1000, height: 550 });
@@ -9,12 +9,14 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [goalMarkers, setGoalMarkers] = useState({});
   const [robots, setRobots] = useState([]);
   const [robotPaths, setRobotPaths] = useState({});
+  const [detectedObjects, setDetectedObjects] = useState([]);
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const gridLayerRef = useRef(null);
   const robotsLayerRef = useRef(null);
   const goalLayerRef = useRef(null);
   const pathLayerRef = useRef(null);
+  const objectsLayerRef = useRef(null);
   const [occGridWidth, setOccGridWidth] = useState(0);
   const [occGridHeight, setOccGridHeight] = useState(0);
   const [occGridResolution, setOccGridResolution] = useState(1);
@@ -133,6 +135,21 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       console.error('Error fetching robot paths:', error);
     }
   });
+
+  const { data: objectsData } = useQuery(GET_OBJECT_POSITIONS, {
+    pollInterval: POLL_INTERVAL,
+    fetchPolicy: 'network-only',
+    notifyOnNetworkStatusChange: true,
+    onCompleted: (data) => {
+      console.log('Fetched object positions:', data);
+      if (data && data.objectPositions) {
+        setDetectedObjects(data.objectPositions);
+      }
+    },
+    onError: (error) => {
+      console.error('Error fetching object positions:', error);
+    }
+  });
   
   // Create grid cells based on occupancy grid data - only render when map data changes
   const [gridCells, setGridCells] = useState([]);
@@ -246,6 +263,18 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     // This is a simple hash function to generate a color
     const hash = Number(robotId) * 137 % 360;
     return `hsl(${hash}, 70%, 50%)`; // Use HSL for more distinct colors
+  };
+
+  // Helper function to get appearance of objects based on type
+  const getObjectAppearance = (type) => {
+    switch(type) {
+      case 'person':
+        return { color: 'yellow', radius: 12 };
+      case 'cone':
+        return { color: 'orange', radius: 10 };
+      default:
+        return { color: 'purple', radius: 10 };
+    }
   };
   
   const handleWheel = (e) => {
@@ -442,6 +471,37 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
                   stroke={marker.color || "green"}
                   strokeWidth={2}
                   dash={[5, 5]}
+                />
+              </React.Fragment>
+            );
+          })}
+        </Layer>
+
+        {/* Objects Layer */}
+        <Layer ref={objectsLayerRef}>
+          {detectedObjects.map((object) => {
+            // Transform coordinates similar to how you handle robot positions
+            const transformedX = (occGridWidth - object.x/occGridResolution) * gridCellSize;
+            const transformedY = object.y * gridCellSize / occGridResolution;
+            const { color, radius } = getObjectAppearance(object.type);
+            
+            return (
+              <React.Fragment key={`object-${object.id}`}>
+                <Circle
+                  x={transformedX}
+                  y={transformedY}
+                  radius={radius}
+                  fill={color}
+                  opacity={0.75}
+                  stroke="black"
+                  strokeWidth={1}
+                />
+                <Text
+                  x={transformedX + radius + 2}
+                  y={transformedY - 10}
+                  text={`${object.type}`}
+                  fontSize={12}
+                  fill="black"
                 />
               </React.Fragment>
             );
