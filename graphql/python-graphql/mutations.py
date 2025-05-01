@@ -171,3 +171,21 @@ def resolve_set_objects(_, info, agent_id, x, y, class_name, object_num):
         return True
     except:
         return False
+    
+@mutation.field("clearObject")
+def resolve_clear_object(_, info, agent_id, object_num):
+    detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')
+
+    detected_objects = detected_objects_cache.get(agent_id)
+    if detected_objects is None:
+        return False
+    detected_objects = json.loads(detected_objects)
+
+    if str(object_num) not in detected_objects:
+        return False
+    detected_objects.pop(str(object_num))
+    try:
+        detected_objects_cache.put(agent_id, json.dumps(detected_objects))
+        return True
+    except:
+        return False
