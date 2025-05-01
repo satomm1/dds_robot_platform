@@ -60,18 +60,29 @@ function AppContent() {
         <h1>Robot Control Interface</h1>
       </header>
       <div className="control-container">
-        <div className="sidebar" style={{ overflowY: 'auto', maxHeight: '100vh' }}>
-          <RobotSelector 
-            selectedRobotId={selectedRobotId} 
-            onSelectRobot={setSelectedRobotId} 
-          />
-          <RobotControls 
-            selectedRobotId={selectedRobotId}  
-          />
-          <RobotTypedGoals
-            selectedRobotId={selectedRobotId} 
-            onSetGoal={handleUpdateTheta}
-          />
+        <div className="sidebar">
+          <div style={{ overflowY: 'auto', maxHeight: '40%' }}>
+            <RobotSelector 
+              selectedRobotId={selectedRobotId} 
+              onSelectRobot={setSelectedRobotId} 
+            />
+          </div>
+          <hr className="sidebar-divider" style={{ 
+            width: '100%', 
+            border: '0', 
+            height: '1px', 
+            backgroundColor: '#ccc', 
+            margin: '15px 0' 
+          }} />
+          <div style={{ overflowY: 'auto', maxHeight: '60%' }}>
+            <RobotControls 
+              selectedRobotId={selectedRobotId}  
+            />
+            <RobotTypedGoals
+              selectedRobotId={selectedRobotId} 
+              onSetGoal={handleUpdateTheta}
+            />
+          </div>
         </div>
         <div className="map-container">
           <RobotMap 
