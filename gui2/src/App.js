@@ -57,7 +57,12 @@ function AppContent() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>Robot Control Interface</h1>
+        <h2 style={{ marginLeft: '30px' }}>Robot Controller</h2>
+        <div style={{ fontSize: '14px', color: '#ccc', marginTop: '5px', marginRight: '30px' }}>
+          Matthew Sato<br />
+          Engineering Informatics Group<br />
+          Stanford University
+        </div>
       </header>
       <div className="control-container">
         <div className="sidebar">
@@ -72,9 +77,9 @@ function AppContent() {
             border: '0', 
             height: '1px', 
             backgroundColor: '#ccc', 
-            margin: '15px 0' 
+            margin: '10px 0' 
           }} />
-          <div style={{ overflowY: 'auto', maxHeight: '60%' }}>
+          <div style={{ overflowY: 'auto', maxHeight: '70%' }}>
             <RobotControls 
               selectedRobotId={selectedRobotId}  
             />
