@@ -9,3 +9,8 @@ export const SET_ROBOT_GOAL = gql`
                      theta_goal: $thetaGoal, 
                      goal_timestamp: $timestamp)
 }`;
+
+export const CLEAR_ALL_OBJECTS = gql`
+    mutation ClearAllObjects {
+        clearAllObjects
+}`;

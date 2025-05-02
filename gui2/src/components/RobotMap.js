@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Rect, Circle, Line, Text } from 'react-konva';
-import { useQuery } from '@apollo/client';
+import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
+import { CLEAR_ALL_OBJECTS } from '../mutations';
 
 const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [mapSize, setMapSize] = useState({ width: 1000, height: 550 });
@@ -148,6 +149,19 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     },
     onError: (error) => {
       console.error('Error fetching object positions:', error);
+    }
+  });
+
+  // Add the mutation
+  const [clearAllObjects] = useMutation(CLEAR_ALL_OBJECTS, {
+    refetchQueries: [{ query: GET_OBJECT_POSITIONS }],
+    onCompleted: () => {
+      console.log('All objects cleared successfully');
+      // Optionally clear the local state immediately for faster UI response
+      setDetectedObjects([]);
+    },
+    onError: (error) => {
+      console.error('Error clearing objects:', error);
     }
   });
   
@@ -343,6 +357,11 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     }
   };
 
+  // Handler for clearing all objects
+  const handleClearAllObjects = () => {
+    clearAllObjects();
+  };
+
   // Toggle path visibility
   const [showPaths, setShowPaths] = useState(true);
   
@@ -524,6 +543,12 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
             style={{ margin: '2px', padding: '5px 10px' }}
           >
             Clear All Goals
+          </button>
+          <button 
+            onClick={handleClearAllObjects}
+            style={{ margin: '2px', padding: '5px 10px' }}
+          >
+            Clear All Objects
           </button>
           <button 
             onClick={togglePaths}
