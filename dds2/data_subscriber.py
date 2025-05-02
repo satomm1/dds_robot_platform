@@ -50,6 +50,7 @@ PATH_MUTATION =  """
 OBJECT_MUTATION =   """
                         mutation($agent_id: Int!, $x: Float!, $y: Float!, $class_name: String!, $object_num: Int!) {
                             setObjects(agent_id: $agent_id, x: $x, y: $y, class_name: $class_name, object_num: $object_num)
+                        }
                     """
 
 class DataListener(Listener):
