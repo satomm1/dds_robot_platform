@@ -189,3 +189,12 @@ def resolve_clear_object(_, info, agent_id, object_num):
         return True
     except:
         return False
+    
+@mutation.field("clearAllObjects")
+def resolve_clear_all_objects(_, info):
+    detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')
+    try:
+        detected_objects_cache.clear()
+        return True
+    except:
+        return False

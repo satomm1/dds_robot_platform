@@ -104,6 +104,7 @@ type Mutation {
     setPath(robot_id: Int, x: [Float], y: [Float], t: [Float]): Boolean
     setObjects(agent_id: Int, x: Float, y: Float, class_name: String, object_num: Int): Boolean
     clearObject(agent_id: Int, object_num: Int): Boolean
+    clearAllObjects: Boolean
 }
 
 type Subscription {
