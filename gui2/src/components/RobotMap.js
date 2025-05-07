@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Rect, Circle, Line, Text } from 'react-konva';
+import { Stage, Layer, Rect, Circle, Line, Text, Label, Tag } from 'react-konva';
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
@@ -21,6 +21,8 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [occGridWidth, setOccGridWidth] = useState(0);
   const [occGridHeight, setOccGridHeight] = useState(0);
   const [occGridResolution, setOccGridResolution] = useState(1);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0, worldX: 0, worldY: 0 });
+  const tooltipLayerRef = useRef(null);
   
   // Polling interval (in milliseconds)
   const POLL_INTERVAL = 1000; // Fetch every 1 seconds
@@ -271,6 +273,36 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     }
   };
 
+  const handleMouseMove = (e) => {
+    if (!stageRef.current) return;
+    
+    const stage = stageRef.current;
+    const pointerPosition = stage.getPointerPosition();
+    
+    if (pointerPosition) {
+      // Get current transform to convert screen to world coordinates
+      const transform = stage.getAbsoluteTransform().copy().invert();
+      // Convert screen coordinates to world coordinates
+      const worldPos = transform.point(pointerPosition);
+      
+      // Calculate the actual map coordinates using the same formula you use when setting goals
+      const mapX = (occGridWidth - worldPos.x/gridCellSize)*occGridResolution;
+      const mapY = worldPos.y*occGridResolution/gridCellSize;
+      
+      setMousePosition({
+        x: pointerPosition.x,
+        y: pointerPosition.y,
+        worldX: mapX,
+        worldY: mapY
+      });
+      
+      // Update the tooltip layer
+      if (tooltipLayerRef.current) {
+        tooltipLayerRef.current.batchDraw();
+      }
+    }
+  };
+
   // Helper function to get unique color for each robot
   const getRobotColor = (robotId) => {
     // Generate a color based on the robot ID
@@ -386,6 +418,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         height={mapSize.height}
         onClick={handleMapClick}
         onWheel={handleWheel}
+        onMouseMove={handleMouseMove}
         draggable={true}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
@@ -527,6 +560,26 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
           })}
         </Layer>
       </Stage>
+
+      {/* Tooltip layer outside the main stage - not affected by transforms */}
+      {mousePosition && (
+        <div 
+          style={{
+            position: 'absolute',
+            left: `${mousePosition.x + 20}px`,
+            top: `${mousePosition.y + 20}px`,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            color: 'white',
+            padding: '5px',
+            borderRadius: '3px',
+            fontSize: '12px',
+            pointerEvents: 'none', // Make sure it doesn't interfere with clicks
+            zIndex: 1000
+          }}
+        >
+          ({mousePosition.worldX.toFixed(2)}, {mousePosition.worldY.toFixed(2)})
+        </div>
+      )}
       
       {/* Controls for zoom and goal management */}
       <div style={{ position: 'absolute', bottom: '20px', right: '20px', background: 'white', padding: '5px', borderRadius: '5px', boxShadow: '0 0 5px rgba(0,0,0,0.3)' }}>
