@@ -50,7 +50,14 @@ PATH_MUTATION =  """
 OBJECT_MUTATION =   """
                         mutation($agent_id: Int!, $x: Float!, $y: Float!, $class_name: String!, $object_num: Int!) {
                             setObjects(agent_id: $agent_id, x: $x, y: $y, class_name: $class_name, object_num: $object_num)
+                        }
                     """
+
+CLEAR_OBJECT_MUTATION =     """  
+                                mutation($agent_id: Int!, $object_num: Int!) {
+                                    clearObject(agent_id: $agent_id, object_num: $object_num)
+                                }       
+                            """
 
 class DataListener(Listener):
 
@@ -158,8 +165,23 @@ class DataListener(Listener):
                     x_new, y_new, _ = self.transform_point([x[i], y[i], 0], forward=False)
                     self.object_dict[object_id] = {'x': x_new, 'y': y_new, 'class_name': class_name[i]}
                     i += 1
+
                 while (str(sensor_id) + '_' + str(i)) in self.object_dict:
                     self.object_dict.pop(str(sensor_id) + '_' + str(i))
+
+                    # Clear objects that are not in the current message
+                    response =  requests.post(
+                                    self.graphql_server,
+                                    json={
+                                        'query': CLEAR_OBJECT_MUTATION,
+                                        'variables': {
+                                            'agent_id': self.topic_id,
+                                            'object_num': i
+                                        }
+                                    },
+                                    timeout=1
+                                )
+
                     i += 1
 
                 # Write object to database
