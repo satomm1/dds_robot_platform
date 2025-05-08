@@ -1,11 +1,12 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Rect, Circle, Line, Text } from 'react-konva';
+import { Stage, Layer, Rect, Circle, Line, Text, Label, Tag } from 'react-konva';
+import { Image as KonvaImage } from 'react-konva'; // Add this line
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
 
 const RobotMap = ({ selectedRobotId, onSetGoal }) => {
-  const [mapSize, setMapSize] = useState({ width: 1000, height: 550 });
+  const [mapSize, setMapSize] = useState({ width: 1100, height: 600 });
   // Replace single goalMarker with a map of robot IDs to goal markers
   const [goalMarkers, setGoalMarkers] = useState({});
   const [robots, setRobots] = useState([]);
@@ -21,6 +22,10 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [occGridWidth, setOccGridWidth] = useState(0);
   const [occGridHeight, setOccGridHeight] = useState(0);
   const [occGridResolution, setOccGridResolution] = useState(1);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0, worldX: 0, worldY: 0 });
+  const tooltipLayerRef = useRef(null);
+
+  const [mapImage, setMapImage] = useState(null);
   
   // Polling interval (in milliseconds)
   const POLL_INTERVAL = 1000; // Fetch every 1 seconds
@@ -29,7 +34,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const gridCellSize = 5;
   
   // Zoom scale limits
-  const minScale = 0.5;
+  const minScale = 0.1;
   const maxScale = 3;
 
   // Update container size based on parent element
@@ -171,47 +176,77 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   useEffect(() => {
     if (!mapData || !mapData.map) return;
     
-    const newGrid = [];
     const { width, height, resolution, occupancy } = mapData.map;
     const cellSize = 5; // Size of each grid cell in pixels
-
+  
     setOccGridWidth(width);
     setOccGridHeight(height);
     setOccGridResolution(resolution);
-
-    console.log('Creating grid cells for map:', width, 'x', height, 'with resolution', resolution);
   
+    console.log('Pre-rendering map image:', width, 'x', height);
+    
+    // Create an offscreen canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = width * cellSize;
+    canvas.height = height * cellSize;
+    const ctx = canvas.getContext('2d');
+    
+    // Fill with background color first (optional)
+    ctx.fillStyle = '#E4F8FF'; // Default background color
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw the grid on the canvas
     for (let x = 0; x < width; x++) {
       for (let y = 0; y < height; y++) {
-        const index = y * width + x; // Calculate index in the occupancy array
+        const index = y * width + x;
         const value = occupancy[index];
+        
+        // Only draw occupied or unknown cells (optional optimization)
+        if (value === 0) continue; // Skip empty cells
+        
         let color;
         if (value === 100) {
-          color = 0x000000;
-        } else if (value === 0) {
-          color = 0xE4F8FF; 
-        } else {
-          color = 0xA8A8A8;
+          color = '#000000';
+        } else if (value !== 0) {
+          color = '#A8A8A8';
         }
-
+        
         const xPos = (width - x - 1) * cellSize; // Invert x for correct orientation
-        const yPos = y * cellSize; // Keep y as is for correct orientation
-
-        newGrid.push(
-          <Rect
-            key={`${xPos}-${yPos}`}
-            x={xPos}
-            y={yPos}
-            width={cellSize}
-            height={cellSize}
-            fill={`#${color.toString(16).padStart(6, '0')}`}
-            stroke="#ddd"
-            strokeWidth={1}
-          />
-        );
+        const yPos = y * cellSize;
+        
+        ctx.fillStyle = color;
+        ctx.fillRect(xPos, yPos, cellSize, cellSize);
       }
     }
-    setGridCells(newGrid);
+    
+    // Add grid lines if needed (optional)
+    if (cellSize > 2) { // Only draw grid lines if cells are big enough
+      ctx.strokeStyle = '#ddd';
+      ctx.lineWidth = 0.5;
+      
+      for (let x = 0; x <= width; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * cellSize, 0);
+        ctx.lineTo(x * cellSize, height * cellSize);
+        ctx.stroke();
+      }
+      
+      for (let y = 0; y <= height; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * cellSize);
+        ctx.lineTo(width * cellSize, y * cellSize);
+        ctx.stroke();
+      }
+    }
+    
+    // Convert canvas to image
+    const img = new Image();
+    img.onload = () => {
+      setMapImage(img);
+      console.log('Map image created successfully');
+    };
+    img.src = canvas.toDataURL();
+    
   }, [mapData]);
 
   // Update robots layer when robot positions change
@@ -271,6 +306,36 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
     }
   };
 
+  const handleMouseMove = (e) => {
+    if (!stageRef.current) return;
+    
+    const stage = stageRef.current;
+    const pointerPosition = stage.getPointerPosition();
+    
+    if (pointerPosition) {
+      // Get current transform to convert screen to world coordinates
+      const transform = stage.getAbsoluteTransform().copy().invert();
+      // Convert screen coordinates to world coordinates
+      const worldPos = transform.point(pointerPosition);
+      
+      // Calculate the actual map coordinates using the same formula you use when setting goals
+      const mapX = (occGridWidth - worldPos.x/gridCellSize)*occGridResolution;
+      const mapY = worldPos.y*occGridResolution/gridCellSize;
+      
+      setMousePosition({
+        x: pointerPosition.x,
+        y: pointerPosition.y,
+        worldX: mapX,
+        worldY: mapY
+      });
+      
+      // Update the tooltip layer
+      if (tooltipLayerRef.current) {
+        tooltipLayerRef.current.batchDraw();
+      }
+    }
+  };
+
   // Helper function to get unique color for each robot
   const getRobotColor = (robotId) => {
     // Generate a color based on the robot ID
@@ -287,7 +352,17 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       case 'cone':
         return { color: 'orange', radius: 10 };
       default:
-        return { color: 'purple', radius: 10 };
+        // Generate a random color for unknown object types
+        // Generate a consistent hue based on the object name
+        const stringToHash = (str) => {
+          let hash = 0;
+          for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+          }
+          return hash;
+        };
+        const hue = Math.abs(stringToHash(type)) % 360; // Consistent hue based on type name
+        return { color: `hsl(${hue}, 70%, 50%)`, radius: 10 };
     }
   };
   
@@ -386,13 +461,28 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
         height={mapSize.height}
         onClick={handleMapClick}
         onWheel={handleWheel}
+        onMouseMove={handleMouseMove}
         draggable={true}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
         {/* Separate layer for the grid - doesn't need to update frequently */}
         <Layer ref={gridLayerRef}>
-          {gridCells}
+          {mapImage ? (
+            <KonvaImage 
+              image={mapImage} 
+              x={0} 
+              y={0} 
+              width={occGridWidth * gridCellSize}
+              height={occGridHeight * gridCellSize}
+            />
+          ) : (
+            <Rect 
+              width={occGridWidth * gridCellSize}
+              height={occGridHeight * gridCellSize}
+              fill="#E4F8FF" 
+            />
+          )}
         </Layer>
         
         {/* Layer for robot paths - updates when paths change */}
@@ -515,18 +605,47 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
                   stroke="black"
                   strokeWidth={1}
                 />
-                <Text
+                <Label
                   x={transformedX + radius + 2}
                   y={transformedY - 10}
-                  text={`${object.type}`}
-                  fontSize={12}
-                  fill="black"
-                />
+                >
+                  <Tag
+                    fill="rgba(255, 255, 255, 0.8)"
+                    cornerRadius={3}
+                    padding={3}
+                  />
+                  <Text
+                    text={`${object.type}`}
+                    fontSize={12}
+                    fill="black"
+                    padding={2}
+                  />
+                </Label>
               </React.Fragment>
             );
           })}
         </Layer>
       </Stage>
+
+      {/* Tooltip layer outside the main stage - not affected by transforms */}
+      {mousePosition && (
+        <div 
+          style={{
+            position: 'absolute',
+            left: `${mousePosition.x + 20}px`,
+            top: `${mousePosition.y + 20}px`,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            color: 'white',
+            padding: '5px',
+            borderRadius: '3px',
+            fontSize: '12px',
+            pointerEvents: 'none', // Make sure it doesn't interfere with clicks
+            zIndex: 1000
+          }}
+        >
+          ({mousePosition.worldX.toFixed(2)}, {mousePosition.worldY.toFixed(2)})
+        </div>
+      )}
       
       {/* Controls for zoom and goal management */}
       <div style={{ position: 'absolute', bottom: '20px', right: '20px', background: 'white', padding: '5px', borderRadius: '5px', boxShadow: '0 0 5px rgba(0,0,0,0.3)' }}>
