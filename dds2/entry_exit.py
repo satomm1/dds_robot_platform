@@ -689,6 +689,13 @@ class EntryExitCommunication:
                         self.agents.pop(agent_id)
                         update_to_active_agents = True
 
+                        # Remove exited agent position from the GraphQL server    
+                        response = requests.post(
+                            self.graphql_server,
+                            json={'query': CLEAR_ROBOT_MUTATION, 'variables': {'robot_id': agent_id}},
+                            timeout=1
+                        )
+
                 # Update the entry/exit listener with the new agents
                 if update_to_active_agents:
                     self.entry_exit_listener.update_agents(agents=self.agents)
