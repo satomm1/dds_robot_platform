@@ -352,7 +352,17 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       case 'cone':
         return { color: 'orange', radius: 10 };
       default:
-        return { color: 'purple', radius: 10 };
+        // Generate a random color for unknown object types
+        // Generate a consistent hue based on the object name
+        const stringToHash = (str) => {
+          let hash = 0;
+          for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+          }
+          return hash;
+        };
+        const hue = Math.abs(stringToHash(type)) % 360; // Consistent hue based on type name
+        return { color: `hsl(${hue}, 70%, 50%)`, radius: 10 };
     }
   };
   
