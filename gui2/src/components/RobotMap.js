@@ -595,13 +595,22 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
                   stroke="black"
                   strokeWidth={1}
                 />
-                <Text
+                <Label
                   x={transformedX + radius + 2}
                   y={transformedY - 10}
-                  text={`${object.type}`}
-                  fontSize={12}
-                  fill="black"
-                />
+                >
+                  <Tag
+                    fill="rgba(255, 255, 255, 0.8)"
+                    cornerRadius={3}
+                    padding={3}
+                  />
+                  <Text
+                    text={`${object.type}`}
+                    fontSize={12}
+                    fill="black"
+                    padding={2}
+                  />
+                </Label>
               </React.Fragment>
             );
           })}
