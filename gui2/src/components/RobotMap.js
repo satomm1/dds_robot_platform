@@ -1,11 +1,12 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Rect, Circle, Line, Text, Label, Tag } from 'react-konva';
+import { Image as KonvaImage } from 'react-konva'; // Add this line
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
 
 const RobotMap = ({ selectedRobotId, onSetGoal }) => {
-  const [mapSize, setMapSize] = useState({ width: 1000, height: 550 });
+  const [mapSize, setMapSize] = useState({ width: 1100, height: 600 });
   // Replace single goalMarker with a map of robot IDs to goal markers
   const [goalMarkers, setGoalMarkers] = useState({});
   const [robots, setRobots] = useState([]);
@@ -23,6 +24,8 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [occGridResolution, setOccGridResolution] = useState(1);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0, worldX: 0, worldY: 0 });
   const tooltipLayerRef = useRef(null);
+
+  const [mapImage, setMapImage] = useState(null);
   
   // Polling interval (in milliseconds)
   const POLL_INTERVAL = 1000; // Fetch every 1 seconds
@@ -31,7 +34,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const gridCellSize = 5;
   
   // Zoom scale limits
-  const minScale = 0.5;
+  const minScale = 0.1;
   const maxScale = 3;
 
   // Update container size based on parent element
@@ -173,47 +176,77 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   useEffect(() => {
     if (!mapData || !mapData.map) return;
     
-    const newGrid = [];
     const { width, height, resolution, occupancy } = mapData.map;
     const cellSize = 5; // Size of each grid cell in pixels
-
+  
     setOccGridWidth(width);
     setOccGridHeight(height);
     setOccGridResolution(resolution);
-
-    console.log('Creating grid cells for map:', width, 'x', height, 'with resolution', resolution);
   
+    console.log('Pre-rendering map image:', width, 'x', height);
+    
+    // Create an offscreen canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = width * cellSize;
+    canvas.height = height * cellSize;
+    const ctx = canvas.getContext('2d');
+    
+    // Fill with background color first (optional)
+    ctx.fillStyle = '#E4F8FF'; // Default background color
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw the grid on the canvas
     for (let x = 0; x < width; x++) {
       for (let y = 0; y < height; y++) {
-        const index = y * width + x; // Calculate index in the occupancy array
+        const index = y * width + x;
         const value = occupancy[index];
+        
+        // Only draw occupied or unknown cells (optional optimization)
+        if (value === 0) continue; // Skip empty cells
+        
         let color;
         if (value === 100) {
-          color = 0x000000;
-        } else if (value === 0) {
-          color = 0xE4F8FF; 
-        } else {
-          color = 0xA8A8A8;
+          color = '#000000';
+        } else if (value !== 0) {
+          color = '#A8A8A8';
         }
-
+        
         const xPos = (width - x - 1) * cellSize; // Invert x for correct orientation
-        const yPos = y * cellSize; // Keep y as is for correct orientation
-
-        newGrid.push(
-          <Rect
-            key={`${xPos}-${yPos}`}
-            x={xPos}
-            y={yPos}
-            width={cellSize}
-            height={cellSize}
-            fill={`#${color.toString(16).padStart(6, '0')}`}
-            stroke="#ddd"
-            strokeWidth={1}
-          />
-        );
+        const yPos = y * cellSize;
+        
+        ctx.fillStyle = color;
+        ctx.fillRect(xPos, yPos, cellSize, cellSize);
       }
     }
-    setGridCells(newGrid);
+    
+    // Add grid lines if needed (optional)
+    if (cellSize > 2) { // Only draw grid lines if cells are big enough
+      ctx.strokeStyle = '#ddd';
+      ctx.lineWidth = 0.5;
+      
+      for (let x = 0; x <= width; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * cellSize, 0);
+        ctx.lineTo(x * cellSize, height * cellSize);
+        ctx.stroke();
+      }
+      
+      for (let y = 0; y <= height; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * cellSize);
+        ctx.lineTo(width * cellSize, y * cellSize);
+        ctx.stroke();
+      }
+    }
+    
+    // Convert canvas to image
+    const img = new Image();
+    img.onload = () => {
+      setMapImage(img);
+      console.log('Map image created successfully');
+    };
+    img.src = canvas.toDataURL();
+    
   }, [mapData]);
 
   // Update robots layer when robot positions change
@@ -425,7 +458,21 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       >
         {/* Separate layer for the grid - doesn't need to update frequently */}
         <Layer ref={gridLayerRef}>
-          {gridCells}
+          {mapImage ? (
+            <KonvaImage 
+              image={mapImage} 
+              x={0} 
+              y={0} 
+              width={occGridWidth * gridCellSize}
+              height={occGridHeight * gridCellSize}
+            />
+          ) : (
+            <Rect 
+              width={occGridWidth * gridCellSize}
+              height={occGridHeight * gridCellSize}
+              fill="#E4F8FF" 
+            />
+          )}
         </Layer>
         
         {/* Layer for robot paths - updates when paths change */}
