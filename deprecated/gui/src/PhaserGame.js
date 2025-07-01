@@ -113,6 +113,7 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
             const scene = gameRef.current.scene.scenes[0];
             const cellSize = gameRef.current.config.width / width;
 
+
             robotGoals.forEach(robot => {
                 const container = robotGoalsRef.current[robot.id];
                 if (container) {
@@ -140,6 +141,13 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
 
                     robotGoalsRef.current[robot.id] = container;
                 }
+
+                // If the robot is at the goal, remove the goal container
+                // const robotPosition = robotPositions.find(position => position.id === robot.id);
+                // if (Math.hypot(robot.x_goal - robotPosition.x, robot.y_goal - robotPosition.y) < 0.5) {
+                //     container.destroy();
+                    // robotGoalsRef.current[robot.id] = null;
+                // }
             });
 
             robotPositions.forEach(robot => {
@@ -172,6 +180,7 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
                 
             });
 
+
             robotPaths.forEach(robot => {
                 const path = robotPathsRef.current[robot.id];
                 if (path) {
@@ -180,7 +189,8 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
 
                 const robotGoal = robotGoals.find(goal => goal.id === robot.id);
                 const robotPosition = robotPositions.find(position => position.id === robot.id);
-                if (Math.hypot(robotGoal.x_goal - robotPosition.x, robotGoal.y_goal - robotPosition.y) > 0.25) {
+
+                if (robotGoal && (Math.hypot(robotGoal.x_goal - robotPosition.x, robotGoal.y_goal - robotPosition.y) > 0.5)) {
                     const graphics = scene.add.graphics();
                     graphics.lineStyle(2, 0x0000FF, 1);
                     graphics.beginPath();
@@ -204,7 +214,7 @@ const PhaserGame = ({ occupancyGrid, width, height, resolution, robotPositions, 
                 
             });
             
-            // Remove any object sprites that are no longer in the robotPositions array
+            // Remove any object sprites that are no longer in the objectPositions array
             Object.keys(objectSpritesRef.current).forEach(id => {
                 if (!objectPositions.some(object => object.id === id)) {
                     objectSpritesRef.current[id].destroy();
