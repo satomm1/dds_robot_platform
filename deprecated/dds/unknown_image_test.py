@@ -13,6 +13,8 @@ from dataclasses import dataclass
 import time
 import os
 import json
+import numpy as np
+import cv2
 
 @dataclass
 class DataMessage(IdlStruct):
@@ -43,6 +45,16 @@ class SelfDataListener(Listener):
             # Process the message
             if message_type == "unknown_image":
                 print(f"Received unknown image message from {sending_agent}")
+
+                # Process the data
+                data = json.loads(data)
+                width = data['width']
+                height = data['height']
+                image = np.frombuffer(data['image'], dtype=np.uint8).reshape((height, width, 3))
+                
+                # Save the image
+                image_path = os.path.join('images', f'unknown_image_{timestamp}.jpg')
+                cv2.imwrite(image_path, image)
                 
 
 class UnknownImageReceiver:
@@ -102,11 +114,7 @@ class UnknownImageReceiver:
 
 
     def send_query(self):
-        data_message = DataMessage(message_type='send_unknown_image', sending_agent=self.my_id, timestamp=int(time.time()), data='{}')
-        self.data_writer.write(data_message)
-        time.sleep(0.25)
-        self.data_writer.write(data_message)
-        time.sleep(0.25)
+        data_message = DataMessage(message_type='send_unknown_images', sending_agent=self.my_id, timestamp=int(time.time()), data='{}')
         self.data_writer.write(data_message)
         print("Sent unknown image request")
                           

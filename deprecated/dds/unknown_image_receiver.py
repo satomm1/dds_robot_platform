@@ -52,6 +52,7 @@ class ImageDataListener(Listener):
             message_type = sample.message_type
             timestamp = sample.timestamp
 
+            print(timestamp, self.previous_timestamp)
             if self.previous_timestamp is not None and timestamp <= self.previous_timestamp:
                 # Ignore old messages
                 continue
@@ -65,6 +66,7 @@ class ImageDataListener(Listener):
                 # Process the data
                 image_data = data['data']
                 objects = data['objects']
+                self.previous_timestamp = timestamp
 
                 image_data_bytes = image_data.encode('utf-8')
                 image_data_bytes = base64.b64decode(image_data_bytes)
@@ -121,9 +123,9 @@ class UnknownImageReceiver:
 
         # Reliable data qos
         self.reliable_data_qos = Qos(
-            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
+            Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=100)),
             Policy.Durability.TransientLocal,
-            Policy.History.KeepLast(depth=10)
+            Policy.History.KeepLast(depth=1)
         )
 
         self.best_effort_qos = Qos(

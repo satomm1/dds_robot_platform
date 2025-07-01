@@ -67,10 +67,12 @@ class Heartbeat(IdlStruct):
     """
     agent_id: int
     timestamp: int
+    agent_type: str
     location_valid: bool
     x: float
     y: float
     theta: float
+    topics: sequence[str]
 
 
 @dataclass
