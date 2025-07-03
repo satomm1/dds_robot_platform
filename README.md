@@ -10,11 +10,46 @@ This repo contains the software for a human observer to connect to the mobile ro
 ## Getting Started
 To run DDS, you need [Docker Desktop](https://www.docker.com/products/docker-desktop/). Please follow the instructions to download and install Docker.
 
-You will also need a conda environment. I recommend miniconda. 
+You will also need a conda interpreter. I recommend [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/main). 
 
 ## DDS
+1) Download my Docker python environment from: https://drive.google.com/drive/folders/1emeEoJrZxV4Nn6ktKUAyXbSTj0LjnlfB?usp=drive_link.
 
+    Load the docker image:
+    ```
+    docker load < matt_python_latext.tar.gz
+    ```
 
+2) Prepare the conda environment:
+    ```
+    conda env create -f environment.yml
+    ```
+
+3) Open 3 Terminals:
+    - Terminal 1: Start docker
+        ```
+        docker compose up -d
+        ```
+    - Terminal 2: Navigate to dds directory and activate dds environment
+        ```
+        cd dds
+        conda activate dds
+        ```
+        Run the dds code:
+        ```
+        . start_scripts.sh
+        ```
+
+    - Terminal 3: Navigate to dds directory and activate dds environment
+        ```
+        cd dds
+        conda activate dds
+        ```
+        Terminate the dds code:
+        ```
+        . stop_scripts.sh
+        ```
+        
 ## GUI
 
 1) Install Node.js from https://nodejs.org/en
