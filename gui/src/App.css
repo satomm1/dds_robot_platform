@@ -204,3 +204,26 @@
   background-color: #cccccc;
   cursor: not-allowed;
 }
+
+.btn-goal-init-active {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-weight: bold;
+  width: 40%;
+  margin-right: 5%;
+}
+
+.btn-goal-init-inactive {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  width: 40%;
+  margin-right: 5%;
+}

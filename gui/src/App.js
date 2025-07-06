@@ -6,7 +6,7 @@ import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import RobotTypedGoals from './components/RobotTypedGoals';
-import { SET_ROBOT_GOAL } from './mutations';
+import { SET_ROBOT_GOAL,  SET_ROBOT_INITIAL_POSITION} from './mutations';
 
 function App() {
   return (
@@ -25,6 +25,13 @@ function AppContent() {
   
   // Now this hook is inside the ApolloProvider context
   const [setRobotGoal] = useMutation(SET_ROBOT_GOAL);
+
+  // State to manage position mode (goal or initial)
+  // This can be used to toggle between setting a goal or an initial position
+  const [positionMode, setPositionMode] = useState('goal'); // 'goal' or 'initial'
+
+  // Mutation for setting the robot's initial position
+  const [setRobotInitialPosition] = useMutation(SET_ROBOT_INITIAL_POSITION);
   
   const handleSetRobotGoal = (robotId, x, y) => {
     console.log(`Setting goal for robot ${robotId} to position (${x}, ${y}, ${currentTheta}°)`);
@@ -54,6 +61,24 @@ function AppContent() {
     setCurrentTheta(flippedTheta);
   };
 
+  const handleSetRobotInitialPosition = (robotId, x, y) => {
+    console.log(`Setting initial position for robot ${robotId} to (${x}, ${y}, ${currentTheta}°)`);
+    
+    const timestamp = new Date().getTime() / 1000;
+    const theta_rad = (currentTheta * Math.PI) / 180;
+    setRobotInitialPosition({
+      variables: {
+        robotId: robotId,
+        x: x,
+        y: y,
+        theta: theta_rad,
+        timestamp: timestamp
+      }
+    }).catch(error => {
+      console.error('Error setting robot initial position:', error);
+    });
+  };
+
   return (
     <div className="App">
       <header className="App-header">
@@ -72,13 +97,27 @@ function AppContent() {
               onSelectRobot={setSelectedRobotId} 
             />
           </div>
-          <hr className="sidebar-divider" style={{ 
+          <div className="mode-toggle">
+            <button 
+              className={positionMode === 'goal' ? 'btn-goal-init-active' : 'btn-goal-init-inactive'}
+              onClick={() => setPositionMode('goal')}
+            >
+              Set Robot Goal
+            </button>
+            <button 
+              className={positionMode === 'initial' ? 'btn-goal-init-active' : 'btn-goal-init-inactive'}
+              onClick={() => setPositionMode('initial')}
+            >
+              Set Initial Position
+            </button>
+          </div>
+          {/* <hr className="sidebar-divider" style={{ 
             width: '100%', 
             border: '0', 
             height: '1px', 
             backgroundColor: '#ccc', 
             margin: '10px 0' 
-          }} />
+          }} /> */}
           <div style={{ overflowY: 'auto', maxHeight: '70%' }}>
             <RobotControls 
               selectedRobotId={selectedRobotId}  
@@ -93,6 +132,8 @@ function AppContent() {
           <RobotMap 
             selectedRobotId={selectedRobotId}
             onSetGoal={handleSetRobotGoal}
+            onSetInitialPosition={handleSetRobotInitialPosition}
+            positionMode={positionMode}
           />
         </div>
       </div>
