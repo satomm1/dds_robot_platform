@@ -5,7 +5,7 @@ import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
 
-const RobotMap = ({ selectedRobotId, onSetGoal }) => {
+const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMode }) => {
   const [mapSize, setMapSize] = useState({ width: 1100, height: 600 });
   // Replace single goalMarker with a map of robot IDs to goal markers
   const [goalMarkers, setGoalMarkers] = useState({});
@@ -24,6 +24,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
   const [occGridResolution, setOccGridResolution] = useState(1);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0, worldX: 0, worldY: 0 });
   const tooltipLayerRef = useRef(null);
+  const [confirmationMessage, setConfirmationMessage] = useState('');
 
   const [mapImage, setMapImage] = useState(null);
   
@@ -283,22 +284,41 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
       const transform = stage.getAbsoluteTransform().copy().invert();
       // Convert screen coordinates to world coordinates
       const worldPos = transform.point(pointerPosition);
+
+      // Calculate map coordinates
+      const mapX = (occGridWidth - worldPos.x/gridCellSize)*occGridResolution;
+      const mapY = worldPos.y*occGridResolution/gridCellSize;
       
-      console.log(`Setting new goal marker for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
-      
-      // Update goalMarkers with a new entry for this robot
-      setGoalMarkers(prevMarkers => ({
-        ...prevMarkers,
-        [selectedRobotId]: {
-          x: worldPos.x,
-          y: worldPos.y,
-          color: getRobotColor(selectedRobotId) // Function to determine color based on robot ID
-        }
-      }));
-      
-      // Send goal to backend using world coordinates (occGridWidth - worldPos.x/occGridResolution)*gridCellSize
-      onSetGoal(selectedRobotId, (occGridWidth - worldPos.x/gridCellSize)*occGridResolution, worldPos.y*occGridResolution/gridCellSize);
-      
+      if (positionMode === 'goal') {
+        console.log(`Setting new goal marker for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
+        
+        // Update goalMarkers
+        setGoalMarkers(prevMarkers => ({
+          ...prevMarkers,
+          [selectedRobotId]: {
+            x: worldPos.x,
+            y: worldPos.y,
+            color: getRobotColor(selectedRobotId)
+          }
+        }));
+        
+        // Send goal to backend
+        onSetGoal(selectedRobotId, mapX, mapY);
+      } else {
+        console.log(`Setting initial position for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
+        
+        // Send initial position to backend without setting a marker
+        onSetInitialPosition(selectedRobotId, mapX, mapY);
+
+        // Show confirmation message
+        setConfirmationMessage(`Initial position set for Robot ${selectedRobotId}`);
+
+        // Clear message after 1.5 seconds
+        setTimeout(() => {
+          setConfirmationMessage('');
+        }, 1500);
+      }
+
       // Only redraw the goal layer
       if (goalLayerRef.current) {
         goalLayerRef.current.batchDraw();
@@ -644,6 +664,29 @@ const RobotMap = ({ selectedRobotId, onSetGoal }) => {
           }}
         >
           ({mousePosition.worldX.toFixed(2)}, {mousePosition.worldY.toFixed(2)})
+        </div>
+      )}
+
+      {/* Confirmation message */}
+      {confirmationMessage && (
+        <div 
+          style={{
+            position: 'absolute',
+            left: `${mousePosition?.x || 0}px`,
+            top: `${(mousePosition?.y || 0) - 30}px`,
+            backgroundColor: '#2196F3', // Blue for initial position
+            color: 'white',
+            padding: '6px 12px',
+            borderRadius: '4px',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            pointerEvents: 'none',
+            zIndex: 1000,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            animation: 'fadeIn 0.3s'
+          }}
+        >
+          {confirmationMessage}
         </div>
       )}
       

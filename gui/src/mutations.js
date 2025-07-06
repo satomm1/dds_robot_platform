@@ -14,3 +14,12 @@ export const CLEAR_ALL_OBJECTS = gql`
     mutation ClearAllObjects {
         clearAllObjects
 }`;
+
+export const SET_ROBOT_INITIAL_POSITION = gql`
+  mutation SetRobotInitialPosition($robotId: Int!, $x: Float!, $y: Float!, $theta: Float!, $timestamp: Float!) {
+    setRobotInitialPosition(robot_id: $robotId, 
+                            x_init: $x, 
+                            y_init: $y, 
+                            theta_init: $theta, 
+                            init_timestamp: $timestamp) 
+}`;
