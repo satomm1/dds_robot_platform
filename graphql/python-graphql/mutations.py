@@ -38,6 +38,21 @@ def resolve_set_robot_position(_, info, robot_id, x, y, theta):
     except:
         return False
     
+@mutation.field("setRobotInitialPosition")
+def resolve_set_robot_initial_position(_, info, robot_id, x_init, y_init, theta_init, init_timestamp):
+    position_cache = ignite_client.get_or_create_cache('robot_initial_position')
+    position = {
+        "x": x_init,
+        "y": y_init,
+        "theta": theta_init,
+        "timestamp": init_timestamp
+    }
+    try:
+        position_cache.put(robot_id, json.dumps(position))
+        return True
+    except:
+        return False
+    
 @mutation.field("clearRobotPosition")
 def resolve_clear_robot_position(_, info, robot_id):
     position_cache = ignite_client.get_or_create_cache('robot_position')

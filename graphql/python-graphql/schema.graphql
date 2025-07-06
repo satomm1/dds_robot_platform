@@ -17,6 +17,10 @@ type Robot {
     x: Float
     y: Float
     theta: Float
+    x_init: Float
+    y_init: Float
+    theta_init: Float
+    init_timestamp: Float
     x_goal: Float
     y_goal: Float
     theta_goal: Float
@@ -72,6 +76,8 @@ type Query {
     map: Map
     robotPosition(robot_id: Int): Robot
     robotPositions: [Robot]
+    robotInitialPosition(robot_id: Int): Robot
+    robotInitialPositions: [Robot]
     robotGoal(robot_id: Int): Robot
     robotGoals: [Robot]
     robotVelocity(robot_id: Int): Robot
@@ -92,6 +98,7 @@ type Query {
 type Mutation {
     setRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float, from_bot: Boolean): Boolean
     setRobotPosition(robot_id: Int, x: Float, y: Float, theta: Float): Boolean
+    setRobotInitialPosition(robot_id: Int, x_init: Float, y_init: Float, theta_init: Float, init_timestamp: Float): Boolean
     clearRobotPosition(robot_id: Int): Boolean
     clearRobot(robot_id: Int): Boolean
     setAgentList(agent_list: [Int]): Boolean

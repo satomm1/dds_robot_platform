@@ -62,6 +62,41 @@ def resolve_data(*_):
         })
     return all_robots
 
+@query.field("robotInitialPosition")
+def resolve_data(*_, robot_id: int):
+    position_cache = ignite_client.get_or_create_cache('robot_initial_position')
+    robot = position_cache.get(robot_id)
+    if robot is None:
+        return {
+            "x_init": None,
+            "y_init": None,
+            "theta_init": None
+        }
+    robot = json.loads(robot)
+    return {
+        "x_init": robot["x"],
+        "y_init": robot["y"],
+        "theta_init": robot["theta"],
+        "init_timestamp": robot.get("timestamp", None)
+    }
+
+@query.field("robotInitialPositions")
+def resolve_data(*_):
+    position_cache = ignite_client.get_or_create_cache('robot_initial_position')
+    robots = position_cache.scan()
+    all_robots = []
+    for robot in robots:
+        robot_id = robot[0]
+        robot = json.loads(robot[1])
+        all_robots.append({
+            "id": robot_id,
+            "x_init": robot["x"],
+            "y_init": robot["y"],
+            "theta_init": robot["theta"],
+            "init_timestamp": robot.get("timestamp", None)
+        })
+    return all_robots
+
 @query.field("robotVelocity")
 def resolve_data(*_, robot_id: int):
     velocity_cache = ignite_client.get_or_create_cache('robot_odom')

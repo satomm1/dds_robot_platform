@@ -30,6 +30,18 @@ ROBOT_GOALS_QUERY = """
                     }
                     """
 
+ROBOT_INITIAL_POSITIONS_QUERY = """
+                            query {
+                                robotInitialPositions {
+                                    id
+                                    x_init
+                                    y_init
+                                    theta_init
+                                    init_timestamp
+                                }
+                            }
+                            """
+
 TRANSFORMATION_MATRIX_QUERY = """
                             query {
                                 transform {
@@ -53,6 +65,7 @@ class GoalWriter:
             self.graphql_server = server_url
 
         self.robot_goal_history = dict()
+        self.robot_init_history = dict()
 
         self.lease_duration_ms = 30000
         qos_profile = DomainParticipantQos()
@@ -159,6 +172,50 @@ class GoalWriter:
                             
                             message_writer.write(command_message)
                             print("Received new goal *********************")
+
+
+                # Query for any robot initial positions
+                response = requests.post(self.graphql_server, json={'query': ROBOT_INITIAL_POSITIONS_QUERY}, timeout=1)
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Get the robot goals from the response
+                    robot_init = data.get('data', {}).get('robotInitialPositions', [])
+
+                    for robot in robot_init:
+                        robot_id = int(robot['id'])
+                        robot_x = robot['x_init']
+                        robot_y = robot['y_init']
+                        robot_theta = robot['theta_init']
+                        robot_timestamp = robot['init_timestamp']
+
+                        # Transform the initial position to the reference map
+                        robot_x, robot_y, robot_theta = self.transform_point([robot_x, robot_y, robot_theta], forward=True)
+
+                        if robot_id not in self.robot_init_history:
+                            # Store initial position in history
+                            self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
+
+                            # Check if the initial position is recent
+                            if abs(current_time - robot_timestamp) < 10:
+
+                                # Send the initial position to the robot
+                                init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
+                                command_message = DataMessage('position_init', int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
+                                message_topic = Topic(self.participant, 'DataTopic' + str(robot_id), DataMessage)
+                                message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
+                                message_writer.write(command_message)
+                        elif self.robot_init_history[robot_id] != (robot_x, robot_y, robot_theta, robot_timestamp):
+                            # Store initial position in history
+                            self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
+                            init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
+                            command_message = DataMessage('position_init', int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
+                            message_topic = Topic(self.participant, 'DataTopic' + str(robot_id), DataMessage)
+                            message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
+                            
+                            message_writer.write(command_message)
+                            print("Received new initial position *********************")
+
             except Exception as e:
                 # print("No goals yet...", e)
                 pass
