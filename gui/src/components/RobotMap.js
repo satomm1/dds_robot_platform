@@ -37,6 +37,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   // Zoom scale limits
   const minScale = 0.1;
   const maxScale = 3;
+  const [scale, setScale] = useState(minScale); // Start at minimum zoom level
 
   // Update container size based on parent element
   useEffect(() => {
@@ -416,6 +417,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
     };
     
     // Apply new position and scale
+    setScale(newScale); // Update the scale state
     stage.scale({ x: newScale, y: newScale });
     stage.position(newPos);
     stage.batchDraw();
@@ -473,7 +475,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   return (
     <div 
       ref={containerRef} 
-      style={{ width: '100%', height: '500px', border: '1px solid #ccc', overflow: 'hidden' }}
+      style={{ width: '100%', height: '100%', border: '1px solid #ccc', overflow: 'hidden' }}
     >
       <Stage 
         ref={stageRef}
@@ -485,6 +487,8 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
         draggable={true}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        scaleX={scale}
+        scaleY={scale}
       >
         {/* Separate layer for the grid - doesn't need to update frequently */}
         <Layer ref={gridLayerRef}>
