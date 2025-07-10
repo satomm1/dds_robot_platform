@@ -361,8 +361,16 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   const getRobotColor = (robotId) => {
     // Generate a color based on the robot ID
     // This is a simple hash function to generate a color
-    const hash = Number(robotId) * 137 % 360;
-    return `hsl(${hash}, 70%, 50%)`; // Use HSL for more distinct colors
+    // Special case for robot ID 1
+    if (Number(robotId) === 1) {
+      return '#00ec15';
+    } else if (Number(robotId) === 2) {
+      return '#e700cf'; // Red for robot ID 2
+    } else {
+      // For other robot IDs, generate a color based on the ID
+      const hash = Number(robotId) * 137 % 360;
+      return `hsl(${hash}, 70%, 50%)`; // Use HSL for more distinct colors
+    }
   };
 
   // Helper function to get appearance of objects based on type
@@ -550,9 +558,9 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
                 x={(occGridWidth*occGridResolution - robot.x)*gridCellSize/occGridResolution} // Invert x for correct orientation
                 y={(robot.y)*gridCellSize/occGridResolution} // Keep y as is for correct orientation
                 radius={12}
-                fill={robot.id === selectedRobotId ? '#ff4444' : '#4444ff'}
+                fill={getRobotColor(robot.id)}
                 stroke="#000"
-                strokeWidth={2}
+                strokeWidth={robot.id === selectedRobotId ? 4 : 2}
               />
               {/* Arrow to indicate direction */}
               <Line
