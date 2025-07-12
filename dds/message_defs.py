@@ -79,6 +79,7 @@ class Location(IdlStruct):
     x: float
     y: float
     theta: float
+    static: bool
 
 
 # Create different policies for the DDS entities
