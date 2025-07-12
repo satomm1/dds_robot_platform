@@ -35,9 +35,7 @@ const RobotSelector = ({ selectedRobotId, onSelectRobot }) => {
               {robot.name || `Robot ${robot.id}`}
               <span className="status-indicator" 
                     style={{ 
-                      backgroundColor: robot.status === 'ACTIVE' ? 'green' : 
-                                      robot.status === 'IDLE' ? 'blue' : 
-                                      robot.status === 'ERROR' ? 'red' : 'gray' 
+                      backgroundColor: robot.id === selectedRobotId ? 'green' : 'grey' 
                     }}>
               </span>
             </li>
