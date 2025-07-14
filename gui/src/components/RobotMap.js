@@ -749,7 +749,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
             onClick={() => {
               if (stageRef.current) {
                 const stage = stageRef.current;
-                stage.scale({ x: 1, y: 1 });
+                stage.scale({ x: minScale, y: minScale });
                 stage.position({ x: 0, y: 0 });
                 stage.batchDraw();
               }
