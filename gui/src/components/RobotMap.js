@@ -4,6 +4,7 @@ import { Image as KonvaImage } from 'react-konva'; // Add this line
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
+import { getRobotColor } from '../utils'; // Ensure this utility function exists
 
 const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMode }) => {
   const [mapSize, setMapSize] = useState({ width: 1100, height: 600 });
@@ -354,22 +355,6 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
       if (tooltipLayerRef.current) {
         tooltipLayerRef.current.batchDraw();
       }
-    }
-  };
-
-  // Helper function to get unique color for each robot
-  const getRobotColor = (robotId) => {
-    // Generate a color based on the robot ID
-    // This is a simple hash function to generate a color
-    // Special case for robot ID 1
-    if (Number(robotId) === 1) {
-      return '#00ec15';
-    } else if (Number(robotId) === 2) {
-      return '#e700cf'; // Red for robot ID 2
-    } else {
-      // For other robot IDs, generate a color based on the ID
-      const hash = Number(robotId) * 137 % 360;
-      return `hsl(${hash}, 70%, 50%)`; // Use HSL for more distinct colors
     }
   };
 

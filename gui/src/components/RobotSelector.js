@@ -2,6 +2,7 @@
 import React from 'react';
 import { useQuery } from '@apollo/client';
 import { GET_ROBOT_POSITIONS } from '../queries';
+import { getRobotColor } from '../utils';
 
 const RobotSelector = ({ selectedRobotId, onSelectRobot }) => {
   // Query for robot list
@@ -35,7 +36,7 @@ const RobotSelector = ({ selectedRobotId, onSelectRobot }) => {
               {robot.name || `Robot ${robot.id}`}
               <span className="status-indicator" 
                     style={{ 
-                      backgroundColor: robot.id === selectedRobotId ? 'green' : 'grey' 
+                      backgroundColor: getRobotColor(robot.id) 
                     }}>
               </span>
             </li>
