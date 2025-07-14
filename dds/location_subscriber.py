@@ -1,12 +1,14 @@
 from cyclonedds.domain import DomainParticipant, DomainParticipantQos
 from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
-from cyclonedds.pub import Publisher, DataWriter
 from cyclonedds.util import duration
-from cyclonedds.idl import IdlStruct
 from cyclonedds.idl.types import sequence
 from cyclonedds.core import Qos, Policy, Listener
-from cyclonedds.builtin import BuiltinDataReader, BuiltinTopicDcpsParticipant
+
+import influxdb_client
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
+
 
 import time
 import json
@@ -55,7 +57,7 @@ class LocationListener(Listener):
         set_agent_ids(agent_ids): Sets the agent IDs and updates the locations dictionary.
     """
 
-    def __init__(self, my_id, my_ip, server_url=None):
+    def __init__(self, my_id, my_ip, server_url=None, influx_write_api=None):
         super().__init__()
         self.my_id = my_id
         self.my_ip = my_ip
@@ -69,6 +71,8 @@ class LocationListener(Listener):
             self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
         else:
             self.graphql_server = server_url
+
+        self.influx_write_api = influx_write_api
 
     def transform_point(self, point, forward=True):
         if self.R is None:
@@ -126,6 +130,17 @@ class LocationListener(Listener):
                                 timeout=1
                             )
 
+                # Write to InfluxDB if the write API is available                
+                if self.influx_write_api is not None:
+                    # Write the data to InfluxDB
+                    point = Point("robot_position") \
+                        .tag("robot_id", str(agent_id)) \
+                        .field("x", x) \
+                        .field("y", y) \
+                        .field("theta", theta) \
+                        .time(sample.timestamp, WritePrecision.S)
+                    self.influx_write_api.write(bucket="first_bucket", org="eig", record=point)
+
     def get_locations(self):
         """
         Returns the locations dictionary.
@@ -136,9 +151,11 @@ class LocationListener(Listener):
         return self.locations
 
 class LocationSubscriber:
-    def __init__(self, my_id, server_url=None):
+    def __init__(self, my_id, server_url=None, influx_client=None):
 
         self.my_id = my_id
+        self.influx_client = influx_client
+        self.influx_write_api = self.influx_client.write_api(write_options=SYNCHRONOUS)
         
         self.my_ip = get_ip()
         # GraphQL server URL
@@ -169,7 +186,7 @@ class LocationSubscriber:
         for agent_id in self.subscribed_agents:
             print(f"Subscribed to agent {agent_id} location")
             new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
-            self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip)
+            self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip, influx_write_api=self.influx_write_api)
             self.location_listeners[agent_id].update_transformation(self.R, self.t)
             self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
     
@@ -184,7 +201,7 @@ class LocationSubscriber:
                 for agent_id in new_agents:
                     print(f"    Subscribed to agent {agent_id} location")
                     new_location_topic = Topic(self.participant, 'LocationTopic' + str(agent_id), Location)
-                    self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip)
+                    self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip, influx_write_api=self.influx_write_api)
                     self.location_listeners[agent_id].update_transformation(self.R, self.t)
                     self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
@@ -252,11 +269,18 @@ if __name__ == '__main__':
     agent_id = os.getenv('AGENT_ID')
     if agent_id is None:
         raise ValueError("AGENT_ID environment variable not set")
+    
+    token = os.environ.get("INFLUXDB_TOKEN")
+    if token is None:
+        raise ValueError("INFLUXDB_TOKEN environment variable not set")
+    org = "eig"
+    url = "http://localhost:8086"
+    write_client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
 
     time.sleep(10)  # Wait for the participant to do entry and initialization
 
     # Create an instance of the location subscriber
-    loc_subscriber = LocationSubscriber(agent_id)
+    loc_subscriber = LocationSubscriber(agent_id, influx_client=write_client)
 
     def handle_signal(sig, frame):
         loc_subscriber.shutdown()
