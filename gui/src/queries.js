@@ -49,6 +49,8 @@ export const GET_ROBOT_GOALS = gql`
             x_goal
             y_goal
             theta_goal
+            goal_timestamp
+            goal_valid
         }
     }
 `;

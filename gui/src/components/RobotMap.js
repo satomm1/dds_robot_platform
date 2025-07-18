@@ -26,6 +26,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0, worldX: 0, worldY: 0 });
   const tooltipLayerRef = useRef(null);
   const [confirmationMessage, setConfirmationMessage] = useState('');
+  const [invalidGoalMessages, setInvalidGoalMessages] = useState({});
 
   const [mapImage, setMapImage] = useState(null);
   
@@ -87,14 +88,37 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
       if (data && data.robotGoals) {
         // Update goal markers based on server data
         const newGoalMarkers = {};
+        const newInvalidGoalMessages = {};
+
         data.robotGoals.forEach(goal => {
-          newGoalMarkers[goal.id] = {
-            x: (occGridWidth - goal.x_goal/occGridResolution) * gridCellSize, // Convert grid coordinates to pixels
-            y: goal.y_goal * gridCellSize / occGridResolution, // Convert grid coordinates to pixels
-            color: getRobotColor(goal.id)
-          };
+          if (!goal.goal_valid) {
+            newGoalMarkers[goal.id] = {
+              x: (occGridWidth - goal.x_goal/occGridResolution) * gridCellSize, // Convert grid coordinates to pixels
+              y: goal.y_goal * gridCellSize / occGridResolution, // Convert grid coordinates to pixels
+              color: 'red'
+            };
+
+            // Check if goal_timestamp is recent (less than 10 seconds ago)
+            const goalTime = new Date(goal.goal_timestamp).getTime();
+            const currentTime = Date.now()/1000;
+            const timeDiffInSeconds = (currentTime - goalTime) ;
+            
+            if (timeDiffInSeconds < 5) {
+              console.warn(`Invalid goal for robot ${goal.id} at (${goal.x_goal}, ${goal.y_goal}) - too old`);
+              newInvalidGoalMessages[goal.id] = {
+                timestamp: goalTime
+              };
+            }
+          } else {
+            newGoalMarkers[goal.id] = {
+              x: (occGridWidth - goal.x_goal/occGridResolution) * gridCellSize, // Convert grid coordinates to pixels
+              y: goal.y_goal * gridCellSize / occGridResolution, // Convert grid coordinates to pixels
+              color: getRobotColor(goal.id)
+            };
+          }
         });
         setGoalMarkers(newGoalMarkers);
+        setInvalidGoalMessages(newInvalidGoalMessages);
       }
     }
   });
@@ -686,6 +710,33 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
           {confirmationMessage}
         </div>
       )}
+
+      {/* Render tooltips for invalid goals */}
+      {Object.entries(invalidGoalMessages).map(([robotId, info]) => {
+          return (
+            <div 
+              key={`tooltip-${robotId}`}
+              style={{
+                position: 'absolute',
+                left: `${stageRef.current ? stageRef.current.container().offsetLeft + (mousePosition?.x * scale) : 0}px`,
+                top: `${stageRef.current ? stageRef.current.container().offsetTop + (mousePosition?.y * scale) - 35 : 0}px`,
+                backgroundColor: '#F44336',
+                color: 'white',
+                padding: '5px 10px',
+                borderRadius: '4px',
+                fontSize: '12px',
+                pointerEvents: 'none',
+                zIndex: 1000,
+                transform: 'translate(-50%, -100%)',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Goal is invalid
+            </div>
+          );
+        
+        return null;
+      })}
       
       {/* Controls for zoom and goal management */}
       <div style={{ position: 'absolute', bottom: '20px', right: '20px', background: 'white', padding: '5px', borderRadius: '5px', boxShadow: '0 0 5px rgba(0,0,0,0.3)' }}>
