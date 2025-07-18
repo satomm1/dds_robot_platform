@@ -36,8 +36,8 @@ TRANSFORM_QUERY =   """
                     """
 
 ROBOT_GOAL_MUTATION =   """
-                            mutation($robot_id: Int!, $x_goal: Float!, $y_goal: Float!, $theta_goal: Float!, $goal_timestamp: Float!, $from_bot: Boolean) {
-                                setRobotGoal(robot_id: $robot_id, x_goal: $x_goal, y_goal: $y_goal, theta_goal: $theta_goal, goal_timestamp: $goal_timestamp, from_bot: $from_bot)
+                            mutation($robot_id: Int!, $x_goal: Float!, $y_goal: Float!, $theta_goal: Float!, $goal_timestamp: Float!, $from_bot: Boolean, $goal_valid: Boolean) {
+                                setRobotGoal(robot_id: $robot_id, x_goal: $x_goal, y_goal: $y_goal, theta_goal: $theta_goal, goal_timestamp: $goal_timestamp, from_bot: $from_bot, goal_valid: $goal_valid)
                             }
                         """
 
@@ -212,12 +212,32 @@ class DataListener(Listener):
                                 self.graphql_server,
                                 json={'query': ROBOT_GOAL_MUTATION,
                                     'variables': {
-                                        'robot_id': agent_id,
+                                        'robot_id': int(self.topic_id),
                                         'x_goal': x,
                                         'y_goal': y,
                                         'theta_goal': theta,
                                         'goal_timestamp': timestamp,
-                                        'from_bot': True
+                                        'from_bot': True,
+                                        'goal_valid': True
+                                    }
+                                },
+                                timeout=1
+                            )
+                
+            elif message_type == "invalid_goal":
+                print("Goal was invalid!")
+                x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
+                response =  requests.post(
+                                self.graphql_server,
+                                json={'query': ROBOT_GOAL_MUTATION,
+                                    'variables': {
+                                        'robot_id': int(self.topic_id),
+                                        'x_goal': x,
+                                        'y_goal': y,
+                                        'theta_goal': theta,
+                                        'goal_timestamp': timestamp,
+                                        'from_bot': True,
+                                        'goal_valid': False
                                     }
                                 },
                                 timeout=1

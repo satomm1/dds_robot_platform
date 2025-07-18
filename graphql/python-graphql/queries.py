@@ -123,7 +123,8 @@ def resolve_data(*_, robot_id: int):
             "x_goal": None,
             "y_goal": None,
             "theta_goal": None,
-            "goal_timestamp": None
+            "goal_timestamp": None,
+            "goal_valid": True
         }
     robot = json.loads(robot)
     from_bot = 0
@@ -134,7 +135,8 @@ def resolve_data(*_, robot_id: int):
         "y_goal": robot["y"],
         "theta_goal": robot["theta"],
         "goal_timestamp": robot["timestamp"],
-        "goal_from_bot": from_bot
+        "goal_from_bot": from_bot,
+        "goal_valid": robot.get("valid", True)
     }
 
 @query.field("robotGoals")
@@ -150,7 +152,8 @@ def resolve_data(*_):
             "x_goal": goal["x"],
             "y_goal": goal["y"],
             "theta_goal": goal["theta"],
-            "goal_timestamp": goal["timestamp"]
+            "goal_timestamp": goal["timestamp"],
+            "goal_valid": goal.get("valid", True)
         })
     return all_goals
 
