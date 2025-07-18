@@ -26,6 +26,7 @@ ROBOT_GOALS_QUERY = """
                             y_goal
                             theta_goal
                             goal_timestamp
+                            goal_valid
                         }
                     }
                     """
@@ -144,6 +145,11 @@ class GoalWriter:
                         robot_goal_y = robot_goal['y_goal']
                         robot_goal_theta = robot_goal['theta_goal']
                         robot_goal_timestamp = robot_goal['goal_timestamp']
+                        robot_goal_valid = robot_goal.get('goal_valid', True)
+
+                        if not robot_goal_valid:
+                            # Skip invalid goals
+                            continue
 
                         # Transform the goal to the reference map
                         robot_goal_x, robot_goal_y, robot_goal_theta = self.transform_point([robot_goal_x, robot_goal_y, robot_goal_theta], forward=True)

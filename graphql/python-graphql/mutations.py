@@ -8,13 +8,14 @@ from ignite import ignite_client
 mutation = MutationType()
 
 @mutation.field("setRobotGoal")
-def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_timestamp, from_bot=None):
+def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_timestamp, from_bot=None, goal_valid=True):
     goal_cache = ignite_client.get_or_create_cache('robot_goal')
     goal = {
         "x": x_goal,
         "y": y_goal,
         "theta": theta_goal,
-        "timestamp": goal_timestamp
+        "timestamp": goal_timestamp,
+        "valid": goal_valid
     }
     if from_bot is not None:
         goal["from_bot"] = from_bot

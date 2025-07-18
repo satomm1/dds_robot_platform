@@ -24,6 +24,7 @@ type Robot {
     x_goal: Float
     y_goal: Float
     theta_goal: Float
+    goal_valid: Boolean
     goal_timestamp: Float
     v_x: Float
     v_y: Float
@@ -96,7 +97,7 @@ type Query {
 }
 
 type Mutation {
-    setRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float, from_bot: Boolean): Boolean
+    setRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float, from_bot: Boolean, goal_valid: Boolean): Boolean
     setRobotPosition(robot_id: Int, x: Float, y: Float, theta: Float): Boolean
     setRobotInitialPosition(robot_id: Int, x_init: Float, y_init: Float, theta_init: Float, init_timestamp: Float): Boolean
     clearRobotPosition(robot_id: Int): Boolean
