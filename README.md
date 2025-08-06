@@ -12,6 +12,9 @@ To run DDS, you need [Docker Desktop](https://www.docker.com/products/docker-des
 
 You will also need a conda interpreter. I recommend [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/main). 
 
+> [!NOTE]
+> I run this on a Windows machine with WSL (Windows Subsystem for Linux). The Docker and dds code should be run via WSL, the GUI should be run from Windows terminal.
+
 ## DDS
 1) Download my Docker python environment from: https://drive.google.com/drive/folders/1emeEoJrZxV4Nn6ktKUAyXbSTj0LjnlfB?usp=drive_link.
 
