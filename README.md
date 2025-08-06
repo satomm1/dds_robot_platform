@@ -17,7 +17,7 @@ You will also need a conda interpreter. I recommend [miniconda](https://www.anac
 
     Load the docker image:
     ```
-    docker load < matt_python_latext.tar.gz
+    docker load < matt_python_latest.tar.gz
     ```
 
 2) Prepare the conda environment:
