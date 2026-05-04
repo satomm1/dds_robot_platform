@@ -10,6 +10,7 @@ from .config import (
     OLLAMA_URL,
     PARTICIPANT_LEASE_DURATION_MS,
     default_graphql_url,
+    resolve_graphql_http_url,
 )
 from .gql_queries import AGENTS_QUERY, TRANSFORM_QUERY
 from .gql_subscriber_sync import fetch_subscribed_agent_ids_set, fetch_transform_Rt_blocking
@@ -71,6 +72,7 @@ __all__ = [
     "create_domain_participant",
     "data_topic_name",
     "default_graphql_url",
+    "resolve_graphql_http_url",
     "dispose_entity",
     "dispose_participant",
     "fetch_subscribed_agent_ids_set",

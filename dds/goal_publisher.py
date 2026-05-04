@@ -21,6 +21,7 @@ from dds_utils import (
     require_agent_id_int,
     transform_se2,
 )
+from dds_utils.config import resolve_graphql_http_url
 from dds_utils.topics import data_topic_name
 
 ROBOT_GOALS_QUERY = """
@@ -63,12 +64,8 @@ class GoalWriter:
 
         self.my_id = my_id
 
-        # GraphQL server URL
         self.my_ip = get_ip()
-        if server_url is None:
-            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
-        else:
-            self.graphql_server = server_url
+        self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
 
         self.robot_goal_history = dict()
         self.robot_init_history = dict()

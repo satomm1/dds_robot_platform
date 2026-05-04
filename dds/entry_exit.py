@@ -16,7 +16,7 @@ import base64
 from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, OccupancyGrid, msg_to_dict
 from message_defs import EntryExit, Initialization, reliable_qos, best_effort_qos, get_ip
 
-from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD
+from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD, resolve_graphql_http_url
 from dds_utils import (
     AgentIdError,
     create_domain_participant,
@@ -413,11 +413,7 @@ class EntryExitCommunication:
         self.enter_exit_reader = None
         self.init_reader = None
 
-        # GraphQL server URL
-        if server_url is None:
-            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
-        else:
-            self.graphql_server = server_url
+        self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
 
         self.last_time = int(time.time())
 
@@ -763,7 +759,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # Create an instance of the EntryExitCommunication class
-    entry_exit_obj = EntryExitCommunication(agent_id, server_url='http://localhost:8000/graphql')
+    entry_exit_obj = EntryExitCommunication(agent_id, server_url=None)
 
     def handle_signal(sig, frame):
         entry_exit_obj.shutdown()

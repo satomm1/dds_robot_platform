@@ -26,7 +26,7 @@ from dds_utils import (
     require_agent_id_int,
     transform_se2,
 )
-from dds_utils.config import INFLUX_ORG, INFLUX_URL
+from dds_utils.config import INFLUX_ORG, INFLUX_URL, resolve_graphql_http_url
 from dds_utils.topics import data_topic_name
 
 ROBOT_GOAL_MUTATION =   """
@@ -254,11 +254,7 @@ class DataSubscriber:
         self.influx_write_api = self.influx_client.write_api(write_options=SYNCHRONOUS)
 
         self.my_ip = get_ip()
-        # GraphQL server URL
-        if server_url is None:
-            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
-        else:
-            self.graphql_server = server_url
+        self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
 
         self.subscribed_agents = self.get_agents()
 

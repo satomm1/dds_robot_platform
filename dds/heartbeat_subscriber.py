@@ -12,7 +12,7 @@ import requests
 
 from message_defs import Heartbeat, best_effort_qos, get_ip
 
-from dds_utils.config import HEARTBEAT_PERIOD, HEARTBEAT_TIMEOUT
+from dds_utils.config import HEARTBEAT_PERIOD, HEARTBEAT_TIMEOUT, resolve_graphql_http_url
 from dds_utils import (
     AgentIdError,
     create_domain_participant,
@@ -107,12 +107,8 @@ class HeartbeatSubscriber:
         # Get hash
         self.my_hash = hash_func(self.my_id)
 
-        # GraphQL server URL
         self.my_ip = get_ip()
-        if server_url is None:
-            self.graphql_server =  f"http://{self.my_ip}:8000/graphql" 
-        else:
-            self.graphql_server = server_url
+        self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
 
         # Dictionary to store agents in the environment
         self.agents = dict()
