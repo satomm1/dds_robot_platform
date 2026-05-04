@@ -7,8 +7,16 @@ export const SET_ROBOT_GOAL = gql`
                      x_goal: $xGoal, 
                      y_goal: $yGoal, 
                      theta_goal: $thetaGoal, 
-                     goal_timestamp: $timestamp)
+                     goal_timestamp: $timestamp,
+                     from_bot: false,
+                     goal_valid: true)
 }`;
+
+export const REQUEST_ROBOT_STOP = gql`
+  mutation RequestRobotStop($robotId: Int!) {
+    requestRobotStop(robot_id: $robotId)
+  }
+`;
 
 export const CLEAR_ALL_OBJECTS = gql`
     mutation ClearAllObjects {

@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import './App.css';
-import { ApolloProvider, useMutation } from '@apollo/client';
+import { ApolloProvider, useMutation, useQuery } from '@apollo/client';
 import client from './apolloClient';
 import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import RobotTypedGoals from './components/RobotTypedGoals';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION } from './mutations';
+import { GET_ROBOT_POSITIONS } from './queries';
+
+const ROBOT_POSITIONS_POLL_MS = 2000;
 
 const devLog = (...args) => {
   if (process.env.NODE_ENV === 'development') {
@@ -24,7 +27,16 @@ function App() {
 
 // Create a new component that's wrapped by ApolloProvider
 function AppContent() {
-  const [selectedRobotId, setSelectedRobotId] = useState('');
+  const [selectedRobotId, setSelectedRobotId] = useState(null);
+
+  const { data: positionsData, loading: positionsLoading, error: positionsError } = useQuery(
+    GET_ROBOT_POSITIONS,
+    {
+      pollInterval: ROBOT_POSITIONS_POLL_MS,
+      fetchPolicy: 'cache-and-network',
+    }
+  );
+  const robotPositions = positionsData?.robotPositions ?? [];
 
   // State for theta, if needed
   const [currentTheta, setCurrentTheta] = useState(0);
@@ -100,7 +112,10 @@ function AppContent() {
           <div style={{ overflowY: 'auto', maxHeight: '40%' }}>
             <RobotSelector 
               selectedRobotId={selectedRobotId} 
-              onSelectRobot={setSelectedRobotId} 
+              onSelectRobot={setSelectedRobotId}
+              robotPositions={robotPositions}
+              positionsLoading={positionsLoading}
+              positionsError={positionsError}
             />
           </div>
           <div className="mode-toggle">
@@ -119,7 +134,10 @@ function AppContent() {
           </div>
           <div style={{ overflowY: 'auto', maxHeight: '70%' }}>
             <RobotControls 
-              selectedRobotId={selectedRobotId}  
+              selectedRobotId={selectedRobotId}
+              robotPositions={robotPositions}
+              positionsLoading={positionsLoading}
+              positionsError={positionsError}
             />
             <RobotTypedGoals
               selectedRobotId={selectedRobotId} 
@@ -130,6 +148,9 @@ function AppContent() {
         <div className="map-container">
           <RobotMap 
             selectedRobotId={selectedRobotId}
+            robotPositions={robotPositions}
+            positionsLoading={positionsLoading}
+            positionsError={positionsError}
             onSetGoal={handleSetRobotGoal}
             onSetInitialPosition={handleSetRobotInitialPosition}
             positionMode={positionMode}

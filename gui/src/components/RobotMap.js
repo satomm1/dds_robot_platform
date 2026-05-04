@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Rect, Circle, Line, Text, Label, Tag } from 'react-konva';
 import { Image as KonvaImage } from 'react-konva'; // Add this line
 import { useQuery, useMutation } from '@apollo/client';
-import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
+import { GET_OCCUPANCY_GRID, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
 import { getRobotColor } from '../utils';
 
@@ -13,7 +13,15 @@ const devWarn = (...args) => {
   if (process.env.NODE_ENV === 'development') console.warn(...args);
 };
 
-const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMode }) => {
+const RobotMap = ({
+  selectedRobotId,
+  robotPositions = [],
+  positionsLoading,
+  positionsError,
+  onSetGoal,
+  onSetInitialPosition,
+  positionMode,
+}) => {
   const [mapSize, setMapSize] = useState({ width: 1100, height: 600 });
   // Replace single goalMarker with a map of robot IDs to goal markers
   const [goalMarkers, setGoalMarkers] = useState({});
@@ -73,19 +81,12 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
     return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
   };
   
-  // Query for robot positions with explicit polling
-  const { loading: robotsLoading, error: robotsError } = useQuery(GET_ROBOT_POSITIONS, {
-    ...defaultPollOptions,
-    onCompleted: (data) => {
-      if (data && data.robotPositions) {
-        devLog('Fetched robot positions:', data.robotPositions);
-        setRobots(data.robotPositions);
-      }
-    },
-    onError: (error) => {
-      console.error('Error fetching robot positions:', error);
+  useEffect(() => {
+    if (robotPositions && robotPositions.length >= 0) {
+      devLog('Robot positions from parent:', robotPositions);
+      setRobots(robotPositions);
     }
-  });
+  }, [robotPositions]);
 
   // Query for robot goals with explicit polling
   useQuery(GET_ROBOT_GOALS, {
@@ -485,8 +486,12 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   // Display loading or error states
   if (mapLoading && !mapData) return <div>Loading map...</div>;
   if (mapError) return <div>Error loading map: {mapError.message}</div>;
-  if (robotsLoading && !robots.length && !mapData) return <div>Loading robot positions...</div>;
-  if (robotsError) return <div>Error loading robot positions: {robotsError.message}</div>;
+  if (positionsLoading && !robots.length && !mapData) {
+    return <div>Loading robot positions...</div>;
+  }
+  if (positionsError) {
+    return <div>Error loading robot positions: {positionsError.message}</div>;
+  }
 
   return (
     <div 

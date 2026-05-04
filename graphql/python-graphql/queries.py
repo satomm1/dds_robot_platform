@@ -1,17 +1,38 @@
 from ariadne import load_schema_from_path, make_executable_schema, gql, QueryType
 import json
+import logging
 import numpy as np
 
 from ignite import ignite_client
+
+logger = logging.getLogger(__name__)
 
 md_cache = ignite_client.get_or_create_cache('map_metadata')
 map_cache = ignite_client.get_or_create_cache('map')
 query = QueryType()
 
+STOP_REQUEST_CACHE = "robot_stop_request"
+
+
 @query.field("map")
 def resolve_data(*_):
     md = md_cache.get(1)
     map = map_cache.get(1)
+    if md is None or map is None:
+        logger.debug("map query: missing map_metadata or map bytes")
+        return {
+            "occupancy": [],
+            "height": 0,
+            "width": 0,
+            "resolution": 1.0,
+            "origin_x": 0.0,
+            "origin_y": 0.0,
+            "origin_z": 0.0,
+            "origin_orientation_x": 0.0,
+            "origin_orientation_y": 0.0,
+            "origin_orientation_z": 0.0,
+            "origin_orientation_w": 1.0,
+        }
     map = np.frombuffer(map, dtype=int)
     md = json.loads(md)
     map = map.tolist()
@@ -157,6 +178,29 @@ def resolve_data(*_):
         })
     return all_goals
 
+
+@query.field("pendingRobotStops")
+def resolve_pending_robot_stops(*_):
+    stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
+    pending = []
+    try:
+        for row in stop_cache.scan():
+            robot_id, raw = row[0], row[1]
+            if raw is None:
+                continue
+            doc = json.loads(raw)
+            if doc.get("pending"):
+                pending.append(
+                    {
+                        "id": int(robot_id),
+                        "requested_at": float(doc.get("requested_at", 0.0)),
+                    }
+                )
+    except Exception as exc:
+        logger.exception("pendingRobotStops scan failed: %s", exc)
+    return pending
+
+
 @query.field("robotPath")
 def resolve_data(*_, robot_id: int):
     path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
@@ -196,17 +240,41 @@ def resolve_data(*_):
 def resolve_data(*_, robot_id: int):
     scan_cache = ignite_client.get_or_create_cache('robot_scan')
     robot = scan_cache.get(robot_id)
-    robot = json.loads(robot)
-    print(robot)
+    if robot is None:
+        logger.debug("robotScan cache miss for robot_id=%s", robot_id)
+        return {
+            "id": robot_id,
+            "ranges": [],
+            "range_min": 0.0,
+            "range_max": 0.0,
+            "angle_min": 0.0,
+            "angle_max": 0.0,
+            "angle_increment": 0.0,
+            "timestamp": 0.0,
+        }
+    try:
+        robot = json.loads(robot)
+    except (TypeError, json.JSONDecodeError) as exc:
+        logger.warning("robotScan invalid JSON for robot_id=%s: %s", robot_id, exc)
+        return {
+            "id": robot_id,
+            "ranges": [],
+            "range_min": 0.0,
+            "range_max": 0.0,
+            "angle_min": 0.0,
+            "angle_max": 0.0,
+            "angle_increment": 0.0,
+            "timestamp": 0.0,
+        }
     return {
-        "id": int(robot["robot_id"]),
-        "ranges": robot["ranges"],
-        "range_min": robot["range_min"],
-        "range_max": robot["range_max"],
-        "angle_min": robot["angle_min"],
-        "angle_max": robot["angle_max"],
-        "angle_increment": robot["angle_increment"],
-        "timestamp": robot["timestamp"]
+        "id": int(robot.get("robot_id", robot_id)),
+        "ranges": robot.get("ranges", []),
+        "range_min": robot.get("range_min", 0.0),
+        "range_max": robot.get("range_max", 0.0),
+        "angle_min": robot.get("angle_min", 0.0),
+        "angle_max": robot.get("angle_max", 0.0),
+        "angle_increment": robot.get("angle_increment", 0.0),
+        "timestamp": robot.get("timestamp", 0.0),
     }
 
 # @query.field("robotImage")
@@ -266,8 +334,12 @@ def resolve_data(*_):
     id = 0
     for obj in objects:
         obj_id = int(obj[0])
-        obj = json.loads(obj[1])
-        
+        try:
+            obj = json.loads(obj[1])
+        except (TypeError, json.JSONDecodeError) as exc:
+            logger.warning("objectPositions bad JSON for agent_id=%s: %s", obj_id, exc)
+            continue
+
         for key in obj.keys():
             object = obj[key]
             all_objects.append({

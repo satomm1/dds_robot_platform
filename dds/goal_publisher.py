@@ -5,7 +5,6 @@ from cyclonedds.pub import Publisher, DataWriter
 import time
 
 import json
-import requests
 import numpy as np
 import signal
 import os
@@ -22,6 +21,7 @@ from dds_utils import (
     transform_se2,
 )
 from dds_utils.config import resolve_graphql_http_url
+from dds_utils.gql_subscriber_sync import parse_graphql_response, post_graphql
 from dds_utils.topics import data_topic_name
 
 ROBOT_GOALS_QUERY = """
@@ -58,6 +58,21 @@ TRANSFORMATION_MATRIX_QUERY = """
                                 }
                             }
                             """
+
+PENDING_STOPS_QUERY = """
+query {
+    pendingRobotStops {
+        id
+        requested_at
+    }
+}
+"""
+
+CONSUME_STOP_MUTATION = """
+mutation ConsumeRobotStopRequest($robotId: Int!) {
+    consumeRobotStopRequest(robot_id: $robotId)
+}
+"""
 
 class GoalWriter:
     def __init__(self, my_id, server_url=None):
@@ -96,22 +111,22 @@ class GoalWriter:
 
         # First make sure we have the transformation matrix
         while self.R is None:
-            response = requests.post(self.graphql_server, json={'query': TRANSFORMATION_MATRIX_QUERY}, timeout=1)
-            if response.status_code == 200:
-                data = response.json()
-                transform = data.get('data', {}).get('transform', {})
-                timestamp = transform.get('timestamp', 0)
+            try:
+                response = post_graphql(self.graphql_server, TRANSFORMATION_MATRIX_QUERY, timeout=5)
+                data = parse_graphql_response(response)
+                transform = data.get("transform", {})
+                timestamp = transform.get("timestamp", 0)
                 if time.time() - timestamp > 10:
+                    time.sleep(1)
                     continue
-                R = transform.get('R', [])
-                t = transform.get('t', [])
+                R = transform.get("R", [])
+                t = transform.get("t", [])
                 if len(R) == 4 and len(t) == 2:
                     self.R = np.array(R).reshape((2, 2))
                     self.t = np.array(t)
-                    # print("Goal publisher got the transformation matrix!")
                     break
-                else:
-                    time.sleep(1)
+            except Exception:
+                time.sleep(1)
 
         # Now start the main loop
         while True:
@@ -119,97 +134,130 @@ class GoalWriter:
                 current_time = int(time.time())
 
                 # Query for any robot goals
-                response = requests.post(self.graphql_server, json={'query': ROBOT_GOALS_QUERY}, timeout=1)
-                if response.status_code == 200:
-                    data = response.json()
+                try:
+                    response = post_graphql(self.graphql_server, ROBOT_GOALS_QUERY, timeout=5)
+                    data = parse_graphql_response(response)
+                    robot_goals = data.get("robotGoals", [])
+                except Exception:
+                    robot_goals = []
 
-                    # Get the robot goals from the response
-                    robot_goals = data.get('data', {}).get('robotGoals', [])
+                for robot_goal in robot_goals:
+                    robot_goal_id = int(robot_goal['id'])
+                    robot_goal_x = robot_goal['x_goal']
+                    robot_goal_y = robot_goal['y_goal']
+                    robot_goal_theta = robot_goal['theta_goal']
+                    robot_goal_timestamp = robot_goal['goal_timestamp']
+                    robot_goal_valid = robot_goal.get('goal_valid', True)
 
-                    for robot_goal in robot_goals:
-                        robot_goal_id = int(robot_goal['id'])
-                        robot_goal_x = robot_goal['x_goal']
-                        robot_goal_y = robot_goal['y_goal']
-                        robot_goal_theta = robot_goal['theta_goal']
-                        robot_goal_timestamp = robot_goal['goal_timestamp']
-                        robot_goal_valid = robot_goal.get('goal_valid', True)
+                    if not robot_goal_valid:
+                        # Skip invalid goals
+                        continue
 
-                        if not robot_goal_valid:
-                            # Skip invalid goals
-                            continue
+                    # Transform the goal to the reference map
+                    robot_goal_x, robot_goal_y, robot_goal_theta = self.transform_point([robot_goal_x, robot_goal_y, robot_goal_theta], forward=True)
 
-                        # Transform the goal to the reference map
-                        robot_goal_x, robot_goal_y, robot_goal_theta = self.transform_point([robot_goal_x, robot_goal_y, robot_goal_theta], forward=True)
+                    if robot_goal_id not in self.robot_goal_history:
+                        # Store goal in history
+                        self.robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
 
-                        if robot_goal_id not in self.robot_goal_history:
-                            # Store goal in history
-                            self.robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+                        # Check if the goal is recent
+                        if abs(current_time - robot_goal_timestamp) < 10:
 
-                            # Check if the goal is recent
-                            if abs(current_time - robot_goal_timestamp) < 10:
-
-                                # Send the goal to the robot
-                                goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
-                                command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
-                                message_topic = Topic(self.participant, data_topic_name(robot_goal_id), DataMessage)
-                                message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
-                                message_writer.write(command_message)
-                        elif self.robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
-
-                            # Store goal in history
-                            self.robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+                            # Send the goal to the robot
                             goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
                             command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                             message_topic = Topic(self.participant, data_topic_name(robot_goal_id), DataMessage)
                             message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
-
                             message_writer.write(command_message)
-                            print("Received new goal *********************")
+                    elif self.robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
 
+                        # Store goal in history
+                        self.robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+                        goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
+                        command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
+                        message_topic = Topic(self.participant, data_topic_name(robot_goal_id), DataMessage)
+                        message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
+
+                        message_writer.write(command_message)
+                        print("Received new goal *********************")
+
+                # Pending human stop requests -> DDS DataMessage(stop)
+                try:
+                    response = post_graphql(self.graphql_server, PENDING_STOPS_QUERY, timeout=5)
+                    pdata = parse_graphql_response(response)
+                    for stop in pdata.get("pendingRobotStops", []) or []:
+                        rid = int(stop["id"])
+                        ts = int(stop.get("requested_at", current_time))
+                        stop_payload = json.dumps({"source": "human"})
+                        command_message = DataMessage(
+                            "stop", int(self.my_id), ts, stop_payload
+                        )
+                        message_topic = Topic(
+                            self.participant, data_topic_name(rid), DataMessage
+                        )
+                        message_writer = DataWriter(
+                            self.publisher, message_topic, qos=reliable_qos
+                        )
+                        message_writer.write(command_message)
+                        print(f"Published DDS stop for robot {rid}")
+                        try:
+                            cr = post_graphql(
+                                self.graphql_server,
+                                CONSUME_STOP_MUTATION,
+                                variables={"robotId": rid},
+                                timeout=5,
+                            )
+                            parse_graphql_response(cr)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
 
                 # Query for any robot initial positions
-                response = requests.post(self.graphql_server, json={'query': ROBOT_INITIAL_POSITIONS_QUERY}, timeout=1)
-                if response.status_code == 200:
-                    data = response.json()
+                try:
+                    response = post_graphql(
+                        self.graphql_server, ROBOT_INITIAL_POSITIONS_QUERY, timeout=5
+                    )
+                    data = parse_graphql_response(response)
+                    robot_init = data.get("robotInitialPositions", [])
+                except Exception:
+                    robot_init = []
 
-                    # Get the robot goals from the response
-                    robot_init = data.get('data', {}).get('robotInitialPositions', [])
+                for robot in robot_init:
+                    robot_id = int(robot['id'])
+                    robot_x = robot['x_init']
+                    robot_y = robot['y_init']
+                    robot_theta = robot['theta_init']
+                    robot_timestamp = robot['init_timestamp']
 
-                    for robot in robot_init:
-                        robot_id = int(robot['id'])
-                        robot_x = robot['x_init']
-                        robot_y = robot['y_init']
-                        robot_theta = robot['theta_init']
-                        robot_timestamp = robot['init_timestamp']
+                    # Transform the initial position to the reference map
+                    robot_x, robot_y, robot_theta = self.transform_point([robot_x, robot_y, robot_theta], forward=True)
 
-                        # Transform the initial position to the reference map
-                        robot_x, robot_y, robot_theta = self.transform_point([robot_x, robot_y, robot_theta], forward=True)
+                    if robot_id not in self.robot_init_history:
+                        # Store initial position in history
+                        self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
 
-                        if robot_id not in self.robot_init_history:
-                            # Store initial position in history
-                            self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
+                        # Check if the initial position is recent
+                        if abs(current_time - robot_timestamp) < 10:
 
-                            # Check if the initial position is recent
-                            if abs(current_time - robot_timestamp) < 10:
-
-                                # Send the initial position to the robot
-                                init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
-                                command_message = DataMessage('position_init', int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
-                                message_topic = Topic(self.participant, data_topic_name(robot_id), DataMessage)
-                                message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
-                                message_writer.write(command_message)
-                        elif self.robot_init_history[robot_id] != (robot_x, robot_y, robot_theta, robot_timestamp):
-                            # Store initial position in history
-                            self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
+                            # Send the initial position to the robot
                             init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
                             command_message = DataMessage('position_init', int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
                             message_topic = Topic(self.participant, data_topic_name(robot_id), DataMessage)
                             message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
-
                             message_writer.write(command_message)
-                            print("Received new initial position *********************")
+                    elif self.robot_init_history[robot_id] != (robot_x, robot_y, robot_theta, robot_timestamp):
+                        # Store initial position in history
+                        self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
+                        init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
+                        command_message = DataMessage('position_init', int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
+                        message_topic = Topic(self.participant, data_topic_name(robot_id), DataMessage)
+                        message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
 
-            except Exception as e:
+                        message_writer.write(command_message)
+                        print("Received new initial position *********************")
+
+            except Exception:
                 # print("No goals yet...", e)
                 pass
 

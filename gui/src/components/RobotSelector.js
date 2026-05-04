@@ -1,24 +1,28 @@
 import React, { useEffect } from 'react';
-import { useQuery } from '@apollo/client';
-import { GET_ROBOT_POSITIONS } from '../queries';
 import { getRobotColor } from '../utils';
 
-const RobotSelector = ({ selectedRobotId, onSelectRobot }) => {
-  const { loading, error, data } = useQuery(GET_ROBOT_POSITIONS, {
-    pollInterval: 5000,
-  });
-
+const RobotSelector = ({
+  selectedRobotId,
+  onSelectRobot,
+  robotPositions = [],
+  positionsLoading,
+  positionsError,
+}) => {
   useEffect(() => {
-    const robots = data?.robotPositions ?? [];
-    if (!selectedRobotId && robots.length > 0 && onSelectRobot) {
+    const robots = robotPositions;
+    if (selectedRobotId == null && robots.length > 0 && onSelectRobot) {
       onSelectRobot(robots[0].id);
     }
-  }, [selectedRobotId, data?.robotPositions, onSelectRobot]);
+  }, [selectedRobotId, robotPositions, onSelectRobot]);
 
-  if (loading) return <div className="robot-selector">Loading robots...</div>;
-  if (error) return <div className="robot-selector">Error loading robots: {error.message}</div>;
+  if (positionsLoading && robotPositions.length === 0) {
+    return <div className="robot-selector">Loading robots...</div>;
+  }
+  if (positionsError) {
+    return <div className="robot-selector">Error loading robots: {positionsError.message}</div>;
+  }
 
-  const robots = data?.robotPositions || [];
+  const robots = robotPositions;
 
   return (
     <div className="robot-selector">

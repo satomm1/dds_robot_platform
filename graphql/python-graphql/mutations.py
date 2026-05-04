@@ -1,11 +1,47 @@
 from ariadne import load_schema_from_path, make_executable_schema, gql, MutationType
 import json
+import logging
+import time
 import numpy as np
 import base64
 
 from ignite import ignite_client
 
 mutation = MutationType()
+logger = logging.getLogger(__name__)
+
+STOP_REQUEST_CACHE = "robot_stop_request"
+
+
+@mutation.field("requestRobotStop")
+def resolve_request_robot_stop(_, info, robot_id: int):
+    stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
+    payload = {
+        "requested_at": time.time(),
+        "pending": True,
+    }
+    try:
+        stop_cache.put(robot_id, json.dumps(payload))
+        return True
+    except Exception as exc:
+        logger.exception("requestRobotStop failed for robot_id=%s: %s", robot_id, exc)
+        return False
+
+
+@mutation.field("consumeRobotStopRequest")
+def resolve_consume_robot_stop_request(_, info, robot_id: int):
+    stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
+    try:
+        stop_cache.remove_key(robot_id)
+        return True
+    except Exception as exc:
+        logger.debug(
+            "consumeRobotStopRequest remove_key for robot_id=%s: %s",
+            robot_id,
+            exc,
+        )
+        return False
+
 
 @mutation.field("setRobotGoal")
 def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_timestamp, from_bot=None, goal_valid=True):
@@ -22,7 +58,8 @@ def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_t
     try:
         goal_cache.put(robot_id, json.dumps(goal))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setRobotGoal failed for robot_id=%s: %s", robot_id, exc)
         return False
     
 @mutation.field("setRobotPosition")
@@ -36,7 +73,8 @@ def resolve_set_robot_position(_, info, robot_id, x, y, theta):
     try:
         position_cache.put(robot_id, json.dumps(position))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setRobotPosition failed for robot_id=%s: %s", robot_id, exc)
         return False
     
 @mutation.field("setRobotInitialPosition")
@@ -51,7 +89,8 @@ def resolve_set_robot_initial_position(_, info, robot_id, x_init, y_init, theta_
     try:
         position_cache.put(robot_id, json.dumps(position))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setRobotInitialPosition failed for robot_id=%s: %s", robot_id, exc)
         return False
     
 @mutation.field("clearRobotPosition")
@@ -60,7 +99,8 @@ def resolve_clear_robot_position(_, info, robot_id):
     try:
         position_cache.remove_key(robot_id)
         return True
-    except:
+    except Exception as exc:
+        logger.exception("clearRobotPosition failed for robot_id=%s: %s", robot_id, exc)
         return False
     
 @mutation.field("clearRobot")
@@ -68,12 +108,18 @@ def resolve_clear_robot(_, info, robot_id):
     position_cache = ignite_client.get_or_create_cache('robot_position')
     path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
     goal_cache = ignite_client.get_or_create_cache('robot_goal')
+    stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
     try:
         position_cache.remove_key(robot_id)
         path_cache.remove_key(robot_id)
         goal_cache.remove_key(robot_id)
+        try:
+            stop_cache.remove_key(robot_id)
+        except Exception:
+            pass
         return True
-    except:
+    except Exception as exc:
+        logger.exception("clearRobot failed for robot_id=%s: %s", robot_id, exc)
         return False
     
 @mutation.field("setAgentList")
@@ -82,7 +128,8 @@ def resolve_set_agent_list(_, info, agent_list):
     try:
         agent_list_cache.put(1, json.dumps(agent_list))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setAgentList failed: %s", exc)
         return False
     
 @mutation.field("setExitedAgentList")
@@ -91,7 +138,8 @@ def resolve_set_exited_agent_list(_, info, agent_list):
     try:
         agent_list_cache.put(1, json.dumps(agent_list))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setExitedAgentList failed: %s", exc)
         return False
     
 @mutation.field("clearDetectedObjects")
@@ -100,7 +148,8 @@ def resolve_clear_detected_objects(_, info):
     try:
         detected_objects_cache.clear()
         return True
-    except:
+    except Exception as exc:
+        logger.exception("clearDetectedObjects failed: %s", exc)
         return False
     
 @mutation.field("setTransform")
@@ -114,7 +163,8 @@ def resolve_set_transform(_, info, R, t, timestamp):
     try:
         transform_cache.put(1, json.dumps(transform))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setTransform failed: %s", exc)
         return False
     
 @mutation.field("setMap")
@@ -125,7 +175,8 @@ def resolve_set_map(_, info, data):
     try:
         map_cache.put(1, array_bytes)
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setMap failed: %s", exc)
         return False
     
 @mutation.field("setMapMetadata")
@@ -146,7 +197,8 @@ def resolve_set_map_metdata(_, info, resolution, width, height, origin_pos_x, or
     try:
         md_cache.put(1, json.dumps(metadata))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setMapMetadata failed: %s", exc)
         return False
     
 @mutation.field("setPath")
@@ -160,7 +212,8 @@ def resolve_set_path(_, info, robot_id, x, y, t):
     try:
         path_cache.put(robot_id, json.dumps(path).encode('utf-8'))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setPath failed for robot_id=%s: %s", robot_id, exc)
         return False
     
 @mutation.field("setObjects")
@@ -185,7 +238,8 @@ def resolve_set_objects(_, info, agent_id, x, y, class_name, object_num):
     try:
         detected_objects_cache.put(agent_id, json.dumps(detected_objects))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("setObjects failed for agent_id=%s: %s", agent_id, exc)
         return False
     
 @mutation.field("clearObject")
@@ -203,7 +257,8 @@ def resolve_clear_object(_, info, agent_id, object_num):
     try:
         detected_objects_cache.put(agent_id, json.dumps(detected_objects))
         return True
-    except:
+    except Exception as exc:
+        logger.exception("clearObject failed for agent_id=%s: %s", agent_id, exc)
         return False
     
 @mutation.field("clearAllObjects")
@@ -212,5 +267,6 @@ def resolve_clear_all_objects(_, info):
     try:
         detected_objects_cache.clear()
         return True
-    except:
+    except Exception as exc:
+        logger.exception("clearAllObjects failed: %s", exc)
         return False

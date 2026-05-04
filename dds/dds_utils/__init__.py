@@ -13,7 +13,12 @@ from .config import (
     resolve_graphql_http_url,
 )
 from .gql_queries import AGENTS_QUERY, TRANSFORM_QUERY
-from .gql_subscriber_sync import fetch_subscribed_agent_ids_set, fetch_transform_Rt_blocking
+from .gql_subscriber_sync import (
+    fetch_subscribed_agent_ids_set,
+    fetch_transform_Rt_blocking,
+    parse_graphql_response,
+    post_graphql,
+)
 from .lifecycle import dispose_entity, dispose_participant
 from .messages import (
     DataMessage,
@@ -77,6 +82,8 @@ __all__ = [
     "dispose_participant",
     "fetch_subscribed_agent_ids_set",
     "fetch_transform_Rt_blocking",
+    "parse_graphql_response",
+    "post_graphql",
     "get_ip",
     "image_topic_name",
     "location_topic_name",
