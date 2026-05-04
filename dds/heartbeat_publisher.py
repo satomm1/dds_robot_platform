@@ -3,13 +3,19 @@ from cyclonedds.pub import Publisher, DataWriter
 
 import time
 import os
+import sys
 import signal
 
 from message_defs import Heartbeat, best_effort_qos
 
 from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD
-from dds_utils.network import get_ip
-from dds_utils.participant_factory import make_domain_participant_with_lease
+from dds_utils import (
+    AgentIdError,
+    create_domain_participant,
+    dispose_participant,
+    get_ip,
+    require_agent_id_int,
+)
 from dds_utils.topics import HEARTBEAT_TOPIC
 
 
@@ -20,11 +26,12 @@ class HeartbeatPublisher:
         Initializes the HeartbeatPublisher.
         """
 
-        # Get the agent ID from the environment variable
-        self.agent_id = os.getenv('AGENT_ID')
-        if self.agent_id is None:
-            raise ValueError("AGENT_ID environment variable not set")
-        self.agent_id = int(self.agent_id)
+        try:
+            self.agent_id = require_agent_id_int()
+        except AgentIdError as exc:
+            print(exc, file=sys.stderr)
+            sys.exit(1)
+
         self.agent_type = AGENT_TYPE
 
         if self.agent_type == 'human':
@@ -33,7 +40,7 @@ class HeartbeatPublisher:
         self.my_ip = get_ip()
 
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = make_domain_participant_with_lease()
+        self.participant = create_domain_participant(domain_qos=True)
         self.publisher = Publisher(self.participant)
 
         # Create a Topic and DataWriter for the heartbeat message
@@ -55,6 +62,10 @@ class HeartbeatPublisher:
 
     def shutdown(self):
         print('Heartbeat publisher stopped\n')
+        self.heartbeat_writer = None
+        self.publisher = None
+        dispose_participant(self.participant)
+        self.participant = None
 
 
 if __name__ == "__main__":

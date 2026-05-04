@@ -5,6 +5,7 @@ from cyclonedds.core import Listener
 
 import time
 import os
+import sys
 import hashlib
 import json
 import requests
@@ -16,10 +17,16 @@ from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, Occu
 from message_defs import EntryExit, Initialization, reliable_qos, best_effort_qos, get_ip
 
 from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD
+from dds_utils import (
+    AgentIdError,
+    create_domain_participant,
+    dispose_participant,
+    parse_agent_id_int,
+    require_agent_id_int,
+    transform_se2,
+)
 from dds_utils.gql_queries import AGENTS_QUERY
-from dds_utils.participant_factory import make_domain_participant_with_lease
 from dds_utils.topics import ENTRY_EXIT_TOPIC, INITIALIZATION_TOPIC
-from dds_utils.transform import transform_se2
 
 TRANSFORM_MUTATION =   """
                             mutation($R: [Float]!, $t: [Float]!, $timestamp: Float!) {
@@ -73,7 +80,7 @@ class EntryExitListener(Listener):
     - update_map(map, map_md): Updates the occupancy grid map and map metadata.
     """
 
-    def __init__(self, participant, publisher, subscriber, my_id, my_ip, my_hash, init_writer):
+    def __init__(self, participant, publisher, subscriber, my_id, my_id_int, my_ip, my_hash, init_writer):
         super().__init__()
         self.participant = participant
         self.publisher = publisher
@@ -88,6 +95,7 @@ class EntryExitListener(Listener):
         }  
 
         self.my_id = my_id
+        self.my_id_int = my_id_int
         self.my_ip = my_ip
         self.my_hash = my_hash
         self.map_msg = OccupancyGrid()
@@ -111,7 +119,7 @@ class EntryExitListener(Listener):
         for sample in reader.read():
 
             # Skip messages from self
-            if sample.agent_id == int(self.my_id):
+            if sample.agent_id == self.my_id_int:
                 continue
 
             # Determine what type of message was received
@@ -127,7 +135,7 @@ class EntryExitListener(Listener):
 
                     known_points_json = json.dumps(self.known_points)
 
-                    init_message = Initialization(target_agent=sample.agent_id, sending_agent=int(self.my_id), agents=agents_message, known_points=known_points_json)
+                    init_message = Initialization(target_agent=sample.agent_id, sending_agent=self.my_id_int, agents=agents_message, known_points=known_points_json)
                     self.init_writer.write(init_message)
 
                     # print("Sent initialization message to new agent")
@@ -243,7 +251,7 @@ class InitializationListener(Listener):
         map_md_publisher: Publisher for the map metadata message.
     """
 
-    def __init__(self, my_id):
+    def __init__(self, my_id, my_id_int):
         super().__init__()
         self.map_received = False
         self.map_msg = OccupancyGrid()
@@ -251,6 +259,7 @@ class InitializationListener(Listener):
         self.map_md_msg = MapMetaData()
         self.agents = dict()
         self.my_id = my_id
+        self.my_id_int = my_id_int
         self.known_points_received = False
         self.reference_known_points = []
 
@@ -264,19 +273,19 @@ class InitializationListener(Listener):
         for sample in init_reader.read():
 
             sending_agent = sample.sending_agent
-            if sending_agent == int(self.my_id):
+            if sending_agent == self.my_id_int:
                 continue
 
             print(f'Initialization message received from agent {sending_agent}')
 
-            if sample.target_agent != int(self.my_id):
+            if sample.target_agent != self.my_id_int:
                 continue
 
             agent_dict = json.loads(sample.agents)
             if len(agent_dict) > 0:
                 # Cycle through agents in the initialization message and insert into our agents dictionary
                 for agent_id, agent_info in agent_dict.items():
-                    if agent_id != self.my_id:
+                    if int(agent_id) != self.my_id_int:
                         agent_type = agent_info['agent_type']
                         ip_address = agent_info['ip_address']
                         agent_hash = agent_info['hash']
@@ -358,9 +367,10 @@ class EntryExitCommunication:
     def __init__(self, agent_id, server_url=None):
 
         # Get agent ID, Hash, and IP Address
-        self.my_id = agent_id
+        self.my_id_int = parse_agent_id_int(agent_id)
+        self.my_id = str(self.my_id_int)
         print(f"\nMy Agent ID is {self.my_id}")
-        self.my_hash = hash_func(self.my_id)
+        self.my_hash = hash_func(str(self.my_id_int))
 
         # Get IP Address
         self.my_ip = get_ip()
@@ -375,7 +385,7 @@ class EntryExitCommunication:
         self.map_md_msg = MapMetaData()
 
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = make_domain_participant_with_lease()
+        self.participant = create_domain_participant(domain_qos=True)
         self.subscriber = Subscriber(self.participant)
         self.publisher = Publisher(self.participant)
 
@@ -387,9 +397,17 @@ class EntryExitCommunication:
         self.enter_exit_writer = DataWriter(self.publisher, self.entry_exit_topic, qos=reliable_qos)
         self.init_writer = DataWriter(self.publisher, self.init_topic, qos=reliable_qos)
 
-        self.entry_exit_listener = EntryExitListener(self.participant, self.publisher, self.subscriber, self.my_id,
-                                                     self.my_ip, self.my_hash, self.init_writer)
-        self.init_listener = InitializationListener(self.my_id)
+        self.entry_exit_listener = EntryExitListener(
+            self.participant,
+            self.publisher,
+            self.subscriber,
+            self.my_id,
+            self.my_id_int,
+            self.my_ip,
+            self.my_hash,
+            self.init_writer,
+        )
+        self.init_listener = InitializationListener(self.my_id, self.my_id_int)
 
         # We will start the readers later when it is necessary
         self.enter_exit_reader = None
@@ -461,7 +479,7 @@ class EntryExitCommunication:
         self.init_reader = DataReader(self.subscriber, self.init_topic, listener=self.init_listener, qos=reliable_qos)
 
         # Broadcast an entry message
-        entry_message = EntryExit(int(self.my_id), AGENT_TYPE, 'enter', self.my_ip, int(time.time()))
+        entry_message = EntryExit(self.my_id_int, AGENT_TYPE, 'enter', self.my_ip, int(time.time()))
         self.enter_exit_writer.write(entry_message)
 
         # Wait for the reference points to become available
@@ -482,7 +500,7 @@ class EntryExitCommunication:
             self.agents = self.init_listener.get_agents()
 
             # Add myself to the agents dictionary
-            self.agents[int(self.my_id)] = {
+            self.agents[self.my_id_int] = {
                 'agent_type': AGENT_TYPE,
                 'ip_address': self.my_ip,
                 'hash': self.my_hash,
@@ -495,7 +513,7 @@ class EntryExitCommunication:
             print("    I am the first agent, my map will be the reference map")
             self.reference_known_points = self.known_points
 
-            self.agents[int(self.my_id)] = {
+            self.agents[self.my_id_int] = {
                 'agent_type': AGENT_TYPE,
                 'ip_address': self.my_ip,
                 'hash': self.my_hash,
@@ -515,7 +533,7 @@ class EntryExitCommunication:
         self.init_listener = None
 
         # Send confirmation message to entry_exit topic
-        entry_message = EntryExit(int(self.my_id), AGENT_TYPE, 'initialized', self.my_ip, int(time.time()))
+        entry_message = EntryExit(self.my_id_int, AGENT_TYPE, 'initialized', self.my_ip, int(time.time()))
         self.enter_exit_writer.write(entry_message)
 
         print("Setup complete\n")
@@ -723,17 +741,27 @@ class EntryExitCommunication:
     def shutdown(self):
         print('\nSending exit message...\n')
         # Write exit message
-        exit_message = EntryExit(int(self.my_id), AGENT_TYPE, 'exit', self.my_ip, int(time.time()))
-        self.enter_exit_writer.write(exit_message)
+        exit_message = EntryExit(self.my_id_int, AGENT_TYPE, 'exit', self.my_ip, int(time.time()))
+        if self.enter_exit_writer is not None:
+            self.enter_exit_writer.write(exit_message)
+        self.enter_exit_reader = None
+        self.init_reader = None
+        self.enter_exit_writer = None
+        self.init_writer = None
+        self.subscriber = None
+        self.publisher = None
+        dispose_participant(self.participant)
+        self.participant = None
 
 
 if __name__ == '__main__':
 
-    # Get the agent ID from the environment variable
-    agent_id = os.getenv('AGENT_ID')
-    if agent_id is None:
-        raise ValueError("AGENT_ID environment variable not set")
-    
+    try:
+        agent_id = require_agent_id_int()
+    except AgentIdError as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
+
     # Create an instance of the EntryExitCommunication class
     entry_exit_obj = EntryExitCommunication(agent_id, server_url='http://localhost:8000/graphql')
 

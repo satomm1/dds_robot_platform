@@ -4,6 +4,7 @@ from cyclonedds.core import Listener
 
 import time
 import os
+import sys
 import signal
 import hashlib
 import requests
@@ -12,7 +13,12 @@ import requests
 from message_defs import Heartbeat, best_effort_qos, get_ip
 
 from dds_utils.config import HEARTBEAT_PERIOD, HEARTBEAT_TIMEOUT
-from dds_utils.participant_factory import make_domain_participant_with_lease
+from dds_utils import (
+    AgentIdError,
+    create_domain_participant,
+    dispose_participant,
+    require_agent_id_int,
+)
 from dds_utils.topics import HEARTBEAT_TOPIC
 
 AGENTS_QUERY =  """
@@ -29,15 +35,15 @@ class HeartbeatListener(Listener):
 
     Attributes:
         heartbeats (dict): A dictionary to store the heartbeats of agents.
-        my_id (int): The ID of the current agent.
+        my_id_int (int): The ID of the current agent.
         agents (dict): A dictionary to store information about all agents in the environment.
     """
 
-    def __init__(self, my_id):
+    def __init__(self, my_id_int):
         super().__init__()
         self.heartbeats = dict()
         self.new_heartbeats = dict()
-        self.my_id = my_id
+        self.my_id_int = my_id_int
 
         self.R = None
         self.t = None
@@ -55,7 +61,7 @@ class HeartbeatListener(Listener):
         for sample in reader.read():
 
             # Skip messages from self
-            if sample.agent_id == int(self.my_id):
+            if sample.agent_id == self.my_id_int:
                 continue
 
             self.new_heartbeats[sample.agent_id] = sample.timestamp
@@ -90,10 +96,13 @@ class HeartbeatSubscriber:
 
     def __init__(self, server_url=None):
 
-        # Get the agent ID from the environment variable
-        self.my_id = os.getenv('AGENT_ID')
-        if self.my_id is None:
-            raise ValueError("AGENT_ID environment variable not set")
+        try:
+            self.my_id_int = require_agent_id_int()
+        except AgentIdError as exc:
+            print(exc, file=sys.stderr)
+            sys.exit(1)
+
+        self.my_id = str(self.my_id_int)
 
         # Get hash
         self.my_hash = hash_func(self.my_id)
@@ -109,11 +118,11 @@ class HeartbeatSubscriber:
         self.agents = dict()
 
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = make_domain_participant_with_lease()
+        self.participant = create_domain_participant(domain_qos=True)
         self.subscriber = Subscriber(self.participant)
 
         self.heartbeat_topic = Topic(self.participant, HEARTBEAT_TOPIC, Heartbeat)
-        self.heartbeat_listener = HeartbeatListener(self.my_id)
+        self.heartbeat_listener = HeartbeatListener(self.my_id_int)
         self.heartbeat_reader = DataReader(self.subscriber, self.heartbeat_topic, listener=self.heartbeat_listener, qos=best_effort_qos)
 
     def run(self):
@@ -179,7 +188,7 @@ class HeartbeatSubscriber:
                 for agent_id, agent_info in self.agents.items():
 
                     # Skip self
-                    if agent_id == int(self.my_id):
+                    if agent_id == self.my_id_int:
                         continue
 
                     time_difference = current_time - agent_info['timestamp']
@@ -239,7 +248,10 @@ class HeartbeatSubscriber:
         )
 
     def shutdown(self):
-        pass
+        self.heartbeat_reader = None
+        self.subscriber = None
+        dispose_participant(self.participant)
+        self.participant = None
 
 if __name__ == "__main__":
     # Create an instance of the HeartbeatSubscriber and run it

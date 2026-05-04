@@ -14,15 +14,19 @@ import json
 import numpy as np
 import signal
 import os
+import sys
 from PIL import Image
 
 from dds_utils import (
+    AgentIdError,
     ImageMessage,
+    create_domain_participant,
+    dispose_participant,
     fetch_subscribed_agent_ids_set,
     fetch_transform_Rt_blocking,
     get_ip,
-    make_domain_participant_with_lease,
     reliable_qos,
+    require_agent_id_int,
     transform_se2,
 )
 from dds_utils.config import INFLUX_BUCKET, INFLUX_ORG, INFLUX_URL, OLLAMA_IMAGE_MODEL, OLLAMA_URL
@@ -128,7 +132,7 @@ class ImageSubscriber:
         self.get_transform()
 
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = make_domain_participant_with_lease()
+        self.participant = create_domain_participant(domain_qos=True)
         self.subscriber = Subscriber(self.participant)
 
         self.image_listeners = dict()
@@ -181,6 +185,11 @@ class ImageSubscriber:
 
     def shutdown(self):
         print("Image Subscriber stopped\n")
+        self.image_readers.clear()
+        self.image_listeners.clear()
+        self.subscriber = None
+        dispose_participant(self.participant)
+        self.participant = None
 
 if __name__ == "__main__":
 
@@ -193,9 +202,11 @@ if __name__ == "__main__":
 
     time.sleep(10)  # Wait for the participant to do entry and initialization
     # Create an instance of the ImageSubscriber
-    agent_id = os.getenv('AGENT_ID')
-    if agent_id is None:
-        raise ValueError("AGENT_ID environment variable not set")
+    try:
+        agent_id = require_agent_id_int()
+    except AgentIdError as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
 
     token = os.environ.get("INFLUXDB_TOKEN")
     if token is None:

@@ -9,8 +9,18 @@ import requests
 import numpy as np
 import signal
 import os
+import sys
 
-from dds_utils import DataMessage, get_ip, make_domain_participant_with_lease, reliable_qos, transform_se2
+from dds_utils import (
+    AgentIdError,
+    DataMessage,
+    create_domain_participant,
+    dispose_participant,
+    get_ip,
+    reliable_qos,
+    require_agent_id_int,
+    transform_se2,
+)
 from dds_utils.topics import data_topic_name
 
 ROBOT_GOALS_QUERY = """
@@ -64,7 +74,7 @@ class GoalWriter:
         self.robot_init_history = dict()
 
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = make_domain_participant_with_lease()
+        self.participant = create_domain_participant(domain_qos=True)
         self.subscriber = Subscriber(self.participant)
         self.publisher = Publisher(self.participant)
 
@@ -210,12 +220,18 @@ class GoalWriter:
 
     def shutdown(self):
         print('Goal publisher stopped\n')
+        self.subscriber = None
+        self.publisher = None
+        dispose_participant(self.participant)
+        self.participant = None
 
 if __name__ == '__main__':
 
-    agent_id = os.getenv('AGENT_ID')
-    if agent_id is None:
-        raise ValueError("AGENT_ID environment variable not set")
+    try:
+        agent_id = require_agent_id_int()
+    except AgentIdError as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
 
     goal_writer = GoalWriter(agent_id)
 

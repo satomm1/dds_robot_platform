@@ -1,7 +1,5 @@
-from cyclonedds.domain import DomainParticipant, DomainParticipantQos
 from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
-from cyclonedds.util import duration
 from cyclonedds.core import Listener
 
 import influxdb_client
@@ -10,17 +8,22 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 
 import time
 import os
+import sys
 import json
 import numpy as np
 import signal
 import requests
 
 from dds_utils import (
+    AgentIdError,
     DataMessage,
+    create_domain_participant,
+    dispose_participant,
     fetch_subscribed_agent_ids_set,
     fetch_transform_Rt_blocking,
     get_ip,
     reliable_qos,
+    require_agent_id_int,
     transform_se2,
 )
 from dds_utils.config import INFLUX_ORG, INFLUX_URL
@@ -265,13 +268,8 @@ class DataSubscriber:
 
         self.get_transform()
 
-        self.lease_duration_ms = 30000
-        qos_profile = DomainParticipantQos()
-        qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
-
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = DomainParticipant()
-        # self.participant = DomainParticipant(qos=qos_profile)
+        self.participant = create_domain_participant(domain_qos=False)
         self.subscriber = Subscriber(self.participant)
 
         self.data_listeners = dict()
@@ -325,6 +323,11 @@ class DataSubscriber:
 
     def shutdown(self):
         print('Data subscriber stopped\n')
+        self.data_readers.clear()
+        self.data_listeners.clear()
+        self.subscriber = None
+        dispose_participant(self.participant)
+        self.participant = None
 
 if __name__ == '__main__':
 
@@ -341,10 +344,11 @@ if __name__ == '__main__':
     write_client = influxdb_client.InfluxDBClient(url=INFLUX_URL, token=token, org=INFLUX_ORG)
 
     time.sleep(10)  # Wait for the participant to do entry and initialization
-    # Create an instance of the DataSubscriber
-    agent_id = os.getenv('AGENT_ID')
-    if agent_id is None:
-        raise ValueError("AGENT_ID environment variable not set")
+    try:
+        agent_id = require_agent_id_int()
+    except AgentIdError as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
     data_sub = DataSubscriber(agent_id, influx_client=write_client)
 
     def handle_signal(sig, frame):

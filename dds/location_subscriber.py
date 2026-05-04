@@ -12,15 +12,19 @@ import json
 import numpy as np
 import signal
 import os
+import sys
 import requests
 
 from dds_utils import (
+    AgentIdError,
     Location,
     best_effort_qos,
+    create_domain_participant,
+    dispose_participant,
     fetch_subscribed_agent_ids_set,
     fetch_transform_Rt_blocking,
     get_ip,
-    make_domain_participant_with_lease,
+    require_agent_id_int,
     transform_se2,
 )
 from dds_utils.config import INFLUX_BUCKET, INFLUX_ORG, INFLUX_URL
@@ -152,7 +156,7 @@ class LocationSubscriber:
         self.get_transform()
 
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = make_domain_participant_with_lease()
+        self.participant = create_domain_participant(domain_qos=True)
         self.subscriber = Subscriber(self.participant)
 
         self.location_listeners = dict()
@@ -203,13 +207,20 @@ class LocationSubscriber:
 
     def shutdown(self):
         print('Location subscriber stopped\n')
+        self.location_readers.clear()
+        self.location_listeners.clear()
+        self.subscriber = None
+        dispose_participant(self.participant)
+        self.participant = None
 
 
 if __name__ == '__main__':
 
-    agent_id = os.getenv('AGENT_ID')
-    if agent_id is None:
-        raise ValueError("AGENT_ID environment variable not set")
+    try:
+        agent_id = require_agent_id_int()
+    except AgentIdError as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
 
     token = os.environ.get("INFLUXDB_TOKEN")
     if token is None:
