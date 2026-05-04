@@ -6,7 +6,13 @@ import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import RobotTypedGoals from './components/RobotTypedGoals';
-import { SET_ROBOT_GOAL,  SET_ROBOT_INITIAL_POSITION} from './mutations';
+import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION } from './mutations';
+
+const devLog = (...args) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(...args);
+  }
+};
 
 function App() {
   return (
@@ -34,7 +40,7 @@ function AppContent() {
   const [setRobotInitialPosition] = useMutation(SET_ROBOT_INITIAL_POSITION);
   
   const handleSetRobotGoal = (robotId, x, y) => {
-    console.log(`Setting goal for robot ${robotId} to position (${x}, ${y}, ${currentTheta}°)`);
+    devLog(`Setting goal for robot ${robotId} to position (${x}, ${y}, ${currentTheta}°)`);
     
     const timestamp = new Date().getTime() / 1000; // Convert to seconds
     const theta_rad = (currentTheta * Math.PI) / 180; // Convert degrees to radians
@@ -52,7 +58,7 @@ function AppContent() {
   };
 
   const handleUpdateTheta = (robotId, thetaDegrees) => {
-    console.log(`Updating orientation for robot ${robotId} to ${thetaDegrees}°`);
+    devLog(`Updating orientation for robot ${robotId} to ${thetaDegrees}°`);
     
     // Flip the angle about the y-axis
     const flippedTheta = (180 - thetaDegrees) % 360;
@@ -62,7 +68,7 @@ function AppContent() {
   };
 
   const handleSetRobotInitialPosition = (robotId, x, y) => {
-    console.log(`Setting initial position for robot ${robotId} to (${x}, ${y}, ${currentTheta}°)`);
+    devLog(`Setting initial position for robot ${robotId} to (${x}, ${y}, ${currentTheta}°)`);
     
     const timestamp = new Date().getTime() / 1000;
     const theta_rad = (currentTheta * Math.PI) / 180;
@@ -111,13 +117,6 @@ function AppContent() {
               Set Initial Position
             </button>
           </div>
-          {/* <hr className="sidebar-divider" style={{ 
-            width: '100%', 
-            border: '0', 
-            height: '1px', 
-            backgroundColor: '#ccc', 
-            margin: '10px 0' 
-          }} /> */}
           <div style={{ overflowY: 'auto', maxHeight: '70%' }}>
             <RobotControls 
               selectedRobotId={selectedRobotId}  

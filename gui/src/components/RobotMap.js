@@ -4,7 +4,14 @@ import { Image as KonvaImage } from 'react-konva'; // Add this line
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_POSITIONS, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
-import { getRobotColor } from '../utils'; // Ensure this utility function exists
+import { getRobotColor } from '../utils';
+
+const devLog = (...args) => {
+  if (process.env.NODE_ENV === 'development') console.log(...args);
+};
+const devWarn = (...args) => {
+  if (process.env.NODE_ENV === 'development') console.warn(...args);
+};
 
 const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMode }) => {
   const [mapSize, setMapSize] = useState({ width: 1100, height: 600 });
@@ -15,7 +22,6 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   const [detectedObjects, setDetectedObjects] = useState([]);
   const containerRef = useRef(null);
   const stageRef = useRef(null);
-  const gridLayerRef = useRef(null);
   const robotsLayerRef = useRef(null);
   const goalLayerRef = useRef(null);
   const pathLayerRef = useRef(null);
@@ -33,9 +39,14 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   // Polling interval (in milliseconds)
   const POLL_INTERVAL = 1000; // Fetch every 1 seconds
   
-  // Grid properties
   const gridCellSize = 5;
-  
+
+  const defaultPollOptions = {
+    pollInterval: POLL_INTERVAL,
+    fetchPolicy: 'network-only',
+    notifyOnNetworkStatusChange: true,
+  };
+
   // Zoom scale limits
   const minScale = 0.1;
   const maxScale = 3;
@@ -63,13 +74,11 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   };
   
   // Query for robot positions with explicit polling
-  const { loading: robotsLoading, error: robotsError, data: robotsData } = useQuery(GET_ROBOT_POSITIONS, {
-    pollInterval: POLL_INTERVAL,
-    fetchPolicy: 'network-only', // This forces it to always go to the network
-    notifyOnNetworkStatusChange: true, // This will notify us of poll events
+  const { loading: robotsLoading, error: robotsError } = useQuery(GET_ROBOT_POSITIONS, {
+    ...defaultPollOptions,
     onCompleted: (data) => {
       if (data && data.robotPositions) {
-        console.log('Fetched robot positions:', data.robotPositions);
+        devLog('Fetched robot positions:', data.robotPositions);
         setRobots(data.robotPositions);
       }
     },
@@ -79,12 +88,10 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   });
 
   // Query for robot goals with explicit polling
-  const { data: goalsData } = useQuery(GET_ROBOT_GOALS, {
-    pollInterval: POLL_INTERVAL,
-    fetchPolicy: 'network-only',
-    notifyOnNetworkStatusChange: true, // This will notify us of poll events
+  useQuery(GET_ROBOT_GOALS, {
+    ...defaultPollOptions,
     onCompleted: (data) => {
-      console.log('Fetched robot goals:', data);
+      devLog('Fetched robot goals:', data);
       if (data && data.robotGoals) {
         // Update goal markers based on server data
         const newGoalMarkers = {};
@@ -104,7 +111,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
             const timeDiffInSeconds = (currentTime - goalTime) ;
             
             if (timeDiffInSeconds < 5) {
-              console.warn(`Invalid goal for robot ${goal.id} at (${goal.x_goal}, ${goal.y_goal}) - too old`);
+              devWarn(`Invalid goal for robot ${goal.id} at (${goal.x_goal}, ${goal.y_goal}) - too old`);
               newInvalidGoalMessages[goal.id] = {
                 timestamp: goalTime
               };
@@ -124,12 +131,10 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   });
   
   // Query for robot paths with explicit polling
-  const { data: pathsData } = useQuery(GET_ROBOT_PATHS, {
-    pollInterval: POLL_INTERVAL,
-    fetchPolicy: 'network-only',
-    notifyOnNetworkStatusChange: true,
+  useQuery(GET_ROBOT_PATHS, {
+    ...defaultPollOptions,
     onCompleted: (data) => {
-      console.log('Fetched robot paths:', data);
+      devLog('Fetched robot paths:', data);
       if (data && data.robotPaths) {
         // Process the path data
         // Group path points by robot ID
@@ -169,12 +174,10 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
     }
   });
 
-  const { data: objectsData } = useQuery(GET_OBJECT_POSITIONS, {
-    pollInterval: POLL_INTERVAL,
-    fetchPolicy: 'network-only',
-    notifyOnNetworkStatusChange: true,
+  useQuery(GET_OBJECT_POSITIONS, {
+    ...defaultPollOptions,
     onCompleted: (data) => {
-      console.log('Fetched object positions:', data);
+      devLog('Fetched object positions:', data);
       if (data && data.objectPositions) {
         setDetectedObjects(data.objectPositions);
       }
@@ -188,7 +191,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   const [clearAllObjects] = useMutation(CLEAR_ALL_OBJECTS, {
     refetchQueries: [{ query: GET_OBJECT_POSITIONS }],
     onCompleted: () => {
-      console.log('All objects cleared successfully');
+      devLog('All objects cleared successfully');
       // Optionally clear the local state immediately for faster UI response
       setDetectedObjects([]);
     },
@@ -197,25 +200,21 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
     }
   });
   
-  // Create grid cells based on occupancy grid data - only render when map data changes
-  const [gridCells, setGridCells] = useState([]);
-
   useEffect(() => {
     if (!mapData || !mapData.map) return;
     
     const { width, height, resolution, occupancy } = mapData.map;
-    const cellSize = 5; // Size of each grid cell in pixels
-  
+
     setOccGridWidth(width);
     setOccGridHeight(height);
     setOccGridResolution(resolution);
-  
-    console.log('Pre-rendering map image:', width, 'x', height);
-    
+
+    devLog('Pre-rendering map image:', width, 'x', height);
+
     // Create an offscreen canvas
     const canvas = document.createElement('canvas');
-    canvas.width = width * cellSize;
-    canvas.height = height * cellSize;
+    canvas.width = width * gridCellSize;
+    canvas.height = height * gridCellSize;
     const ctx = canvas.getContext('2d');
     
     // Fill with background color first (optional)
@@ -238,30 +237,30 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
           color = '#A8A8A8';
         }
         
-        const xPos = (width - x - 1) * cellSize; // Invert x for correct orientation
-        const yPos = y * cellSize;
-        
+        const xPos = (width - x - 1) * gridCellSize; // Invert x for correct orientation
+        const yPos = y * gridCellSize;
+
         ctx.fillStyle = color;
-        ctx.fillRect(xPos, yPos, cellSize, cellSize);
+        ctx.fillRect(xPos, yPos, gridCellSize, gridCellSize);
       }
     }
     
     // Add grid lines if needed (optional)
-    if (cellSize > 2) { // Only draw grid lines if cells are big enough
+    if (gridCellSize > 2) { // Only draw grid lines if cells are big enough
       ctx.strokeStyle = '#ddd';
       ctx.lineWidth = 0.5;
-      
+
       for (let x = 0; x <= width; x++) {
         ctx.beginPath();
-        ctx.moveTo(x * cellSize, 0);
-        ctx.lineTo(x * cellSize, height * cellSize);
+        ctx.moveTo(x * gridCellSize, 0);
+        ctx.lineTo(x * gridCellSize, height * gridCellSize);
         ctx.stroke();
       }
-      
+
       for (let y = 0; y <= height; y++) {
         ctx.beginPath();
-        ctx.moveTo(0, y * cellSize);
-        ctx.lineTo(width * cellSize, y * cellSize);
+        ctx.moveTo(0, y * gridCellSize);
+        ctx.lineTo(width * gridCellSize, y * gridCellSize);
         ctx.stroke();
       }
     }
@@ -270,23 +269,23 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
     const img = new Image();
     img.onload = () => {
       setMapImage(img);
-      console.log('Map image created successfully');
+      devLog('Map image created successfully');
     };
     img.src = canvas.toDataURL();
     
-  }, [mapData]);
+  }, [mapData, gridCellSize]);
 
   // Update robots layer when robot positions change
   useEffect(() => {
     if (robotsLayerRef.current && robots.length > 0) {
-      console.log('Redrawing robots layer with', robots.length, 'robots');
+      devLog('Redrawing robots layer with', robots.length, 'robots');
       robotsLayerRef.current.batchDraw();
     }
-    
+
     // If we have goal markers, redraw the goal layer too
     // since it depends on robot positions for the dotted lines
     if (goalLayerRef.current && Object.keys(goalMarkers).length > 0) {
-      console.log('Redrawing goal layer due to robot position update');
+      devLog('Redrawing goal layer due to robot position update');
       goalLayerRef.current.batchDraw();
     }
   }, [robots, goalMarkers]);
@@ -294,7 +293,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
   // Update path layer when robot paths change
   useEffect(() => {
     if (pathLayerRef.current && Object.keys(robotPaths).length > 0) {
-      console.log('Redrawing path layer with', Object.keys(robotPaths).length, 'paths');
+      devLog('Redrawing path layer with', Object.keys(robotPaths).length, 'paths');
       pathLayerRef.current.batchDraw();
     }
   }, [robotPaths]);
@@ -316,7 +315,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
       const mapY = worldPos.y*occGridResolution/gridCellSize;
       
       if (positionMode === 'goal') {
-        console.log(`Setting new goal marker for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
+        devLog(`Setting new goal marker for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
         
         // Update goalMarkers
         setGoalMarkers(prevMarkers => ({
@@ -331,7 +330,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
         // Send goal to backend
         onSetGoal(selectedRobotId, mapX, mapY);
       } else {
-        console.log(`Setting initial position for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
+        devLog(`Setting initial position for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
         
         // Send initial position to backend without setting a marker
         onSetInitialPosition(selectedRobotId, mapX, mapY);
@@ -508,7 +507,7 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
         scaleY={scale}
       >
         {/* Separate layer for the grid - doesn't need to update frequently */}
-        <Layer ref={gridLayerRef}>
+        <Layer>
           {mapImage ? (
             <KonvaImage 
               image={mapImage} 
@@ -712,31 +711,27 @@ const RobotMap = ({ selectedRobotId, onSetGoal, onSetInitialPosition, positionMo
       )}
 
       {/* Render tooltips for invalid goals */}
-      {Object.entries(invalidGoalMessages).map(([robotId, info]) => {
-          return (
-            <div 
-              key={`tooltip-${robotId}`}
-              style={{
-                position: 'absolute',
-                left: `${stageRef.current ? stageRef.current.container().offsetLeft + (mousePosition?.x * scale) : 0}px`,
-                top: `${stageRef.current ? stageRef.current.container().offsetTop + (mousePosition?.y * scale) - 35 : 0}px`,
-                backgroundColor: '#F44336',
-                color: 'white',
-                padding: '5px 10px',
-                borderRadius: '4px',
-                fontSize: '12px',
-                pointerEvents: 'none',
-                zIndex: 1000,
-                transform: 'translate(-50%, -100%)',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              Goal is invalid
-            </div>
-          );
-        
-        return null;
-      })}
+      {Object.entries(invalidGoalMessages).map(([robotId, info]) => (
+        <div
+          key={`tooltip-${robotId}`}
+          style={{
+            position: 'absolute',
+            left: `${stageRef.current ? stageRef.current.container().offsetLeft + (mousePosition?.x * scale) : 0}px`,
+            top: `${stageRef.current ? stageRef.current.container().offsetTop + (mousePosition?.y * scale) - 35 : 0}px`,
+            backgroundColor: '#F44336',
+            color: 'white',
+            padding: '5px 10px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            pointerEvents: 'none',
+            zIndex: 1000,
+            transform: 'translate(-50%, -100%)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Goal is invalid
+        </div>
+      ))}
       
       {/* Controls for zoom and goal management */}
       <div style={{ position: 'absolute', bottom: '20px', right: '20px', background: 'white', padding: '5px', borderRadius: '5px', boxShadow: '0 0 5px rgba(0,0,0,0.3)' }}>

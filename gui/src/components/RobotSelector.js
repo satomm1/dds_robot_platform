@@ -1,24 +1,24 @@
-// src/components/RobotSelector.js
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useQuery } from '@apollo/client';
 import { GET_ROBOT_POSITIONS } from '../queries';
 import { getRobotColor } from '../utils';
 
 const RobotSelector = ({ selectedRobotId, onSelectRobot }) => {
-  // Query for robot list
   const { loading, error, data } = useQuery(GET_ROBOT_POSITIONS, {
-    pollInterval: 5000, // Poll every 5 seconds to keep list updated
+    pollInterval: 5000,
   });
+
+  useEffect(() => {
+    const robots = data?.robotPositions ?? [];
+    if (!selectedRobotId && robots.length > 0 && onSelectRobot) {
+      onSelectRobot(robots[0].id);
+    }
+  }, [selectedRobotId, data?.robotPositions, onSelectRobot]);
 
   if (loading) return <div className="robot-selector">Loading robots...</div>;
   if (error) return <div className="robot-selector">Error loading robots: {error.message}</div>;
-  
+
   const robots = data?.robotPositions || [];
-  
-  // If no robot is selected yet and we have robots, select the first one
-  if (!selectedRobotId && robots.length > 0 && onSelectRobot) {
-    setTimeout(() => onSelectRobot(robots[0].id), 0);
-  }
 
   return (
     <div className="robot-selector">
@@ -28,17 +28,18 @@ const RobotSelector = ({ selectedRobotId, onSelectRobot }) => {
       ) : (
         <ul>
           {robots.map(robot => (
-            <li 
+            <li
               key={robot.id}
               className={robot.id === selectedRobotId ? 'selected' : ''}
               onClick={() => onSelectRobot(robot.id)}
             >
               {robot.name || `Robot ${robot.id}`}
-              <span className="status-indicator" 
-                    style={{ 
-                      backgroundColor: getRobotColor(robot.id) 
-                    }}>
-              </span>
+              <span
+                className="status-indicator"
+                style={{
+                  backgroundColor: getRobotColor(robot.id),
+                }}
+              />
             </li>
           ))}
         </ul>
