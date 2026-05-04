@@ -1,41 +1,33 @@
-from cyclonedds.domain import DomainParticipant, DomainParticipantQos
 from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
-from cyclonedds.util import duration
-from cyclonedds.idl.types import sequence
-from cyclonedds.core import Qos, Policy, Listener
+from cyclonedds.core import Listener
 
 import influxdb_client
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
+
+import requests
+import base64
 
 import time
 import json
 import numpy as np
 import signal
 import os
-import requests
 from PIL import Image
 
-from message_defs import ImageMessage, reliable_qos, best_effort_qos, get_ip
+from dds_utils import (
+    ImageMessage,
+    fetch_subscribed_agent_ids_set,
+    fetch_transform_Rt_blocking,
+    get_ip,
+    make_domain_participant_with_lease,
+    reliable_qos,
+    transform_se2,
+)
+from dds_utils.config import INFLUX_BUCKET, INFLUX_ORG, INFLUX_URL, OLLAMA_IMAGE_MODEL, OLLAMA_URL
+from dds_utils.topics import image_topic_name
 
-AGENTS_QUERY = """
-                    query {
-                        subscribed_agents {
-                            id
-                        }
-                    }
-               """ 
-
-TRANSFORM_QUERY =   """
-                        query {
-                            transform {
-                                R
-                                t
-                                timestamp
-                            }
-                        }   
-                    """
 
 class ImageListener(Listener):
 
@@ -53,18 +45,7 @@ class ImageListener(Listener):
         self.influx_write_api = influx_write_api
 
     def transform_point(self, point, forward=True):
-        if self.R is None:
-            return point
-
-        point_xy = np.array([point[0], point[1]])
-        if forward:
-            new_point_xy = self.R @ point_xy + self.t
-            new_point_theta = point[2] + np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
-        else:
-            new_point_xy = self.R.T @ (point_xy - self.t)
-            new_point_theta = point[2] - np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
+        return transform_se2(self.R, self.t, point, forward)
 
     def update_transformation(self, R, t):
         self.R = R
@@ -83,14 +64,45 @@ class ImageListener(Listener):
             image_filename = "images/image_{}_{}.png".format(self.topic_id, timestamp)  # Image format is image_topic_{id}_{timestamp}.png
             image.save(image_filename)
 
+            image_base64 = encode_image_to_base64(image_filename)
+
+            payload = {
+                "model": OLLAMA_IMAGE_MODEL,
+                "prompt": "Provide a one sentence description of the contents of this image",
+                "images": [image_base64],
+                "stream": False,
+                "format": {
+                    "type": "object",
+                        "properties": {
+                        "object": {
+                            "type": "string"
+                        },
+                        "description": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "object",
+                        "description"
+                    ]
+                }
+            }
+
+            response = requests.post(OLLAMA_URL, json=payload)
+
             # Write file name to influxDB
             if self.influx_write_api is not None:
                 point = Point("image_data") \
                     .tag("robot_id", self.topic_id) \
                     .field("image_filename", image_filename) \
+                    .field("image_description", response.json().get('description', '')) \
+                    .field("object", response.json().get('object', '')) \
                     .time(timestamp, WritePrecision.S)
-                self.influx_write_api.write(bucket="first_bucket", org="eig", record=point)
+                self.influx_write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point)
 
+def encode_image_to_base64(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
 
 class ImageSubscriber:
 
@@ -115,12 +127,8 @@ class ImageSubscriber:
 
         self.get_transform()
 
-        self.lease_duration_ms = 30000
-        qos_profile = DomainParticipantQos()
-        qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
-
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = DomainParticipant(qos=qos_profile)
+        self.participant = make_domain_participant_with_lease()
         self.subscriber = Subscriber(self.participant)
 
         self.image_listeners = dict()
@@ -128,7 +136,7 @@ class ImageSubscriber:
 
         for agent_id in self.subscribed_agents:
             print(f"Subscribed to agent {agent_id} images")
-            new_image_topic = Topic(self.participant, 'ImageTopic' + str(agent_id), ImageMessage)
+            new_image_topic = Topic(self.participant, image_topic_name(agent_id), ImageMessage)
             self.image_listeners[agent_id] = ImageListener(my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
             self.image_listeners[agent_id].update_transformation(self.R, self.t)
             self.image_readers[agent_id] = DataReader(self.subscriber, new_image_topic, listener=self.image_listeners[agent_id], qos=reliable_qos)
@@ -146,7 +154,7 @@ class ImageSubscriber:
                         continue
 
                     print(f"    Subscribed to agent {agent_id} images")
-                    new_image_topic = Topic(self.participant, 'ImageTopic' + str(agent_id), ImageMessage)
+                    new_image_topic = Topic(self.participant, image_topic_name(agent_id), ImageMessage)
                     self.image_listeners[agent_id] = ImageListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
                     self.image_listeners[agent_id].update_transformation(self.R, self.t)
                     self.image_readers[agent_id] = DataReader(self.subscriber, new_image_topic, listener=self.image_listeners[agent_id], qos=reliable_qos)
@@ -166,44 +174,10 @@ class ImageSubscriber:
             time.sleep(1)
 
     def get_agents(self):
-        # Query for any agents
-        response = requests.post(self.graphql_server, json={'query': AGENTS_QUERY}, timeout=1)
-        if response.status_code == 200:
-            data = response.json()
-
-            # Get the agent ids from the response
-            agent_ids = data.get('data', {}).get('subscribed_agents', {}).get('id', [])
-
-            if int(self.my_id) in agent_ids:
-                agent_ids.remove(int(self.my_id))
-            elif self.my_id in agent_ids:
-                agent_ids.remove(self.my_id)
-
-            if len(agent_ids):
-                return set(agent_ids)
-            else:
-                return set()
-        else:
-            return set()
+        return fetch_subscribed_agent_ids_set(self.graphql_server, self.my_id)
 
     def get_transform(self):
-        # Query for the transform
-        response = requests.post(self.graphql_server, json={'query': TRANSFORM_QUERY}, timeout=1)
-        data = response.json()
-        transform = data.get('data', {}).get('transform', {})
-        R = transform.get('R', [])
-        t = transform.get('t', [])
-        
-        while len(R) != 4 or len(t) != 2:
-            response = requests.post(self.graphql_server, json={'query': TRANSFORM_QUERY}, timeout=1)
-            data = response.json()
-            transform = data.get('data', {}).get('transform', {})
-            R = transform.get('R', [])
-            t = transform.get('t', [])
-            time.sleep(1)
-
-        self.R = np.array(R).reshape((2, 2))
-        self.t = np.array(t)
+        self.R, self.t = fetch_transform_Rt_blocking(self.graphql_server)
 
     def shutdown(self):
         print("Image Subscriber stopped\n")
@@ -222,13 +196,11 @@ if __name__ == "__main__":
     agent_id = os.getenv('AGENT_ID')
     if agent_id is None:
         raise ValueError("AGENT_ID environment variable not set")
-    
+
     token = os.environ.get("INFLUXDB_TOKEN")
     if token is None:
         raise ValueError("INFLUXDB_TOKEN environment variable not set")
-    org = "eig"
-    url = "http://localhost:8086"
-    write_client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
+    write_client = influxdb_client.InfluxDBClient(url=INFLUX_URL, token=token, org=INFLUX_ORG)
 
     image_sub = ImageSubscriber(agent_id, influx_client=write_client)
 

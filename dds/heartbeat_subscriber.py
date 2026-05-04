@@ -1,16 +1,9 @@
-from cyclonedds.domain import DomainParticipant, DomainParticipantQos
 from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
-from cyclonedds.pub import Publisher, DataWriter
-from cyclonedds.util import duration
-from cyclonedds.idl import IdlStruct
-from cyclonedds.idl.types import sequence
-from cyclonedds.core import Qos, Policy, Listener
-from cyclonedds.builtin import BuiltinDataReader, BuiltinTopicDcpsParticipant
+from cyclonedds.core import Listener
 
 import time
 import os
-import socket
 import signal
 import hashlib
 import requests
@@ -18,8 +11,9 @@ import requests
 
 from message_defs import Heartbeat, best_effort_qos, get_ip
 
-HEARTBEAT_PERIOD = 10    # seconds
-HEARTBEAT_TIMEOUT = 31   # seconds
+from dds_utils.config import HEARTBEAT_PERIOD, HEARTBEAT_TIMEOUT
+from dds_utils.participant_factory import make_domain_participant_with_lease
+from dds_utils.topics import HEARTBEAT_TOPIC
 
 AGENTS_QUERY =  """
                     query {
@@ -27,7 +21,7 @@ AGENTS_QUERY =  """
                             id
                         }
                     }
-                """ 
+                """
 
 class HeartbeatListener(Listener):
     """
@@ -100,10 +94,10 @@ class HeartbeatSubscriber:
         self.my_id = os.getenv('AGENT_ID')
         if self.my_id is None:
             raise ValueError("AGENT_ID environment variable not set")
-        
+
         # Get hash
         self.my_hash = hash_func(self.my_id)
-        
+
         # GraphQL server URL
         self.my_ip = get_ip()
         if server_url is None:
@@ -114,20 +108,16 @@ class HeartbeatSubscriber:
         # Dictionary to store agents in the environment
         self.agents = dict()
 
-        self.lease_duration_ms = 30000
-        qos_profile = DomainParticipantQos()
-        qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
-
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = DomainParticipant(qos=qos_profile)
+        self.participant = make_domain_participant_with_lease()
         self.subscriber = Subscriber(self.participant)
 
-        self.heartbeat_topic = Topic(self.participant, 'HeartbeatTopic', Heartbeat)
+        self.heartbeat_topic = Topic(self.participant, HEARTBEAT_TOPIC, Heartbeat)
         self.heartbeat_listener = HeartbeatListener(self.my_id)
         self.heartbeat_reader = DataReader(self.subscriber, self.heartbeat_topic, listener=self.heartbeat_listener, qos=best_effort_qos)
 
     def run(self):
-        
+
         last_time = int(time.time())
         prev_exited_agents = set()
         while True:
@@ -155,7 +145,7 @@ class HeartbeatSubscriber:
                             prev_exited_agents.remove(agent_id)
                     elif agent_id in exited_agents and agent_id not in prev_exited_agents:
                         prev_exited_agents.add(agent_id)
-                        
+
                         # Remove agent from active agents
                         if agent_id in self.agents:
                             self.agents.pop(agent_id)
@@ -193,12 +183,12 @@ class HeartbeatSubscriber:
                         continue
 
                     time_difference = current_time - agent_info['timestamp']
-                
+
                     if time_difference > HEARTBEAT_TIMEOUT:
                         # Agent has timed out
                         print(f'Agent {agent_id} has timed out')
                         dead_agents.append(agent_id)
-                
+
                 # Remove Dead Agents
                 for agent_id in dead_agents:
                     self.agents.pop(agent_id)
@@ -206,7 +196,7 @@ class HeartbeatSubscriber:
                 if update_to_active_agents or dead_agents:
                     # Update the list of agents in the environment
                     self.update_agents()
-            
+
             # Sleep for a short duration to avoid busy waiting
             time.sleep(1)
 
@@ -219,7 +209,7 @@ class HeartbeatSubscriber:
             # Get the agent ids from the response
             subscribed_agents = data.get('data', {}).get('subscribedAndExitedAgents', [])[0].get('id', [])
             exited_agents = data.get('data', {}).get('subscribedAndExitedAgents', [])[1].get('id', [])
-            
+
             if len(subscribed_agents):
                 subscribed_agents = set(subscribed_agents)
             else:
@@ -233,7 +223,7 @@ class HeartbeatSubscriber:
             return subscribed_agents, exited_agents
         else:
             return set(), set()
-        
+
     def update_agents(self):
         mutation = """
             mutation($agentList: [Int!]!) {

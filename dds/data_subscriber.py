@@ -1,12 +1,12 @@
 from cyclonedds.domain import DomainParticipant, DomainParticipantQos
 from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
-from cyclonedds.pub import Publisher, DataWriter
 from cyclonedds.util import duration
-from cyclonedds.idl import IdlStruct
-from cyclonedds.idl.types import sequence
-from cyclonedds.core import Qos, Policy, Listener
-from cyclonedds.builtin import BuiltinDataReader, BuiltinTopicDcpsParticipant
+from cyclonedds.core import Listener
+
+import influxdb_client
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
 
 import time
 import os
@@ -15,25 +15,16 @@ import numpy as np
 import signal
 import requests
 
-from message_defs import DataMessage, reliable_qos, get_ip
-
-AGENTS_QUERY = """
-                    query {
-                        subscribed_agents {
-                            id
-                        }
-                    }
-               """ 
-
-TRANSFORM_QUERY =   """
-                        query {
-                            transform {
-                                R
-                                t
-                                timestamp
-                            }
-                        }   
-                    """
+from dds_utils import (
+    DataMessage,
+    fetch_subscribed_agent_ids_set,
+    fetch_transform_Rt_blocking,
+    get_ip,
+    reliable_qos,
+    transform_se2,
+)
+from dds_utils.config import INFLUX_ORG, INFLUX_URL
+from dds_utils.topics import data_topic_name
 
 ROBOT_GOAL_MUTATION =   """
                             mutation($robot_id: Int!, $x_goal: Float!, $y_goal: Float!, $theta_goal: Float!, $goal_timestamp: Float!, $from_bot: Boolean, $goal_valid: Boolean) {
@@ -53,15 +44,15 @@ OBJECT_MUTATION =   """
                         }
                     """
 
-CLEAR_OBJECT_MUTATION =     """  
+CLEAR_OBJECT_MUTATION =     """
                                 mutation($agent_id: Int!, $object_num: Int!) {
                                     clearObject(agent_id: $agent_id, object_num: $object_num)
-                                }       
+                                }
                             """
 
 class DataListener(Listener):
 
-    def __init__(self, my_id, topic_id, graphql_server):
+    def __init__(self, my_id, topic_id, graphql_server, influx_write_api=None):
         super().__init__()
         self.my_id = my_id
         self.topic_id = topic_id
@@ -72,19 +63,10 @@ class DataListener(Listener):
         self.R = None
         self.t = None
 
-    def transform_point(self, point, forward=True):
-        if self.R is None:
-            return point
+        self.influx_write_api = influx_write_api
 
-        point_xy = np.array([point[0], point[1]])
-        if forward:
-            new_point_xy = self.R @ point_xy + self.t
-            new_point_theta = point[2] + np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
-        else:
-            new_point_xy = self.R.T @ (point_xy - self.t)
-            new_point_theta = point[2] - np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
+    def transform_point(self, point, forward=True):
+        return transform_se2(self.R, self.t, point, forward)
 
     def update_transformation(self, R, t):
         self.R = R
@@ -152,6 +134,23 @@ class DataListener(Listener):
                 self.detected_object_num += 1
 
                 print(f"*********Detected object {class_name}")
+            elif message_type == "person_detected":
+
+                print("Received person detected message")
+
+                pose = data['pose']
+                x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
+
+                # Write to InfluxDB if the write API is available
+                if self.influx_write_api is not None:
+                    # Write the data to InfluxDB
+                    point = Point("person_detected") \
+                    .tag("robot_id", str(self.topic_id)) \
+                    .field("x", x) \
+                    .field("y", y) \
+                    .time(timestamp, WritePrecision.S)
+                    self.influx_write_api.write("first_bucket", org="eig", record=point)
+
             elif message_type == "sensor_detected_objects":
                 x = data['x']
                 y = data['y']
@@ -205,7 +204,7 @@ class DataListener(Listener):
                                     },
                                     timeout=1
                                 )
-                
+
             elif message_type == "goal":
                 x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
                 response =  requests.post(
@@ -223,7 +222,7 @@ class DataListener(Listener):
                                 },
                                 timeout=1
                             )
-                
+
             elif message_type == "invalid_goal":
                 print("Goal was invalid!")
                 x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
@@ -245,9 +244,11 @@ class DataListener(Listener):
 
 
 class DataSubscriber:
-    def __init__(self, my_id, server_url=None):
+    def __init__(self, my_id, server_url=None, influx_client=None):
 
         self.my_id = my_id
+        self.influx_client = influx_client
+        self.influx_write_api = self.influx_client.write_api(write_options=SYNCHRONOUS)
 
         self.my_ip = get_ip()
         # GraphQL server URL
@@ -278,15 +279,15 @@ class DataSubscriber:
 
         for agent_id in self.subscribed_agents:
             print(f"Subscribed to agent {agent_id} data")
-            new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
-            self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server)
+            new_data_topic = Topic(self.participant, data_topic_name(agent_id), DataMessage)
+            self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
             self.data_listeners[agent_id].update_transformation(self.R, self.t)
             self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
 
     def run(self):
         while True:
 
-            try:            
+            try:
                 agents_to_subscribe = self.get_agents()
                 new_agents = agents_to_subscribe - self.subscribed_agents
                 old_agents = self.subscribed_agents - agents_to_subscribe
@@ -296,8 +297,8 @@ class DataSubscriber:
                         continue
 
                     print(f"    Subscribed to agent {agent_id} data")
-                    new_data_topic = Topic(self.participant, 'DataTopic' + str(agent_id), DataMessage)
-                    self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server)
+                    new_data_topic = Topic(self.participant, data_topic_name(agent_id), DataMessage)
+                    self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
                     self.data_listeners[agent_id].update_transformation(self.R, self.t)
                     self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
 
@@ -316,49 +317,15 @@ class DataSubscriber:
             time.sleep(1)
 
     def get_agents(self):
-        # Query for any agents
-        response = requests.post(self.graphql_server, json={'query': AGENTS_QUERY}, timeout=1)
-        if response.status_code == 200:
-            data = response.json()
+        return fetch_subscribed_agent_ids_set(self.graphql_server, self.my_id)
 
-            # Get the agent ids from the response
-            agent_ids = data.get('data', {}).get('subscribed_agents', {}).get('id', [])
-
-            if int(self.my_id) in agent_ids:
-                agent_ids.remove(int(self.my_id))
-            elif self.my_id in agent_ids:
-                agent_ids.remove(self.my_id)
-
-            if len(agent_ids):
-                return set(agent_ids)
-            else:
-                return set()
-        else:
-            return set()
-        
     def get_transform(self):
-        # Query for the transform
-        response = requests.post(self.graphql_server, json={'query': TRANSFORM_QUERY}, timeout=1)
-        data = response.json()
-        transform = data.get('data', {}).get('transform', {})
-        R = transform.get('R', [])
-        t = transform.get('t', [])
-        
-        while len(R) != 4 or len(t) != 2:
-            response = requests.post(self.graphql_server, json={'query': TRANSFORM_QUERY}, timeout=1)
-            data = response.json()
-            transform = data.get('data', {}).get('transform', {})
-            R = transform.get('R', [])
-            t = transform.get('t', [])
-            time.sleep(1)
-
-        self.R = np.array(R).reshape((2, 2))
-        self.t = np.array(t)
+        self.R, self.t = fetch_transform_Rt_blocking(self.graphql_server)
         # print("data_subscriber got the transformation matrix!")
 
     def shutdown(self):
         print('Data subscriber stopped\n')
-                            
+
 if __name__ == '__main__':
 
     def handle_signal(sig, frame):
@@ -368,12 +335,17 @@ if __name__ == '__main__':
     # Set up signal handlers for SIGINT (Ctrl+C) and SIGTERM
     signal.signal(signal.SIGTERM, handle_signal) # Handles termination signal
 
+    token = os.environ.get("INFLUXDB_TOKEN")
+    if token is None:
+        raise ValueError("INFLUXDB_TOKEN environment variable not set")
+    write_client = influxdb_client.InfluxDBClient(url=INFLUX_URL, token=token, org=INFLUX_ORG)
+
     time.sleep(10)  # Wait for the participant to do entry and initialization
     # Create an instance of the DataSubscriber
     agent_id = os.getenv('AGENT_ID')
     if agent_id is None:
         raise ValueError("AGENT_ID environment variable not set")
-    data_sub = DataSubscriber(agent_id)
+    data_sub = DataSubscriber(agent_id, influx_client=write_client)
 
     def handle_signal(sig, frame):
         data_sub.shutdown()
@@ -387,4 +359,3 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('Exiting...')
         exit(0)
-    

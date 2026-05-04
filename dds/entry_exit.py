@@ -1,17 +1,11 @@
-from cyclonedds.domain import DomainParticipant, DomainParticipantQos
 from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
 from cyclonedds.pub import Publisher, DataWriter
-from cyclonedds.util import duration
-from cyclonedds.idl import IdlStruct
-from cyclonedds.idl.types import sequence
-from cyclonedds.core import Qos, Policy, Listener
-from cyclonedds.builtin import BuiltinDataReader, BuiltinTopicDcpsParticipant
+from cyclonedds.core import Listener
 
 import time
 import os
 import hashlib
-import socket
 import json
 import requests
 import numpy as np
@@ -19,20 +13,13 @@ import signal
 import base64
 
 from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, OccupancyGrid, msg_to_dict
-from message_defs import Heartbeat, EntryExit, Initialization, reliable_qos, best_effort_qos, get_ip
+from message_defs import EntryExit, Initialization, reliable_qos, best_effort_qos, get_ip
 
-# Constants (Set depending on the agent)
-HEARTBEAT_PERIOD = 10    # seconds
-HEARTBEAT_TIMEOUT = 31  # seconds
-AGENT_TYPE = 'human'
-
-AGENTS_QUERY =  """
-                    query {
-                        subscribed_agents {
-                            id
-                        }
-                    }
-                """ 
+from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD
+from dds_utils.gql_queries import AGENTS_QUERY
+from dds_utils.participant_factory import make_domain_participant_with_lease
+from dds_utils.topics import ENTRY_EXIT_TOPIC, INITIALIZATION_TOPIC
+from dds_utils.transform import transform_se2
 
 TRANSFORM_MUTATION =   """
                             mutation($R: [Float]!, $t: [Float]!, $timestamp: Float!) {
@@ -387,18 +374,14 @@ class EntryExitCommunication:
         self.map_mod_msg = OccupancyGrid()
         self.map_md_msg = MapMetaData()
 
-        self.lease_duration_ms = 30000
-        qos_profile = DomainParticipantQos()
-        qos_profile.lease_duration = duration(milliseconds=self.lease_duration_ms)
-
         # Create a DomainParticipant, Subscriber, and Publisher
-        self.participant = DomainParticipant(qos=qos_profile)
+        self.participant = make_domain_participant_with_lease()
         self.subscriber = Subscriber(self.participant)
         self.publisher = Publisher(self.participant)
 
         # Create the topics needed
-        self.entry_exit_topic = Topic(self.participant, 'EntryExitTopic', EntryExit)
-        self.init_topic = Topic(self.participant, 'InitializationTopic', Initialization)
+        self.entry_exit_topic = Topic(self.participant, ENTRY_EXIT_TOPIC, EntryExit)
+        self.init_topic = Topic(self.participant, INITIALIZATION_TOPIC, Initialization)
 
         # Create the DataWriters and DataReaders
         self.enter_exit_writer = DataWriter(self.publisher, self.entry_exit_topic, qos=reliable_qos)
@@ -621,18 +604,7 @@ class EntryExitCommunication:
         Returns:
         - tuple: The transformed point.
         """
-        if self.R is None:
-            return point
-
-        point_xy = np.array([point[0], point[1]])
-        if forward:
-            new_point_xy = self.R @ point_xy + self.t
-            new_point_theta = point[2] + np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
-        else:
-            new_point_xy = self.R.T @ (point_xy - self.t)
-            new_point_theta = point[2] - np.arctan2(self.R[1, 0], self.R[0, 0])
-            return np.concatenate((new_point_xy, [new_point_theta]))
+        return transform_se2(self.R, self.t, point, forward)
 
     def run(self):
 
