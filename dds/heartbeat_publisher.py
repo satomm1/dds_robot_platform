@@ -2,7 +2,6 @@ from cyclonedds.topic import Topic
 from cyclonedds.pub import Publisher, DataWriter
 
 import time
-import os
 import sys
 import signal
 

@@ -29,6 +29,11 @@ AGENTS_QUERY =  """
                     }
                 """
 
+HEARTBEAT_SUBSCRIBER_GRAPHQL_TIMEOUT_SEC = float(
+    os.environ.get("HEARTBEAT_SUBSCRIBER_GRAPHQL_TIMEOUT_SEC", "15")
+)
+
+
 class HeartbeatListener(Listener):
     """
     Listener class that handles heartbeat data from agents.
@@ -83,10 +88,10 @@ def hash_func(robot_id):
     Hashes the given robot ID using SHA-256 algorithm.
 
     Parameters:
-    robot_id (str): The robot ID to be hashed.
+        robot_id (str): The robot ID to be hashed.
 
     Returns:
-    int: The hashed robot ID as an integer.
+        int: The hashed robot ID as an integer.
 
     """
     return int(hashlib.sha256(robot_id.encode()).hexdigest(), 16)
@@ -132,7 +137,11 @@ class HeartbeatSubscriber:
                 last_time = current_time
 
                 # Get Current List of Agents:
-                current_agents, exited_agents = self.get_agents()
+                try:
+                    current_agents, exited_agents = self.get_agents()
+                except requests.exceptions.RequestException:
+                    time.sleep(1)
+                    continue
 
                 # Update agents with new heartbeats
                 heartbeats = self.heartbeat_listener.get_heartbeats()
@@ -207,7 +216,11 @@ class HeartbeatSubscriber:
 
     def get_agents(self):
         # Query for any agents
-        response = requests.post(self.graphql_server, json={'query': AGENTS_QUERY}, timeout=1)
+        response = requests.post(
+            self.graphql_server,
+            json={'query': AGENTS_QUERY},
+            timeout=HEARTBEAT_SUBSCRIBER_GRAPHQL_TIMEOUT_SEC,
+        )
         if response.status_code == 200:
             data = response.json()
 
@@ -240,7 +253,7 @@ class HeartbeatSubscriber:
         response = requests.post(
             self.graphql_server,
             json={'query': mutation, 'variables': {'agentList': agent_list}},
-            timeout=1
+            timeout=HEARTBEAT_SUBSCRIBER_GRAPHQL_TIMEOUT_SEC,
         )
 
     def shutdown(self):

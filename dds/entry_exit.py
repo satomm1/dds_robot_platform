@@ -53,6 +53,17 @@ CLEAR_ROBOT_MUTATION = """
                     """
 
 ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC = float(os.environ.get("ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC", "5"))
+ENTRY_EXIT_AGENTS_QUERY_TIMEOUT_SEC = float(
+    os.environ.get("ENTRY_EXIT_AGENTS_QUERY_TIMEOUT_SEC", "15")
+)
+# setMap / setMapMetadata send large payloads; default must exceed typical cold-start latency.
+ENTRY_EXIT_MAP_MUTATION_TIMEOUT_SEC = float(
+    os.environ.get("ENTRY_EXIT_MAP_MUTATION_TIMEOUT_SEC", "60")
+)
+ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC = float(
+    os.environ.get("ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC", "5")
+)
+
 
 class EntryExitListener(Listener):
     """
@@ -428,7 +439,7 @@ class EntryExitCommunication:
         response = requests.post(
             self.graphql_server,
             json={'query': mutation},
-            timeout=1
+            timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
         )
 
         # Clear the subscribed agents cache
@@ -441,7 +452,7 @@ class EntryExitCommunication:
         response = requests.post(
             self.graphql_server,
             json={'query': mutation, 'variables': {'agentList': agent_list}},
-            timeout=1
+            timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
         )
 
     def setup(self):
@@ -548,14 +559,14 @@ class EntryExitCommunication:
         response = requests.post(
             self.graphql_server,
             json={'query': MAP_MUTATION, 'variables': {'data': base64.b64encode(map_data_str).decode('utf-8')}},
-            timeout=1
+            timeout=ENTRY_EXIT_MAP_MUTATION_TIMEOUT_SEC,
         )
 
         # Send the map metadata to ignite server
         response = requests.post(
             self.graphql_server,
             json={'query': MD_MUTATION, 'variables': {'resolution': map_data['resolution'], 'width': map_data['width'], 'height': map_data['height'], 'origin_pos_x': map_data['origin_x'], 'origin_pos_y': map_data['origin_y'], 'origin_pos_z': map_data['origin_z'], 'origin_ori_x': map_data['origin_orientation_x'], 'origin_ori_y': map_data['origin_orientation_y'], 'origin_ori_z': map_data['origin_orientation_z'], 'origin_ori_w': map_data['origin_orientation_w']}},
-            timeout=1
+            timeout=ENTRY_EXIT_MAP_MUTATION_TIMEOUT_SEC,
         )
 
         print("    Map loaded from user_map.json")
@@ -646,7 +657,7 @@ class EntryExitCommunication:
                             response = requests.post(
                                 self.graphql_server,
                                 json={'query': CLEAR_ROBOT_MUTATION, 'variables': {'robot_id': agent_id}},
-                                timeout=1
+                                timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
                             )
 
                 current_agents_list = list(self.agents.keys())
@@ -656,7 +667,11 @@ class EntryExitCommunication:
                         exited_agents.pop(agent_id)  # Remove from exited agents dictionary if reentered
 
                 # Get agents from the GraphQL server
-                heartbeat_agents = list(self.get_agents())
+                try:
+                    heartbeat_agents = list(self.get_agents())
+                except requests.exceptions.RequestException:
+                    time.sleep(0.2)
+                    continue
 
                 new_agents = set(heartbeat_agents) - set(current_agents_list)
                 for agent_id in new_agents:
@@ -673,6 +688,11 @@ class EntryExitCommunication:
                 dead_agents = prev_agent_set - set(heartbeat_agents)
                 prev_agent_set = set(heartbeat_agents)
                 for agent_id in dead_agents:
+                    if agent_id == self.my_id_int:
+                        # Local agent is always in self.agents but may be absent from
+                        # GraphQL subscribed_agents (heartbeat-driven list). Do not treat
+                        # ourselves as dead based on that delta.
+                        continue
                     if agent_id in self.agents:
                         self.agents.pop(agent_id)
                         update_to_active_agents = True
@@ -681,7 +701,7 @@ class EntryExitCommunication:
                         response = requests.post(
                             self.graphql_server,
                             json={'query': CLEAR_ROBOT_MUTATION, 'variables': {'robot_id': agent_id}},
-                            timeout=1
+                            timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
                         )
 
                 # Update the entry/exit listener with the new agents
@@ -694,7 +714,11 @@ class EntryExitCommunication:
 
     def get_agents(self):
         # Query for any agents
-        response = requests.post(self.graphql_server, json={'query': AGENTS_QUERY}, timeout=1)
+        response = requests.post(
+            self.graphql_server,
+            json={'query': AGENTS_QUERY},
+            timeout=ENTRY_EXIT_AGENTS_QUERY_TIMEOUT_SEC,
+        )
         if response.status_code == 200:
             data = response.json()
 
@@ -719,7 +743,7 @@ class EntryExitCommunication:
         response = requests.post(
             self.graphql_server,
             json={'query': mutation, 'variables': {'agentList': agent_list}},
-            timeout=1
+            timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
         )
 
         if exited_agents is not None:
@@ -733,7 +757,7 @@ class EntryExitCommunication:
             response = requests.post(
                 self.graphql_server,
                 json={'query': mutation, 'variables': {'agentList': exited_agent_list}},
-                timeout=1
+                timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
             )
 
     def shutdown(self):
