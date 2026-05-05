@@ -52,6 +52,8 @@ CLEAR_ROBOT_MUTATION = """
                         }
                     """
 
+ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC = float(os.environ.get("ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC", "5"))
+
 class EntryExitListener(Listener):
     """
     Listener class for handling entry and exit events of agents in the environment.
@@ -552,7 +554,7 @@ class EntryExitCommunication:
         # Send the map metadata to ignite server
         response = requests.post(
             self.graphql_server,
-            json={'query': MD_MUTATION, 'variables': {'resolution': map_data['resolution'], 'width': map_data['width'], 'height': map_data['height'], 'origin_pos_x': map_data['origin_x'], 'origin_pos_y': map_data['origin_y'], 'origin_pos_z': map_data['origin_z'], 'origin_ori_x': map_data['origin_orientation_x'], 'origin_ori_y': map_data['origin_orientation_y'], 'origin_ori_z': map_data['origin_orientation_z'], 'origin_ori_w': map_data['origin_orientation_w']}},   
+            json={'query': MD_MUTATION, 'variables': {'resolution': map_data['resolution'], 'width': map_data['width'], 'height': map_data['height'], 'origin_pos_x': map_data['origin_x'], 'origin_pos_y': map_data['origin_y'], 'origin_pos_z': map_data['origin_z'], 'origin_ori_x': map_data['origin_orientation_x'], 'origin_ori_y': map_data['origin_orientation_y'], 'origin_ori_z': map_data['origin_orientation_z'], 'origin_ori_w': map_data['origin_orientation_w']}},
             timeout=1
         )
 
@@ -594,18 +596,18 @@ class EntryExitCommunication:
             self.t = t
 
         # Now store the transform in the ignite server
-        response =  requests.post(
-                                self.graphql_server,
-                                json={
-                                    'query': TRANSFORM_MUTATION,
-                                    'variables': {
-                                        'R': self.R.flatten().tolist(),
-                                        't': self.t.flatten().tolist(),
-                                        'timestamp': int(time.time())
-                                    }
-                                },
-                                timeout=1
-                            )
+        response = requests.post(
+            self.graphql_server,
+            json={
+                'query': TRANSFORM_MUTATION,
+                'variables': {
+                    'R': self.R.flatten().tolist(),
+                    't': self.t.flatten().tolist(),
+                    'timestamp': int(time.time())
+                }
+            },
+            timeout=ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC
+        )
 
     def transform_point(self, point, forward=True):
         """
