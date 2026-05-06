@@ -17,10 +17,12 @@ import requests
 
 from dds_utils import (
     AgentIdError,
+    GraphqlPollBackoff,
     Location,
     best_effort_qos,
     create_domain_participant,
     dispose_participant,
+    dds_log,
     fetch_subscribed_agent_ids_set,
     fetch_transform_Rt_blocking,
     get_ip,
@@ -139,6 +141,8 @@ class LocationSubscriber:
         self.my_ip = get_ip()
         self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
 
+        self._graphql_warn = GraphqlPollBackoff()
+
         self.subscribed_agents = self.get_agents()
 
         # Get the transformation matrix from Ignite
@@ -155,29 +159,31 @@ class LocationSubscriber:
         self.location_readers = dict()
 
         for agent_id in self.subscribed_agents:
-            print(f"Subscribed to agent {agent_id} location")
+            dds_log("loc_sub", f"subscribed to agent {agent_id} location")
             new_location_topic = Topic(self.participant, location_topic_name(agent_id), Location)
             self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip, influx_write_api=self.influx_write_api)
             self.location_listeners[agent_id].update_transformation(self.R, self.t)
             self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
     def run(self):
+        dds_log("loc_sub", "ready")
         while True:
 
             try:
                 agents_to_subscribe = self.get_agents()
+                self._graphql_warn.success()
                 new_agents = agents_to_subscribe - self.subscribed_agents
                 old_agents = self.subscribed_agents - agents_to_subscribe
 
                 for agent_id in new_agents:
-                    print(f"    Subscribed to agent {agent_id} location")
+                    dds_log("loc_sub", f"subscribed to agent {agent_id} location")
                     new_location_topic = Topic(self.participant, location_topic_name(agent_id), Location)
                     self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip, influx_write_api=self.influx_write_api)
                     self.location_listeners[agent_id].update_transformation(self.R, self.t)
                     self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
                 for agent_id in old_agents:
-                    print(f"    Unsubscribed from agent {agent_id} location")
+                    dds_log("loc_sub", f"unsubscribed from agent {agent_id} location")
                     self.location_readers[agent_id] = None
                     self.location_listeners[agent_id] = None
                     self.location_listeners.pop(agent_id)
@@ -186,7 +192,10 @@ class LocationSubscriber:
                 self.subscribed_agents = agents_to_subscribe
 
             except Exception as e:
-                pass
+                self._graphql_warn.failure(
+                    "loc_sub",
+                    lambda exc=e: f"GraphQL poll failed: {exc}",
+                )
 
             time.sleep(1)
 
@@ -198,7 +207,7 @@ class LocationSubscriber:
         # print("location_subscriber got the transformation matrix!")
 
     def shutdown(self):
-        print('Location subscriber stopped\n')
+        dds_log("loc_sub", "stopped")
         self.location_readers.clear()
         self.location_listeners.clear()
         self.subscriber = None
@@ -234,5 +243,5 @@ if __name__ == '__main__':
     try:
         loc_subscriber.run()
     except KeyboardInterrupt:
-        print('Exiting...')
+        dds_log("loc_sub", "exiting")
         exit(0)

@@ -16,6 +16,7 @@ from dds_utils.config import HEARTBEAT_PERIOD, HEARTBEAT_TIMEOUT, resolve_graphq
 from dds_utils import (
     AgentIdError,
     create_domain_participant,
+    dds_log,
     dispose_participant,
     require_agent_id_int,
 )
@@ -127,6 +128,7 @@ class HeartbeatSubscriber:
         self.heartbeat_reader = DataReader(self.subscriber, self.heartbeat_topic, listener=self.heartbeat_listener, qos=best_effort_qos)
 
     def run(self):
+        dds_log("hb_sub", "ready")
 
         last_time = int(time.time())
         prev_exited_agents = set()
@@ -165,7 +167,7 @@ class HeartbeatSubscriber:
                             self.agents.pop(agent_id)
                             update_to_active_agents = True
                     else:
-                        print(f'Detected heartbeat from unknown agent {agent_id}')
+                        dds_log("hb_sub", f"heartbeat from unknown agent {agent_id}")
                         agent_hash = hash_func(str(agent_id))
 
                         # FIXME: Add correct agent_type and ip_address
@@ -200,7 +202,7 @@ class HeartbeatSubscriber:
 
                     if time_difference > HEARTBEAT_TIMEOUT:
                         # Agent has timed out
-                        print(f'Agent {agent_id} has timed out')
+                        dds_log("hb_sub", f"agent {agent_id} timed out")
                         dead_agents.append(agent_id)
 
                 # Remove Dead Agents
@@ -277,5 +279,5 @@ if __name__ == "__main__":
     try:
         subscriber.run()
     except KeyboardInterrupt:
-        print("Heartbeat subscriber stopped.")
+        dds_log("hb_sub", "stopped")
         exit(0)

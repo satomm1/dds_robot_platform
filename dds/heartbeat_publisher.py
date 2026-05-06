@@ -7,14 +7,16 @@ import signal
 
 from message_defs import Heartbeat, best_effort_qos
 
-from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD
 from dds_utils import (
     AgentIdError,
     create_domain_participant,
+    dds_log,
     dispose_participant,
     get_ip,
+    is_dds_verbose,
     require_agent_id_int,
 )
+from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD
 from dds_utils.topics import HEARTBEAT_TOPIC
 
 
@@ -51,16 +53,18 @@ class HeartbeatPublisher:
         """
         Publishes heartbeat messages at regular intervals.
         """
+        dds_log("hb_pub", f"ready (heartbeat every {HEARTBEAT_PERIOD}s)")
         # Start the heartbeat publishing loop
         while True:
             current_time = int(time.time())
             heartbeat_message = Heartbeat(self.agent_id, current_time, self.agent_type, self.my_ip, self.location_valid, 0.0, 0.0, 0.0, [])
             self.heartbeat_writer.write(heartbeat_message)
-            print("                Heartbeat Sent")
+            if is_dds_verbose():
+                dds_log("hb_pub", "heartbeat sent")
             time.sleep(HEARTBEAT_PERIOD)
 
     def shutdown(self):
-        print('Heartbeat publisher stopped\n')
+        dds_log("hb_pub", "stopped")
         self.heartbeat_writer = None
         self.publisher = None
         dispose_participant(self.participant)
@@ -82,5 +86,5 @@ if __name__ == "__main__":
     try:
         publisher.run()
     except KeyboardInterrupt:
-        print("Heartbeat publisher stopped.")
+        dds_log("hb_pub", "stopped")
         exit(0)

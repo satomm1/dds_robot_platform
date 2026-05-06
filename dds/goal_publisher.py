@@ -13,6 +13,7 @@ import sys
 from dds_utils import (
     AgentIdError,
     DataMessage,
+    dds_log,
     create_domain_participant,
     dispose_participant,
     get_ip,
@@ -129,6 +130,7 @@ class GoalWriter:
                 time.sleep(1)
 
         # Now start the main loop
+        dds_log("goal_pub", "ready")
         while True:
             try:
                 current_time = int(time.time())
@@ -179,7 +181,7 @@ class GoalWriter:
                         message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
 
                         message_writer.write(command_message)
-                        print("Received new goal *********************")
+                        dds_log("goal_pub", f"new goal for robot {robot_goal_id}")
 
                 # Pending human stop requests -> DDS DataMessage(stop)
                 try:
@@ -199,7 +201,7 @@ class GoalWriter:
                             self.publisher, message_topic, qos=reliable_qos
                         )
                         message_writer.write(command_message)
-                        print(f"Published DDS stop for robot {rid}")
+                        dds_log("goal_pub", f"published stop for robot {rid}")
                         try:
                             cr = post_graphql(
                                 self.graphql_server,
@@ -255,7 +257,7 @@ class GoalWriter:
                         message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
 
                         message_writer.write(command_message)
-                        print("Received new initial position *********************")
+                        dds_log("goal_pub", f"new initial position for robot {robot_id}")
 
             except Exception:
                 # print("No goals yet...", e)
@@ -264,7 +266,7 @@ class GoalWriter:
             time.sleep(0.2)
 
     def shutdown(self):
-        print('Goal publisher stopped\n')
+        dds_log("goal_pub", "stopped")
         self.subscriber = None
         self.publisher = None
         dispose_participant(self.participant)
@@ -291,5 +293,5 @@ if __name__ == '__main__':
     try:
         goal_writer.run()
     except KeyboardInterrupt:
-        print('Exiting...')
+        dds_log("goal_pub", "exiting")
         exit(0)

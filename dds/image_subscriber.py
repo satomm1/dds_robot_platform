@@ -19,9 +19,12 @@ from PIL import Image
 
 from dds_utils import (
     AgentIdError,
+    GraphqlPollBackoff,
+    ImageLogThrottle,
     ImageMessage,
     create_domain_participant,
     dispose_participant,
+    dds_log,
     fetch_subscribed_agent_ids_set,
     fetch_transform_Rt_blocking,
     get_ip,
@@ -42,7 +45,14 @@ from dds_utils.topics import image_topic_name
 
 class ImageListener(Listener):
 
-    def __init__(self, my_id, topic_id, graphql_server, influx_write_api=None):
+    def __init__(
+        self,
+        my_id,
+        topic_id,
+        graphql_server,
+        influx_write_api=None,
+        image_throttle=None,
+    ):
         super().__init__()
         self.my_id = my_id
         self.topic_id = topic_id
@@ -54,6 +64,7 @@ class ImageListener(Listener):
         self.t = None
 
         self.influx_write_api = influx_write_api
+        self._image_throttle = image_throttle
 
     def transform_point(self, point, forward=True):
         return transform_se2(self.R, self.t, point, forward)
@@ -66,7 +77,8 @@ class ImageListener(Listener):
         for sample in reader.read():
 
             timestamp = sample.timestamp
-            print(f"Received image with timestamp: {timestamp}")
+            if self._image_throttle is not None:
+                self._image_throttle.record("img_sub", timestamp)
 
             # Save the image to a file
             image_data = np.array(sample.data)
@@ -126,6 +138,9 @@ class ImageSubscriber:
         self.my_ip = get_ip()
         self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
 
+        self._graphql_warn = GraphqlPollBackoff()
+        self._image_throttle = ImageLogThrottle()
+
         self.subscribed_agents = self.get_agents()
 
         # Get the transformation matrix from Ignite
@@ -142,17 +157,25 @@ class ImageSubscriber:
         self.image_readers = dict()
 
         for agent_id in self.subscribed_agents:
-            print(f"Subscribed to agent {agent_id} images")
+            dds_log("img_sub", f"subscribed to agent {agent_id} images")
             new_image_topic = Topic(self.participant, image_topic_name(agent_id), ImageMessage)
-            self.image_listeners[agent_id] = ImageListener(my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
+            self.image_listeners[agent_id] = ImageListener(
+                my_id,
+                agent_id,
+                self.graphql_server,
+                influx_write_api=self.influx_write_api,
+                image_throttle=self._image_throttle,
+            )
             self.image_listeners[agent_id].update_transformation(self.R, self.t)
             self.image_readers[agent_id] = DataReader(self.subscriber, new_image_topic, listener=self.image_listeners[agent_id], qos=reliable_qos)
 
     def run(self):
+        dds_log("img_sub", "ready")
         while True:
 
             try:
                 agents_to_subscribe = self.get_agents()
+                self._graphql_warn.success()
                 new_agents = agents_to_subscribe - self.subscribed_agents
                 old_agents = self.subscribed_agents - agents_to_subscribe
 
@@ -160,15 +183,21 @@ class ImageSubscriber:
                     if int(agent_id) == int(self.my_id):
                         continue
 
-                    print(f"    Subscribed to agent {agent_id} images")
+                    dds_log("img_sub", f"subscribed to agent {agent_id} images")
                     new_image_topic = Topic(self.participant, image_topic_name(agent_id), ImageMessage)
-                    self.image_listeners[agent_id] = ImageListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
+                    self.image_listeners[agent_id] = ImageListener(
+                        self.my_id,
+                        agent_id,
+                        self.graphql_server,
+                        influx_write_api=self.influx_write_api,
+                        image_throttle=self._image_throttle,
+                    )
                     self.image_listeners[agent_id].update_transformation(self.R, self.t)
                     self.image_readers[agent_id] = DataReader(self.subscriber, new_image_topic, listener=self.image_listeners[agent_id], qos=reliable_qos)
 
 
                 for agent_id in old_agents:
-                    print(f"    Unsubscribed from agent {agent_id} images")
+                    dds_log("img_sub", f"unsubscribed from agent {agent_id} images")
                     self.image_listeners[agent_id] = None
                     self.image_readers[agent_id] = None
                     self.image_listeners.pop(agent_id)
@@ -176,7 +205,10 @@ class ImageSubscriber:
 
                 self.subscribed_agents = agents_to_subscribe
             except Exception as e:
-                pass
+                self._graphql_warn.failure(
+                    "img_sub",
+                    lambda exc=e: f"GraphQL poll failed: {exc}",
+                )
 
             time.sleep(1)
 
@@ -187,7 +219,7 @@ class ImageSubscriber:
         self.R, self.t = fetch_transform_Rt_blocking(self.graphql_server)
 
     def shutdown(self):
-        print("Image Subscriber stopped\n")
+        dds_log("img_sub", "stopped")
         self.image_readers.clear()
         self.image_listeners.clear()
         self.subscriber = None
@@ -228,5 +260,5 @@ if __name__ == "__main__":
     try:
         image_sub.run()
     except KeyboardInterrupt:
-        print('Exiting...')
+        dds_log("img_sub", "exiting")
         exit(0)

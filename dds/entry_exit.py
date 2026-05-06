@@ -20,6 +20,7 @@ from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD, resolve_graphql_http_
 from dds_utils import (
     AgentIdError,
     create_domain_participant,
+    dds_log,
     dispose_participant,
     parse_agent_id_int,
     require_agent_id_int,
@@ -140,8 +141,11 @@ class EntryExitListener(Listener):
                 new_robot_hash = hash_func(str(sample.agent_id))
                 # If the new agent is the closest robot, send an initialization message
                 # The initalization message contains the map, map metadata, and all agents in the environment
-                if self.find_if_closest_robot(new_robot_hash):
-                    print(f'Agent {sample.agent_id} of type \'{sample.agent_type}\' is requesting entry')
+                if self.find_if_closest_robot(new_robot_hash, sample.agent_id):
+                    dds_log(
+                        "entry_exit",
+                        f"Agent {sample.agent_id} ({sample.agent_type}) requesting entry",
+                    )
 
                     # Message containing details of all active agents
                     agents_message = json.dumps(self.agents)
@@ -155,7 +159,10 @@ class EntryExitListener(Listener):
             elif sample.action == "initialized":
                 # Only if the sample.timestamp is recent
                 if int(time.time()) - sample.timestamp < 10: 
-                    print(f'Agent {sample.agent_id} of type \'{sample.agent_type}\' entered the environment')
+                    dds_log(
+                        "entry_exit",
+                        f"Agent {sample.agent_id} ({sample.agent_type}) entered",
+                    )
 
                     # Agent initialized, add to agents dictionary
                     new_robot_hash = hash_func(str(sample.agent_id))
@@ -174,18 +181,19 @@ class EntryExitListener(Listener):
             elif sample.action == 'exit':
                 # Agent Exited, remove from agents dictionary
                 if sample.agent_id in self.agents:
-                    print(f'Agent {sample.agent_id} exited the environment')
+                    dds_log("entry_exit", f"Agent {sample.agent_id} exited")
                     self.agents.pop(sample.agent_id)  # Pop from agents dictionary
                     self.exited_agents[sample.agent_id] = int(time.time())  # Add to exited agents dictionary
                     self.update_to_agents = True
 
-    def find_if_closest_robot(self, robot_hash):
+    def find_if_closest_robot(self, robot_hash, requesting_agent_id):
         """
         Finds if the given robot is the closest robot to the current agent.
         The closest robot is the robot that has the smallest difference in hash value
 
         Parameters:
         - robot_hash (int): The hash value of the robot.
+        - requesting_agent_id: Agent id requesting initialization.
 
         Returns:
         - bool: True if the given robot is the closest robot, False otherwise.
@@ -197,10 +205,12 @@ class EntryExitListener(Listener):
 
             distance = abs(agent_hash - robot_hash)
             if distance < my_distance and distance != 0:
-                print("I will not provide initialization.")
+                dds_log(
+                    "entry_exit",
+                    f"Skipping init for agent {requesting_agent_id}: agent {agent_id} is closer",
+                )
                 return False
 
-        # print('I will provide initialization.')
         return True
 
     def agent_update_available(self):
@@ -289,8 +299,6 @@ class InitializationListener(Listener):
             if sending_agent == self.my_id_int:
                 continue
 
-            print(f'Initialization message received from agent {sending_agent}')
-
             if sample.target_agent != self.my_id_int:
                 continue
 
@@ -315,7 +323,7 @@ class InitializationListener(Listener):
             self.reference_known_points = known_points
             self.known_points_received = True
 
-            print("Reference points received through initialization message")
+            dds_log("entry_exit", f"Init from agent {sending_agent}: reference points loaded")
 
     def map_available(self):
         """
@@ -382,12 +390,12 @@ class EntryExitCommunication:
         # Get agent ID, Hash, and IP Address
         self.my_id_int = parse_agent_id_int(agent_id)
         self.my_id = str(self.my_id_int)
-        print(f"\nMy Agent ID is {self.my_id}")
+        dds_log("entry_exit", f"agent id={self.my_id}")
         self.my_hash = hash_func(str(self.my_id_int))
 
         # Get IP Address
         self.my_ip = get_ip()
-        print(f"My IP address is {self.my_ip}\n")
+        dds_log("entry_exit", f"ip={self.my_ip}")
 
         # Dictionary to store agents in the environment
         self.agents = dict()
@@ -469,7 +477,7 @@ class EntryExitCommunication:
         Returns:
             None
         """
-        print("Starting Setup:")
+        dds_log("entry_exit", "setup starting")
 
         # load the map from file
         self.load_map()
@@ -494,7 +502,10 @@ class EntryExitCommunication:
         # Wait for the reference points to become available
         num_tries = 0
         while not self.init_listener.known_points_available() and num_tries < 10:
-            print("    Reference Points not yet received (attempt {0}/10)".format(num_tries+1))
+            dds_log(
+                "entry_exit",
+                f"reference points not yet received (attempt {num_tries + 1}/10)",
+            )
             time.sleep(1)
             if not self.init_listener.known_points_available():
                 entry_message.timestamp = int(time.time())
@@ -502,7 +513,7 @@ class EntryExitCommunication:
                 num_tries += 1
 
         if self.init_listener.known_points_available():
-            print("    I am not the first agent, received reference points")
+            dds_log("entry_exit", "joined swarm (received reference points)")
 
             # Store the map, map metadata, and agents
             self.reference_known_points = self.init_listener.get_known_points()
@@ -519,7 +530,7 @@ class EntryExitCommunication:
             # Update the agents in the entry/exit listener
             self.entry_exit_listener.update_agents(agents=self.agents)
         else: 
-            print("    I am the first agent, my map will be the reference map")
+            dds_log("entry_exit", "first agent (local map is reference)")
             self.reference_known_points = self.known_points
 
             self.agents[self.my_id_int] = {
@@ -545,7 +556,7 @@ class EntryExitCommunication:
         entry_message = EntryExit(self.my_id_int, AGENT_TYPE, 'initialized', self.my_ip, int(time.time()))
         self.enter_exit_writer.write(entry_message)
 
-        print("Setup complete\n")
+        dds_log("entry_exit", "setup complete")
 
     def load_map(self):
         # Load the map from the user_map.json file
@@ -569,13 +580,13 @@ class EntryExitCommunication:
             timeout=ENTRY_EXIT_MAP_MUTATION_TIMEOUT_SEC,
         )
 
-        print("    Map loaded from user_map.json")
+        dds_log("entry_exit", "map loaded from user_map.json")
 
     def create_transform(self):
         """
         Determines the transform from my map to the reference map
         """
-        print("    Creating Transform")
+        dds_log("entry_exit", "computing map transform")
 
         self.R = None
         self.t = None
@@ -634,6 +645,7 @@ class EntryExitCommunication:
         return transform_se2(self.R, self.t, point, forward)
 
     def run(self):
+        dds_log("entry_exit", "ready (agent sync)")
 
         prev_agent_set = set()
         exited_agents = dict()
@@ -761,7 +773,7 @@ class EntryExitCommunication:
             )
 
     def shutdown(self):
-        print('\nSending exit message...\n')
+        dds_log("entry_exit", "sending exit message")
         # Write exit message
         exit_message = EntryExit(self.my_id_int, AGENT_TYPE, 'exit', self.my_ip, int(time.time()))
         if self.enter_exit_writer is not None:
@@ -799,5 +811,5 @@ if __name__ == '__main__':
         entry_exit_obj.run()
     except KeyboardInterrupt:
         entry_exit_obj.shutdown()
-        print('Exiting...')
+        dds_log("entry_exit", "exiting")
         exit(0)

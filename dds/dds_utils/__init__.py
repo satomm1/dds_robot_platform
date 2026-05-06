@@ -1,3 +1,4 @@
+from .cli_log import GraphqlPollBackoff, ImageLogThrottle, dds_log, dds_warn, is_dds_verbose
 from .config import (
     AGENT_TYPE,
     DEFAULT_GRAPHQL_PORT,
@@ -50,6 +51,8 @@ from .topics import (
 from .transform import transform_se2
 
 __all__ = [
+    "GraphqlPollBackoff",
+    "ImageLogThrottle",
     "AGENT_TYPE",
     "AGENTS_QUERY",
     "AgentIdError",
@@ -78,10 +81,13 @@ __all__ = [
     "data_topic_name",
     "default_graphql_url",
     "resolve_graphql_http_url",
+    "dds_log",
+    "dds_warn",
     "dispose_entity",
     "dispose_participant",
     "fetch_subscribed_agent_ids_set",
     "fetch_transform_Rt_blocking",
+    "is_dds_verbose",
     "parse_graphql_response",
     "post_graphql",
     "get_ip",

@@ -17,8 +17,10 @@ import requests
 from dds_utils import (
     AgentIdError,
     DataMessage,
+    GraphqlPollBackoff,
     create_domain_participant,
     dispose_participant,
+    dds_log,
     fetch_subscribed_agent_ids_set,
     fetch_transform_Rt_blocking,
     get_ip,
@@ -98,7 +100,7 @@ class DataListener(Listener):
                     y.append(y_new)
                     t.append(pose['header']['stamp']['secs'] + pose['header']['stamp']['nsecs'] / 1e9)
 
-                print(f"Writing path data to Ignite for agent {sending_agent}")
+                dds_log("data_sub", f"path -> GraphQL (agent {sending_agent})")
                 response = requests.post(self.graphql_server,
                                 json={'query': PATH_MUTATION,
                                     'variables': {
@@ -136,10 +138,10 @@ class DataListener(Listener):
 
                 self.detected_object_num += 1
 
-                print(f"*********Detected object {class_name}")
+                dds_log("data_sub", f"detected object: {class_name}")
             elif message_type == "person_detected":
 
-                print("Received person detected message")
+                dds_log("data_sub", "person_detected")
 
                 pose = data['pose']
                 x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
@@ -227,7 +229,7 @@ class DataListener(Listener):
                             )
 
             elif message_type == "invalid_goal":
-                print("Goal was invalid!")
+                dds_log("data_sub", f"invalid goal (agent {self.topic_id})")
                 x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
                 response =  requests.post(
                                 self.graphql_server,
@@ -256,6 +258,8 @@ class DataSubscriber:
         self.my_ip = get_ip()
         self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
 
+        self._graphql_warn = GraphqlPollBackoff()
+
         self.subscribed_agents = self.get_agents()
 
         # Get the transformation matrix from Ignite
@@ -272,17 +276,19 @@ class DataSubscriber:
         self.data_readers = dict()
 
         for agent_id in self.subscribed_agents:
-            print(f"Subscribed to agent {agent_id} data")
+            dds_log("data_sub", f"subscribed to agent {agent_id} data")
             new_data_topic = Topic(self.participant, data_topic_name(agent_id), DataMessage)
             self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
             self.data_listeners[agent_id].update_transformation(self.R, self.t)
             self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
 
     def run(self):
+        dds_log("data_sub", "ready")
         while True:
 
             try:
                 agents_to_subscribe = self.get_agents()
+                self._graphql_warn.success()
                 new_agents = agents_to_subscribe - self.subscribed_agents
                 old_agents = self.subscribed_agents - agents_to_subscribe
 
@@ -290,7 +296,7 @@ class DataSubscriber:
                     if int(agent_id) == int(self.my_id):
                         continue
 
-                    print(f"    Subscribed to agent {agent_id} data")
+                    dds_log("data_sub", f"subscribed to agent {agent_id} data")
                     new_data_topic = Topic(self.participant, data_topic_name(agent_id), DataMessage)
                     self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
                     self.data_listeners[agent_id].update_transformation(self.R, self.t)
@@ -298,7 +304,7 @@ class DataSubscriber:
 
 
                 for agent_id in old_agents:
-                    print(f"    Unsubscribed from agent {agent_id} data")
+                    dds_log("data_sub", f"unsubscribed from agent {agent_id} data")
                     self.data_listeners[agent_id] = None
                     self.data_readers[agent_id] = None
                     self.data_listeners.pop(agent_id)
@@ -306,7 +312,10 @@ class DataSubscriber:
 
                 self.subscribed_agents = agents_to_subscribe
             except Exception as e:
-                pass
+                self._graphql_warn.failure(
+                    "data_sub",
+                    lambda exc=e: f"GraphQL poll failed: {exc}",
+                )
 
             time.sleep(1)
 
@@ -318,7 +327,7 @@ class DataSubscriber:
         # print("data_subscriber got the transformation matrix!")
 
     def shutdown(self):
-        print('Data subscriber stopped\n')
+        dds_log("data_sub", "stopped")
         self.data_readers.clear()
         self.data_listeners.clear()
         self.subscriber = None
@@ -357,5 +366,5 @@ if __name__ == '__main__':
     try:
         data_sub.run()
     except KeyboardInterrupt:
-        print('Exiting...')
+        dds_log("data_sub", "exiting")
         exit(0)
