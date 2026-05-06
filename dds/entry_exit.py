@@ -499,13 +499,9 @@ class EntryExitCommunication:
         entry_message = EntryExit(self.my_id_int, AGENT_TYPE, 'enter', self.my_ip, int(time.time()))
         self.enter_exit_writer.write(entry_message)
 
-        # Wait for the reference points to become available
+        # Wait up to 3s for reference points (re-sending entry each second if still waiting)
         num_tries = 0
-        while not self.init_listener.known_points_available() and num_tries < 10:
-            dds_log(
-                "entry_exit",
-                f"reference points not yet received (attempt {num_tries + 1}/10)",
-            )
+        while not self.init_listener.known_points_available() and num_tries < 3:
             time.sleep(1)
             if not self.init_listener.known_points_available():
                 entry_message.timestamp = int(time.time())

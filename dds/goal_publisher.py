@@ -171,6 +171,11 @@ class GoalWriter:
                             message_topic = Topic(self.participant, data_topic_name(robot_goal_id), DataMessage)
                             message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
                             message_writer.write(command_message)
+                            dds_log(
+                                "goal_pub",
+                                f"goal set for robot {robot_goal_id} "
+                                f"(x={robot_goal_x:.3f}, y={robot_goal_y:.3f}, θ={robot_goal_theta:.3f})",
+                            )
                     elif self.robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
 
                         # Store goal in history
@@ -181,7 +186,11 @@ class GoalWriter:
                         message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
 
                         message_writer.write(command_message)
-                        dds_log("goal_pub", f"new goal for robot {robot_goal_id}")
+                        dds_log(
+                            "goal_pub",
+                            f"goal updated for robot {robot_goal_id} "
+                            f"(x={robot_goal_x:.3f}, y={robot_goal_y:.3f}, θ={robot_goal_theta:.3f})",
+                        )
 
                 # Pending human stop requests -> DDS DataMessage(stop)
                 try:
@@ -248,6 +257,11 @@ class GoalWriter:
                             message_topic = Topic(self.participant, data_topic_name(robot_id), DataMessage)
                             message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
                             message_writer.write(command_message)
+                            dds_log(
+                                "goal_pub",
+                                f"initial position set for robot {robot_id} "
+                                f"(x={robot_x:.3f}, y={robot_y:.3f}, θ={robot_theta:.3f})",
+                            )
                     elif self.robot_init_history[robot_id] != (robot_x, robot_y, robot_theta, robot_timestamp):
                         # Store initial position in history
                         self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
@@ -257,7 +271,11 @@ class GoalWriter:
                         message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
 
                         message_writer.write(command_message)
-                        dds_log("goal_pub", f"new initial position for robot {robot_id}")
+                        dds_log(
+                            "goal_pub",
+                            f"initial position updated for robot {robot_id} "
+                            f"(x={robot_x:.3f}, y={robot_y:.3f}, θ={robot_theta:.3f})",
+                        )
 
             except Exception:
                 # print("No goals yet...", e)
