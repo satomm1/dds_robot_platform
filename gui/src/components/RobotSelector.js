@@ -10,8 +10,19 @@ const RobotSelector = ({
 }) => {
   useEffect(() => {
     const robots = robotPositions;
-    if (selectedRobotId == null && robots.length > 0 && onSelectRobot) {
-      onSelectRobot(robots[0].id);
+    if (!onSelectRobot || robots.length === 0) return;
+
+    const firstId = robots[0].id;
+    // Single robot in the environment: always select it (covers stale selection after others left).
+    if (robots.length === 1) {
+      if (selectedRobotId !== firstId) {
+        onSelectRobot(firstId);
+      }
+      return;
+    }
+
+    if (selectedRobotId == null) {
+      onSelectRobot(firstId);
     }
   }, [selectedRobotId, robotPositions, onSelectRobot]);
 
