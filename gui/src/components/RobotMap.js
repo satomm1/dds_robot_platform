@@ -43,7 +43,8 @@ const RobotMap = ({
   const [invalidGoalMessages, setInvalidGoalMessages] = useState({});
 
   const [mapImage, setMapImage] = useState(null);
-  
+  const prevRobotCountRef = useRef(null);
+
   // Polling interval (in milliseconds)
   const POLL_INTERVAL = 1000; // Fetch every 1 seconds
   
@@ -200,7 +201,18 @@ const RobotMap = ({
       console.error('Error clearing objects:', error);
     }
   });
-  
+
+  // When every robot leaves the environment, clear objects the same way as the toolbar button.
+  useEffect(() => {
+    if (positionsError) return;
+    const n = robotPositions.length;
+    const prev = prevRobotCountRef.current;
+    if (prev !== null && prev > 0 && n === 0) {
+      clearAllObjects();
+    }
+    prevRobotCountRef.current = n;
+  }, [robotPositions, positionsError, clearAllObjects]);
+
   useEffect(() => {
     if (!mapData || !mapData.map) return;
     
