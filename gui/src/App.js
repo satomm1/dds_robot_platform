@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { ApolloProvider, useMutation, useQuery } from '@apollo/client';
 import client from './apolloClient';
@@ -47,6 +47,17 @@ function AppContent() {
   // State to manage position mode (goal or initial)
   // This can be used to toggle between setting a goal or an initial position
   const [positionMode, setPositionMode] = useState('goal'); // 'goal' or 'initial'
+  const prevRobotCountRef = useRef(null);
+
+  useEffect(() => {
+    if (positionsError) return;
+    const n = robotPositions.length;
+    const prev = prevRobotCountRef.current;
+    if (prev === 0 && n > 0) {
+      setPositionMode('initial');
+    }
+    prevRobotCountRef.current = n;
+  }, [robotPositions, positionsError]);
 
   // Mutation for setting the robot's initial position
   const [setRobotInitialPosition] = useMutation(SET_ROBOT_INITIAL_POSITION);
