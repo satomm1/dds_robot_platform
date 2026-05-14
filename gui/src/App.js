@@ -51,7 +51,8 @@ function AppContent() {
 
   const [multiFleet, setMultiFleet] = useState({});
   const [stagedMultiGoals, setStagedMultiGoals] = useState({});
-  const [multiPlanId, setMultiPlanId] = useState(() => `gui_${Date.now()}`);
+  const [multiPlanId, setMultiPlanId] = useState('gui_1');
+  const nextMultiPlanSuffixRef = useRef(2);
   const [multiCoordinated, setMultiCoordinated] = useState(true);
   const [multiSubmitError, setMultiSubmitError] = useState('');
 
@@ -134,7 +135,7 @@ function AppContent() {
     setMultiSubmitError('');
     setMultiRobotGoalPlan({
       variables: {
-        planId: multiPlanId || `gui_${Date.now()}`,
+        planId: multiPlanId.trim() || 'gui_1',
         coordinated: multiCoordinated,
         planTimestamp,
         goals,
@@ -143,7 +144,9 @@ function AppContent() {
       .then(() => {
         setStagedMultiGoals({});
         setMultiFleet({});
-        setMultiPlanId(`gui_${Date.now()}`);
+        const next = nextMultiPlanSuffixRef.current;
+        nextMultiPlanSuffixRef.current += 1;
+        setMultiPlanId(`gui_${next}`);
       })
       .catch((err) => {
         console.error('setMultiRobotGoalPlan:', err);
