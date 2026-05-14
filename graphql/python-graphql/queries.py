@@ -12,6 +12,8 @@ map_cache = ignite_client.get_or_create_cache('map')
 query = QueryType()
 
 STOP_REQUEST_CACHE = "robot_stop_request"
+MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
+MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 
 
 @query.field("map")
@@ -177,6 +179,35 @@ def resolve_data(*_):
             "goal_valid": goal.get("valid", True)
         })
     return all_goals
+
+
+@query.field("activeMultiRobotGoalPlan")
+def resolve_active_multi_robot_goal_plan(*_):
+    plan_cache = ignite_client.get_or_create_cache(MULTI_ROBOT_GOAL_PLAN_CACHE)
+    raw = plan_cache.get(MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY)
+    if raw is None:
+        return None
+    try:
+        doc = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as exc:
+        logger.warning("activeMultiRobotGoalPlan invalid JSON: %s", exc)
+        return None
+    goals_out = []
+    for e in doc.get("goals") or []:
+        goals_out.append(
+            {
+                "robot_id": int(e["robot_id"]),
+                "x_goal": float(e["x"]),
+                "y_goal": float(e["y"]),
+                "theta_goal": float(e["theta"]),
+            }
+        )
+    return {
+        "plan_id": str(doc.get("plan_id", "")),
+        "coordinated": bool(doc.get("coordinated", True)),
+        "plan_timestamp": float(doc.get("plan_timestamp", 0.0)),
+        "goals": goals_out,
+    }
 
 
 @query.field("pendingRobotStops")

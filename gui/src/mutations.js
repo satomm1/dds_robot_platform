@@ -1,6 +1,22 @@
 // src/mutations.js
 import { gql } from '@apollo/client';
 
+export const SET_MULTI_ROBOT_GOAL_PLAN = gql`
+  mutation SetMultiRobotGoalPlan(
+    $planId: String!
+    $coordinated: Boolean!
+    $planTimestamp: Float!
+    $goals: [MultiRobotGoalInput!]!
+  ) {
+    setMultiRobotGoalPlan(
+      plan_id: $planId
+      coordinated: $coordinated
+      plan_timestamp: $planTimestamp
+      goals: $goals
+    )
+  }
+`;
+
 export const SET_ROBOT_GOAL = gql`
     mutation SetRobotGoal($robotId: Int!, $xGoal: Float!, $yGoal: Float!, $thetaGoal: Float!, $timestamp: Float!) {
         setRobotGoal(robot_id: $robotId, 

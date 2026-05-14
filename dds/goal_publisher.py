@@ -24,6 +24,9 @@ from dds_utils import (
 from dds_utils.config import resolve_graphql_http_url
 from dds_utils.gql_subscriber_sync import parse_graphql_response, post_graphql
 from dds_utils.topics import data_topic_name
+from dds_utils.message_types import MSG_GOAL, MSG_MULTI_ROBOT_GOAL, MSG_POSITION_INIT, MSG_STOP
+
+INTER_DDS_WRITE_SLEEP_S = 0.02
 
 ROBOT_GOALS_QUERY = """
                     query {
@@ -75,6 +78,29 @@ mutation ConsumeRobotStopRequest($robotId: Int!) {
 }
 """
 
+ACTIVE_MULTI_ROBOT_GOAL_PLAN_QUERY = """
+query {
+    activeMultiRobotGoalPlan {
+        plan_id
+        coordinated
+        plan_timestamp
+        goals {
+            robot_id
+            x_goal
+            y_goal
+            theta_goal
+        }
+    }
+}
+"""
+
+CONSUME_MULTI_ROBOT_GOAL_PLAN_MUTATION = """
+mutation {
+    consumeMultiRobotGoalPlan
+}
+"""
+
+
 class GoalWriter:
     def __init__(self, my_id, server_url=None):
 
@@ -94,6 +120,8 @@ class GoalWriter:
         self.R = None
         self.t = None
 
+        self._target_data_writers = {}
+        self._last_multi_plan_key = None
 
     def transform_point(self, point, forward=True):
         """
@@ -107,6 +135,85 @@ class GoalWriter:
         - tuple: The transformed point.
         """
         return transform_se2(self.R, self.t, point, forward)
+
+    def _get_data_writer(self, robot_id: int) -> DataWriter:
+        if robot_id not in self._target_data_writers:
+            message_topic = Topic(
+                self.participant, data_topic_name(robot_id), DataMessage
+            )
+            self._target_data_writers[robot_id] = DataWriter(
+                self.publisher, message_topic, qos=reliable_qos
+            )
+        return self._target_data_writers[robot_id]
+
+    def _maybe_publish_multi_robot_plan(self, current_time: int):
+        try:
+            response = post_graphql(
+                self.graphql_server, ACTIVE_MULTI_ROBOT_GOAL_PLAN_QUERY, timeout=5
+            )
+            data = parse_graphql_response(response)
+            plan = data.get("activeMultiRobotGoalPlan")
+        except Exception:
+            plan = None
+
+        if not plan or not plan.get("goals"):
+            self._last_multi_plan_key = None
+            return
+
+        key = (str(plan.get("plan_id", "")), float(plan.get("plan_timestamp", 0.0)))
+        if key == self._last_multi_plan_key:
+            return
+
+        goals = plan["goals"]
+        fleet_ids = [int(g["robot_id"]) for g in goals]
+        plan_id = str(plan.get("plan_id", ""))
+        coordinated = bool(plan.get("coordinated", True))
+        ts = int(float(plan.get("plan_timestamp", current_time)))
+
+        for entry in goals:
+            rid = int(entry["robot_id"])
+            gx = float(entry["x_goal"])
+            gy = float(entry["y_goal"])
+            gth = float(entry["theta_goal"])
+            tx, ty, tth = self.transform_point([gx, gy, gth], forward=True)
+            payload = {
+                "x": float(tx),
+                "y": float(ty),
+                "theta": float(tth),
+                "plan_id": plan_id,
+                "coordinated": coordinated,
+                "target_agent": rid,
+                "fleet_robot_ids": fleet_ids,
+            }
+            command_message = DataMessage(
+                MSG_MULTI_ROBOT_GOAL,
+                int(self.my_id),
+                ts,
+                json.dumps(payload),
+            )
+            self._get_data_writer(rid).write(command_message)
+            dds_log(
+                "goal_pub",
+                f"multi_robot_goal -> robot {rid} plan_id={plan_id} "
+                f"(x={tx:.3f}, y={ty:.3f}, θ={tth:.3f}) fleet={fleet_ids}",
+            )
+            time.sleep(INTER_DDS_WRITE_SLEEP_S)
+
+        self._last_multi_plan_key = key
+        try:
+            cr = post_graphql(
+                self.graphql_server,
+                CONSUME_MULTI_ROBOT_GOAL_PLAN_MUTATION,
+                timeout=5,
+            )
+            pdata = parse_graphql_response(cr)
+            if not pdata.get("consumeMultiRobotGoalPlan"):
+                raise RuntimeError("consumeMultiRobotGoalPlan returned false")
+        except Exception as exc:
+            dds_log(
+                "goal_pub",
+                f"consumeMultiRobotGoalPlan failed (DDS already sent; clear Ignite if needed): {exc}",
+            )
 
     def run(self):
 
@@ -167,7 +274,7 @@ class GoalWriter:
 
                             # Send the goal to the robot
                             goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
-                            command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
+                            command_message = DataMessage(MSG_GOAL, int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                             message_topic = Topic(self.participant, data_topic_name(robot_goal_id), DataMessage)
                             message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
                             message_writer.write(command_message)
@@ -181,7 +288,7 @@ class GoalWriter:
                         # Store goal in history
                         self.robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
                         goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
-                        command_message = DataMessage('goal', int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
+                        command_message = DataMessage(MSG_GOAL, int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
                         message_topic = Topic(self.participant, data_topic_name(robot_goal_id), DataMessage)
                         message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
 
@@ -192,6 +299,8 @@ class GoalWriter:
                             f"(x={robot_goal_x:.3f}, y={robot_goal_y:.3f}, θ={robot_goal_theta:.3f})",
                         )
 
+                self._maybe_publish_multi_robot_plan(current_time)
+
                 # Pending human stop requests -> DDS DataMessage(stop)
                 try:
                     response = post_graphql(self.graphql_server, PENDING_STOPS_QUERY, timeout=5)
@@ -201,7 +310,7 @@ class GoalWriter:
                         ts = int(stop.get("requested_at", current_time))
                         stop_payload = json.dumps({"source": "human"})
                         command_message = DataMessage(
-                            "stop", int(self.my_id), ts, stop_payload
+                            MSG_STOP, int(self.my_id), ts, stop_payload
                         )
                         message_topic = Topic(
                             self.participant, data_topic_name(rid), DataMessage
@@ -253,7 +362,7 @@ class GoalWriter:
 
                             # Send the initial position to the robot
                             init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
-                            command_message = DataMessage('position_init', int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
+                            command_message = DataMessage(MSG_POSITION_INIT, int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
                             message_topic = Topic(self.participant, data_topic_name(robot_id), DataMessage)
                             message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
                             message_writer.write(command_message)
@@ -266,7 +375,7 @@ class GoalWriter:
                         # Store initial position in history
                         self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
                         init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
-                        command_message = DataMessage('position_init', int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
+                        command_message = DataMessage(MSG_POSITION_INIT, int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
                         message_topic = Topic(self.participant, data_topic_name(robot_id), DataMessage)
                         message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
 

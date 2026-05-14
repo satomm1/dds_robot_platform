@@ -11,6 +11,8 @@ mutation = MutationType()
 logger = logging.getLogger(__name__)
 
 STOP_REQUEST_CACHE = "robot_stop_request"
+MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
+MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 
 
 @mutation.field("requestRobotStop")
@@ -40,6 +42,56 @@ def resolve_consume_robot_stop_request(_, info, robot_id: int):
             robot_id,
             exc,
         )
+        return False
+
+
+@mutation.field("setMultiRobotGoalPlan")
+def resolve_set_multi_robot_goal_plan(_, info, plan_id, coordinated, plan_timestamp, goals):
+    if not goals or len(goals) < 2:
+        logger.warning("setMultiRobotGoalPlan: need at least two goals, got %s", len(goals or []))
+        return False
+    goal_cache = ignite_client.get_or_create_cache("robot_goal")
+    plan_cache = ignite_client.get_or_create_cache(MULTI_ROBOT_GOAL_PLAN_CACHE)
+    stored_goals = []
+    robot_ids = []
+    for g in goals:
+        rid = int(g["robot_id"])
+        robot_ids.append(rid)
+        stored_goals.append(
+            {
+                "robot_id": rid,
+                "x": float(g["x_goal"]),
+                "y": float(g["y_goal"]),
+                "theta": float(g["theta_goal"]),
+            }
+        )
+    doc = {
+        "plan_id": str(plan_id),
+        "coordinated": bool(coordinated),
+        "plan_timestamp": float(plan_timestamp),
+        "goals": stored_goals,
+    }
+    try:
+        for rid in robot_ids:
+            try:
+                goal_cache.remove_key(rid)
+            except Exception:
+                pass
+        plan_cache.put(MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY, json.dumps(doc))
+        return True
+    except Exception as exc:
+        logger.exception("setMultiRobotGoalPlan failed: %s", exc)
+        return False
+
+
+@mutation.field("consumeMultiRobotGoalPlan")
+def resolve_consume_multi_robot_goal_plan(_, info):
+    plan_cache = ignite_client.get_or_create_cache(MULTI_ROBOT_GOAL_PLAN_CACHE)
+    try:
+        plan_cache.remove_key(MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY)
+        return True
+    except Exception as exc:
+        logger.debug("consumeMultiRobotGoalPlan: %s", exc)
         return False
 
 

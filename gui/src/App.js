@@ -6,7 +6,8 @@ import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import RobotTypedGoals from './components/RobotTypedGoals';
-import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION } from './mutations';
+import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
+import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN } from './mutations';
 import { GET_ROBOT_POSITIONS } from './queries';
 
 const ROBOT_POSITIONS_POLL_MS = 2000;
@@ -44,10 +45,17 @@ function AppContent() {
   // Now this hook is inside the ApolloProvider context
   const [setRobotGoal] = useMutation(SET_ROBOT_GOAL);
 
-  // State to manage position mode (goal or initial)
-  // This can be used to toggle between setting a goal or an initial position
-  const [positionMode, setPositionMode] = useState('goal'); // 'goal' or 'initial'
+  // State to manage position mode (goal, initial, or coordinated multi-robot plan)
+  const [positionMode, setPositionMode] = useState('goal'); // 'goal' | 'initial' | 'multiPlan'
   const prevRobotCountRef = useRef(null);
+
+  const [multiFleet, setMultiFleet] = useState({});
+  const [stagedMultiGoals, setStagedMultiGoals] = useState({});
+  const [multiPlanId, setMultiPlanId] = useState(() => `gui_${Date.now()}`);
+  const [multiCoordinated, setMultiCoordinated] = useState(true);
+  const [multiSubmitError, setMultiSubmitError] = useState('');
+
+  const [setMultiRobotGoalPlan, { loading: multiSubmitting }] = useMutation(SET_MULTI_ROBOT_GOAL_PLAN);
 
   useEffect(() => {
     if (positionsError) return;
@@ -78,6 +86,69 @@ function AppContent() {
     }).catch(error => {
       console.error('Error setting robot goal:', error);
     });
+  };
+
+  const handleStageMultiGoal = (robotId, mapX, mapY) => {
+    const theta_rad = (currentTheta * Math.PI) / 180;
+    setStagedMultiGoals((prev) => ({
+      ...prev,
+      [robotId]: { mapX, mapY, theta: theta_rad },
+    }));
+    setMultiSubmitError('');
+  };
+
+  const toggleMultiFleet = (robotId) => {
+    setMultiFleet((prev) => ({
+      ...prev,
+      [robotId]: !prev[robotId],
+    }));
+    setMultiSubmitError('');
+  };
+
+  const clearStagedMultiGoals = () => {
+    setStagedMultiGoals({});
+    setMultiSubmitError('');
+  };
+
+  const handleSubmitMultiRobotPlan = () => {
+    const fleetIds = Object.keys(multiFleet)
+      .map(Number)
+      .filter((id) => multiFleet[id])
+      .sort((a, b) => a - b);
+    const missing = fleetIds.filter((id) => !stagedMultiGoals[id]);
+    if (fleetIds.length < 2) {
+      setMultiSubmitError('Select at least two robots in the fleet.');
+      return;
+    }
+    if (missing.length > 0) {
+      setMultiSubmitError(`Stage a map goal for robot(s): ${missing.join(', ')}`);
+      return;
+    }
+    const planTimestamp = new Date().getTime() / 1000;
+    const goals = fleetIds.map((robotId) => ({
+      robot_id: robotId,
+      x_goal: stagedMultiGoals[robotId].mapX,
+      y_goal: stagedMultiGoals[robotId].mapY,
+      theta_goal: stagedMultiGoals[robotId].theta,
+    }));
+    setMultiSubmitError('');
+    setMultiRobotGoalPlan({
+      variables: {
+        planId: multiPlanId || `gui_${Date.now()}`,
+        coordinated: multiCoordinated,
+        planTimestamp,
+        goals,
+      },
+    })
+      .then(() => {
+        setStagedMultiGoals({});
+        setMultiFleet({});
+        setMultiPlanId(`gui_${Date.now()}`);
+      })
+      .catch((err) => {
+        console.error('setMultiRobotGoalPlan:', err);
+        setMultiSubmitError(err.message || 'Failed to send multi-robot plan');
+      });
   };
 
   const handleUpdateTheta = (robotId, thetaDegrees) => {
@@ -131,18 +202,49 @@ function AppContent() {
           </div>
           <div className="mode-toggle">
             <button 
-              className={positionMode === 'goal' ? 'btn-goal-init-active' : 'btn-goal-init-inactive'}
-              onClick={() => setPositionMode('goal')}
+              className={positionMode === 'goal' ? 'btn-goal-init-active btn-goal-narrow' : 'btn-goal-init-inactive btn-goal-narrow'}
+              onClick={() => {
+                setPositionMode('goal');
+                setMultiSubmitError('');
+              }}
             >
               Set Robot Goal
             </button>
             <button 
-              className={positionMode === 'initial' ? 'btn-goal-init-active' : 'btn-goal-init-inactive'}
-              onClick={() => setPositionMode('initial')}
+              className={positionMode === 'initial' ? 'btn-goal-init-active btn-goal-narrow' : 'btn-goal-init-inactive btn-goal-narrow'}
+              onClick={() => {
+                setPositionMode('initial');
+                setMultiSubmitError('');
+              }}
             >
               Set Initial Position
             </button>
+            <button 
+              className={positionMode === 'multiPlan' ? 'btn-goal-init-active btn-goal-narrow' : 'btn-goal-init-inactive btn-goal-narrow'}
+              onClick={() => {
+                setPositionMode('multiPlan');
+                setMultiSubmitError('');
+              }}
+            >
+              Multi-robot plan
+            </button>
           </div>
+          {positionMode === 'multiPlan' && (
+            <MultiRobotGoalPlanner
+              robotPositions={robotPositions}
+              multiFleet={multiFleet}
+              onToggleFleet={toggleMultiFleet}
+              planId={multiPlanId}
+              onPlanIdChange={setMultiPlanId}
+              coordinated={multiCoordinated}
+              onCoordinatedChange={setMultiCoordinated}
+              stagedMultiGoals={stagedMultiGoals}
+              onClearStaged={clearStagedMultiGoals}
+              onSubmit={handleSubmitMultiRobotPlan}
+              submitting={multiSubmitting}
+              submitError={multiSubmitError}
+            />
+          )}
           <div style={{ overflowY: 'auto', maxHeight: '70%' }}>
             <RobotControls 
               selectedRobotId={selectedRobotId}
@@ -165,6 +267,11 @@ function AppContent() {
             onSetGoal={handleSetRobotGoal}
             onSetInitialPosition={handleSetRobotInitialPosition}
             positionMode={positionMode}
+            multiPlanFleetIds={Object.keys(multiFleet)
+              .map(Number)
+              .filter((id) => multiFleet[id])}
+            stagedMultiGoals={stagedMultiGoals}
+            onStageMultiGoal={handleStageMultiGoal}
           />
         </div>
       </div>

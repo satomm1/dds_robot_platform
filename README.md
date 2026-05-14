@@ -82,3 +82,9 @@ You will also need a conda interpreter. I recommend [miniconda](https://www.anac
     npm install -g serve
     serve -s build
     ```
+
+## Multi-robot coordinated goals (GUI and DDS)
+
+The GUI mode **Multi-robot plan** stages one goal pose per fleet robot and submits them through GraphQL (`setMultiRobotGoalPlan`). The orchestrator `goal_publisher.py` reads the active plan, transforms poses into the shared reference map frame, and fans out DDS `DataMessage` samples with `message_type` `multi_robot_goal` to each robot’s `DataTopic`, matching [mattbot_dds](https://github.com/satomm1/mattbot_dds) `dds_data_publisher` behavior so robots receive the same payload shape as from ROS `MultiRobotGoalPlan` on `/multi_robot_goal_plan`.
+
+**Operations:** If you also publish fleet goals from ROS (for example `path_planning` `publish_multi_robot_goal_plan.py` plus `dds_data_publisher` on the same orchestrator), use **only one path per dispatch**. Sending the same coordinated move through both ROS and the GUI can duplicate `multi_robot_goal` traffic on DDS and confuse downstream planners.

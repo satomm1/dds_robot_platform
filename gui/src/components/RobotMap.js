@@ -21,6 +21,9 @@ const RobotMap = ({
   onSetGoal,
   onSetInitialPosition,
   positionMode,
+  multiPlanFleetIds = [],
+  stagedMultiGoals = {},
+  onStageMultiGoal = () => {},
 }) => {
   const [mapSize, setMapSize] = useState({ width: 1100, height: 600 });
   // Replace single goalMarker with a map of robot IDs to goal markers
@@ -326,6 +329,18 @@ const RobotMap = ({
       // Calculate map coordinates
       const mapX = (occGridWidth - worldPos.x/gridCellSize)*occGridResolution;
       const mapY = worldPos.y*occGridResolution/gridCellSize;
+
+      if (positionMode === 'multiPlan') {
+        if (!multiPlanFleetIds.includes(selectedRobotId)) {
+          return;
+        }
+        devLog(`Staging multi goal for robot ${selectedRobotId} at`, mapX, mapY);
+        onStageMultiGoal(selectedRobotId, mapX, mapY);
+        if (goalLayerRef.current) {
+          goalLayerRef.current.batchDraw();
+        }
+        return;
+      }
       
       if (positionMode === 'goal') {
         devLog(`Setting new goal marker for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
@@ -638,6 +653,41 @@ const RobotMap = ({
                   strokeWidth={2}
                   dash={[5, 5]}
                 />
+              </React.Fragment>
+            );
+          })}
+          {Object.entries(stagedMultiGoals).map(([robotIdStr, pos]) => {
+            const robotId = Number(robotIdStr);
+            if (!pos || typeof pos.mapX !== 'number') return null;
+            const robot = robots.find((r) => r.id === robotId);
+            const px = (occGridWidth - pos.mapX / occGridResolution) * gridCellSize;
+            const py = (pos.mapY * gridCellSize) / occGridResolution;
+            const color = getRobotColor(robotId);
+            return (
+              <React.Fragment key={`staged-multi-${robotIdStr}`}>
+                <Circle
+                  x={px}
+                  y={py}
+                  radius={10}
+                  stroke={color}
+                  strokeWidth={3}
+                  fill="rgba(255,255,255,0.15)"
+                  dash={[6, 4]}
+                />
+                {robot && (
+                  <Line
+                    points={[
+                      (occGridWidth - robot.x / occGridResolution) * gridCellSize,
+                      (robot.y * gridCellSize) / occGridResolution,
+                      px,
+                      py,
+                    ]}
+                    stroke={color}
+                    strokeWidth={2}
+                    dash={[4, 6]}
+                    opacity={0.85}
+                  />
+                )}
               </React.Fragment>
             );
           })}
