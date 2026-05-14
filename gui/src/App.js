@@ -245,18 +245,6 @@ function AppContent() {
               submitError={multiSubmitError}
             />
           )}
-          <div style={{ overflowY: 'auto', maxHeight: '70%' }}>
-            <RobotControls 
-              selectedRobotId={selectedRobotId}
-              robotPositions={robotPositions}
-              positionsLoading={positionsLoading}
-              positionsError={positionsError}
-            />
-            <RobotTypedGoals
-              selectedRobotId={selectedRobotId} 
-              onSetGoal={handleUpdateTheta}
-            />
-          </div>
         </div>
         <div className="map-container">
           <RobotMap 
@@ -274,6 +262,18 @@ function AppContent() {
             onStageMultiGoal={handleStageMultiGoal}
           />
         </div>
+        <aside className="sidebar-right" aria-label="Selected robot">
+          <RobotControls 
+            selectedRobotId={selectedRobotId}
+            robotPositions={robotPositions}
+            positionsLoading={positionsLoading}
+            positionsError={positionsError}
+          />
+          <RobotTypedGoals
+            selectedRobotId={selectedRobotId} 
+            onSetGoal={handleUpdateTheta}
+          />
+        </aside>
       </div>
     </div>
   );
