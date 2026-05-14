@@ -75,10 +75,13 @@ const RobotMap = ({
     }
   }, []);
 
-  // Query for occupancy grid - only once
-  const { loading: mapLoading, error: mapError, data: mapData } = useQuery(GET_OCCUPANCY_GRID, {
-    fetchPolicy: 'cache-and-network'
-  });
+  // Query for occupancy grid (server returns width/height 0 when no map is loaded yet)
+  const { loading: mapLoading, error: mapError, data: mapData, refetch: refetchMap } = useQuery(
+    GET_OCCUPANCY_GRID,
+    { fetchPolicy: 'cache-and-network', notifyOnNetworkStatusChange: true }
+  );
+
+  const hasMap = mapData?.map?.width > 0 && mapData?.map?.height > 0;
 
   // Calculate distance between two points
   const calculateDistance = (x1, y1, x2, y2) => {
@@ -218,8 +221,15 @@ const RobotMap = ({
 
   useEffect(() => {
     if (!mapData || !mapData.map) return;
-    
+
     const { width, height, resolution, occupancy } = mapData.map;
+    if (!width || !height) {
+      setOccGridWidth(0);
+      setOccGridHeight(0);
+      setOccGridResolution(1);
+      setMapImage(null);
+      return;
+    }
 
     setOccGridWidth(width);
     setOccGridHeight(height);
@@ -510,14 +520,80 @@ const RobotMap = ({
     setShowPaths(!showPaths);
   };
 
+  const mapSlotStyle = {
+    width: '100%',
+    height: '100%',
+    minHeight: 280,
+    border: '1px solid #ccc',
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    padding: 24,
+    background: '#f0f6fa',
+    color: '#333',
+  };
+
+  const mapRetryButtonStyle = {
+    padding: '10px 20px',
+    fontSize: 15,
+    cursor: mapLoading ? 'wait' : 'pointer',
+    borderRadius: 6,
+    border: '1px solid #90a4ae',
+    background: mapLoading ? '#e0e0e0' : '#fff',
+  };
+
   // Display loading or error states
-  if (mapLoading && !mapData) return <div>Loading map...</div>;
-  if (mapError) return <div>Error loading map: {mapError.message}</div>;
+  if (mapLoading && !mapData && !mapError) return <div>Loading map...</div>;
+
+  if (mapError && !hasMap) {
+    return (
+      <div ref={containerRef} style={mapSlotStyle}>
+        <p style={{ margin: 0, maxWidth: 420, textAlign: 'center', lineHeight: 1.45 }}>
+          Error loading map: {mapError.message}
+        </p>
+        <p style={{ margin: 0, maxWidth: 420, textAlign: 'center', lineHeight: 1.45, fontSize: 14, color: '#555' }}>
+          The GraphQL endpoint could not be reached (network, CORS, or server down). Fix connectivity,
+          then try again.
+        </p>
+        <button
+          type="button"
+          onClick={() => refetchMap()}
+          disabled={mapLoading}
+          style={mapRetryButtonStyle}
+        >
+          {mapLoading ? 'Retrying…' : 'Retry loading map'}
+        </button>
+      </div>
+    );
+  }
+
   if (positionsLoading && !robots.length && !mapData) {
     return <div>Loading robot positions...</div>;
   }
   if (positionsError) {
     return <div>Error loading robot positions: {positionsError.message}</div>;
+  }
+
+  if (mapData && !hasMap) {
+    return (
+      <div ref={containerRef} style={mapSlotStyle}>
+        <p style={{ margin: 0, maxWidth: 420, textAlign: 'center', lineHeight: 1.45 }}>
+          No occupancy map is available from the server yet. After a map has been published to
+          the backend, use the button below to query again.
+        </p>
+        <button
+          type="button"
+          onClick={() => refetchMap()}
+          disabled={mapLoading}
+          style={mapRetryButtonStyle}
+        >
+          {mapLoading ? 'Refreshing map…' : 'Refresh map'}
+        </button>
+      </div>
+    );
   }
 
   return (
