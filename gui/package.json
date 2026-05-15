@@ -18,6 +18,7 @@
     "graphql": "^16.10.0",
     "konva": "^9.3.20",
     "patch-package": "^8.0.1",
+    "rcedit": "^4.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-konva": "^19.0.3",
@@ -44,26 +45,38 @@
     "directories": {
       "output": "electron-dist"
     },
+    "afterPack": "scripts/after-pack-win-icon.cjs",
+    "extraResources": [
+      {
+        "from": "public/favicon.ico",
+        "to": "shortcut-icon.ico"
+      }
+    ],
     "files": [
       "build/**/*",
       "electron/**/*",
+      "public/favicon.ico",
+      "public/block-s-right.png",
       "package.json"
     ],
+    "win": {
+      "icon": "public/favicon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ]
+    },
     "mac": {
       "category": "public.app-category.developer-tools",
+      "icon": "public/block-s-right.png",
       "identity": null,
       "notarize": false,
       "target": [
         "dmg"
       ]
     },
-    "win": {
-      "signAndEditExecutable": false,
-      "target": [
-        "nsis"
-      ]
-    },
     "linux": {
+      "icon": "public/block-s-right.png",
       "target": [
         "AppImage"
       ],
@@ -71,7 +84,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "include": "installer/nsis-shortcuts.nsh"
     }
   },
   "eslintConfig": {
