@@ -764,9 +764,13 @@ const RobotMap = ({
         {/* Separate layer for the goal markers - only this layer is redrawn on clicks */}
         <Layer ref={goalLayerRef}>
           {Object.entries(goalMarkers).map(([robotId, marker]) => {
-            const robot = robots.find(r => r.id === Number(robotId));
+            const rid = Number(robotId);
+            if (pathDisplayDismissed[rid]) {
+              return null;
+            }
+            const robot = robots.find(r => r.id === rid);
             if (!robot) return null;
-            
+
             return (
               <React.Fragment key={`goal-${robotId}`}>
                 <Circle

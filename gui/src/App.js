@@ -115,7 +115,8 @@ function AppContent() {
   
   const handleSetRobotGoal = (robotId, x, y) => {
     devLog(`Setting goal for robot ${robotId} to position (${x}, ${y}, ${currentTheta}°)`);
-    
+    clearPathDismissalForRobot(robotId);
+
     const timestamp = new Date().getTime() / 1000; // Convert to seconds
     const theta_rad = (currentTheta * Math.PI) / 180; // Convert degrees to radians
     setRobotGoal({
