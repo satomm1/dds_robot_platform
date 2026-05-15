@@ -18,15 +18,34 @@ MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 @mutation.field("requestRobotStop")
 def resolve_request_robot_stop(_, info, robot_id: int):
     stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
+    path_cache = ignite_client.get_or_create_cache("cmd_smoothed_path")
     payload = {
         "requested_at": time.time(),
         "pending": True,
     }
     try:
         stop_cache.put(robot_id, json.dumps(payload))
+        try:
+            path_cache.remove_key(robot_id)
+        except Exception:
+            logger.debug(
+                "requestRobotStop: no path entry or remove_key failed for robot_id=%s",
+                robot_id,
+            )
         return True
     except Exception as exc:
         logger.exception("requestRobotStop failed for robot_id=%s: %s", robot_id, exc)
+        return False
+
+
+@mutation.field("clearRobotPath")
+def resolve_clear_robot_path(_, info, robot_id: int):
+    path_cache = ignite_client.get_or_create_cache("cmd_smoothed_path")
+    try:
+        path_cache.remove_key(robot_id)
+        return True
+    except Exception as exc:
+        logger.exception("clearRobotPath failed for robot_id=%s: %s", robot_id, exc)
         return False
 
 

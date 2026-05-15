@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import './App.css';
 import { ApolloProvider, useMutation, useQuery } from '@apollo/client';
 import client from './apolloClient';
@@ -7,8 +7,8 @@ import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import RobotTypedGoals from './components/RobotTypedGoals';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
-import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN } from './mutations';
-import { GET_ROBOT_POSITIONS } from './queries';
+import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
+import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS } from './queries';
 
 const ROBOT_POSITIONS_POLL_MS = 2000;
 
@@ -61,6 +61,45 @@ function AppContent() {
 
   const [setMultiRobotGoalPlan, { loading: multiSubmitting }] = useMutation(SET_MULTI_ROBOT_GOAL_PLAN);
 
+  const [pathDisplayDismissed, setPathDisplayDismissed] = useState({});
+  const [clearRobotPathMutation] = useMutation(CLEAR_ROBOT_PATH, {
+    refetchQueries: [{ query: GET_ROBOT_PATHS }],
+  });
+
+  const dismissPathForRobot = useCallback(
+    (robotId) => {
+      const id = Number(robotId);
+      clearRobotPathMutation({ variables: { robotId: id } }).catch((err) => {
+        console.error('clearRobotPath:', err);
+      });
+      setPathDisplayDismissed((prev) => ({ ...prev, [id]: true }));
+    },
+    [clearRobotPathMutation]
+  );
+
+  const clearPathDismissalForRobot = useCallback((robotId) => {
+    const id = Number(robotId);
+    setPathDisplayDismissed((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
+  const clearPathDismissalForRobots = useCallback((robotIds) => {
+    setPathDisplayDismissed((prev) => {
+      let next = prev;
+      for (const rid of robotIds) {
+        const id = Number(rid);
+        if (!next[id]) continue;
+        if (next === prev) next = { ...prev };
+        delete next[id];
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (positionsError) return;
     const n = robotPositions.length;
@@ -87,9 +126,13 @@ function AppContent() {
         thetaGoal: theta_rad,
         timestamp: timestamp
       }
-    }).catch(error => {
-      console.error('Error setting robot goal:', error);
-    });
+    })
+      .then(() => {
+        clearPathDismissalForRobot(robotId);
+      })
+      .catch((error) => {
+        console.error('Error setting robot goal:', error);
+      });
   };
 
   const handleStageMultiGoal = (robotId, mapX, mapY) => {
@@ -145,6 +188,7 @@ function AppContent() {
       },
     })
       .then(() => {
+        clearPathDismissalForRobots(fleetIds);
         setStagedMultiGoals({});
         setMultiFleet({});
         const next = nextMultiPlanSuffixRef.current;
@@ -266,6 +310,9 @@ function AppContent() {
               .filter((id) => multiFleet[id])}
             stagedMultiGoals={stagedMultiGoals}
             onStageMultiGoal={handleStageMultiGoal}
+            pathDisplayDismissed={pathDisplayDismissed}
+            dismissPathForRobot={dismissPathForRobot}
+            clearPathDismissalForRobot={clearPathDismissalForRobot}
           />
         </div>
         <aside className="sidebar-right" aria-label="Selected robot">
@@ -274,6 +321,7 @@ function AppContent() {
             robotPositions={robotPositions}
             positionsLoading={positionsLoading}
             positionsError={positionsError}
+            dismissPathForRobot={dismissPathForRobot}
           />
           <RobotTypedGoals
             selectedRobotId={selectedRobotId} 

@@ -34,6 +34,12 @@ export const REQUEST_ROBOT_STOP = gql`
   }
 `;
 
+export const CLEAR_ROBOT_PATH = gql`
+  mutation ClearRobotPath($robotId: Int!) {
+    clearRobotPath(robot_id: $robotId)
+  }
+`;
+
 export const CLEAR_ALL_OBJECTS = gql`
     mutation ClearAllObjects {
         clearAllObjects

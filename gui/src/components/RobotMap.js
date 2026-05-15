@@ -24,6 +24,9 @@ const RobotMap = ({
   multiPlanFleetIds = [],
   stagedMultiGoals = {},
   onStageMultiGoal = () => {},
+  pathDisplayDismissed = {},
+  dismissPathForRobot = () => {},
+  clearPathDismissalForRobot = () => {},
 }) => {
   const [mapSize, setMapSize] = useState({ width: 1100, height: 600 });
   // Replace single goalMarker with a map of robot IDs to goal markers
@@ -47,6 +50,9 @@ const RobotMap = ({
 
   const [mapImage, setMapImage] = useState(null);
   const prevRobotCountRef = useRef(null);
+  const prevGoalSignaturesRef = useRef({});
+  const proximityDismissLatchRef = useRef(new Set());
+  const prevPathDismissedRef = useRef({});
 
   // Polling interval (in milliseconds)
   const POLL_INTERVAL = 1000; // Fetch every 1 seconds
@@ -87,6 +93,18 @@ const RobotMap = ({
   const calculateDistance = (x1, y1, x2, y2) => {
     return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
   };
+
+  useEffect(() => {
+    const prev = prevPathDismissedRef.current;
+    const next = pathDisplayDismissed;
+    Object.keys(prev).forEach((key) => {
+      const id = Number(key);
+      if (prev[key] && !next[id]) {
+        proximityDismissLatchRef.current.delete(id);
+      }
+    });
+    prevPathDismissedRef.current = { ...next };
+  }, [pathDisplayDismissed]);
   
   useEffect(() => {
     if (robotPositions && robotPositions.length >= 0) {
@@ -94,6 +112,34 @@ const RobotMap = ({
       setRobots(robotPositions);
     }
   }, [robotPositions]);
+
+  const hidePathThresholdPx = 30;
+
+  useEffect(() => {
+    if (!hasMap || occGridWidth <= 0) return;
+    robots.forEach((robot) => {
+      const goal = goalMarkers[robot.id];
+      if (!goal) return;
+      if (pathDisplayDismissed[robot.id]) return;
+      const robotX = (occGridWidth - robot.x / occGridResolution) * gridCellSize;
+      const robotY = (robot.y * gridCellSize) / occGridResolution;
+      const distance = calculateDistance(robotX, robotY, goal.x, goal.y);
+      if (distance < hidePathThresholdPx) {
+        if (!proximityDismissLatchRef.current.has(robot.id)) {
+          proximityDismissLatchRef.current.add(robot.id);
+          dismissPathForRobot(robot.id);
+        }
+      }
+    });
+  }, [
+    robots,
+    goalMarkers,
+    hasMap,
+    occGridWidth,
+    occGridResolution,
+    pathDisplayDismissed,
+    dismissPathForRobot,
+  ]);
 
   // Query for robot goals with explicit polling
   useQuery(GET_ROBOT_GOALS, {
@@ -106,6 +152,14 @@ const RobotMap = ({
         const newInvalidGoalMessages = {};
 
         data.robotGoals.forEach(goal => {
+          const sig = `${goal.x_goal},${goal.y_goal},${goal.goal_timestamp}`;
+          const prevSig = prevGoalSignaturesRef.current[goal.id];
+          if (prevSig !== undefined && prevSig !== sig) {
+            clearPathDismissalForRobot(goal.id);
+            proximityDismissLatchRef.current.delete(goal.id);
+          }
+          prevGoalSignaturesRef.current[goal.id] = sig;
+
           if (!goal.goal_valid) {
             newGoalMarkers[goal.id] = {
               x: (occGridWidth - goal.x_goal/occGridResolution) * gridCellSize, // Convert grid coordinates to pixels
@@ -636,6 +690,10 @@ const RobotMap = ({
         {/* Layer for robot paths - updates when paths change */}
         <Layer ref={pathLayerRef} visible={showPaths}>
           {Object.entries(robotPaths).map(([robotId, path]) => {
+            const rid = Number(robotId);
+            if (pathDisplayDismissed[rid]) {
+              return null;
+            }
             // Check if this robot has a goal
             const goal = goalMarkers[robotId];
             const robot = robots.find(r => r.id === Number(robotId));

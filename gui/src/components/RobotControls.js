@@ -8,6 +8,7 @@ const RobotControls = ({
   robotPositions = [],
   positionsLoading,
   positionsError,
+  dismissPathForRobot,
 }) => {
   const [requestRobotStop, { loading: stopLoading }] = useMutation(REQUEST_ROBOT_STOP);
 
@@ -28,6 +29,7 @@ const RobotControls = ({
   }
 
   const handleStop = () => {
+    dismissPathForRobot(selectedRobotId);
     requestRobotStop({
       variables: { robotId: selectedRobotId },
     }).catch((error) => {
