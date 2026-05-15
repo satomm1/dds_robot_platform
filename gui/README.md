@@ -4,9 +4,18 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
 
 ## Desktop installers (Electron)
 
-End users can install a **desktop build** without Node.js or the command line. Installers are produced by [electron-builder](https://www.electron.build/) (Windows NSIS, macOS DMG, Linux AppImage). CI builds all three on push/PR under **GitHub Actions** (see [`../.github/workflows/gui-electron.yml`](../.github/workflows/gui-electron.yml)); download the artifact for your OS.
+End users can install a **desktop build** without Node.js or the command line. Installers are produced by [electron-builder](https://www.electron.build/) (Windows NSIS, macOS DMG, Linux AppImage). CI runs the workflow [`.github/workflows/gui-electron.yml`](../.github/workflows/gui-electron.yml).
 
-**Backend:** The packaged app only contains the UI. Start your GraphQL server separately. By default the UI calls `http://localhost:8000/graphql` (see [`src/apolloClient.js`](src/apolloClient.js)).
+### For end users: download from GitHub
+
+1. Go to `https://github.com/satomm1/dds_robot_platform/actions/runs/25898705177`
+2. Under **Artifacts** on the run summary, download the ZIP for your OS:
+   - **Windows:** `gui-installer-windows-latest` — unzip, run **`DDS Robot GUI Setup … .exe`**, then start **DDS Robot GUI** from the Start menu. If SmartScreen warns (unsigned installer), use **More info** → **Run anyway** if you trust the source.
+   - **macOS:** `gui-installer-macos-latest` — unzip, open the **`.dmg`**, drag **DDS Robot GUI** to Applications. If blocked, **right‑click → Open** the first time, or allow it under **System Settings → Privacy & Security**.
+   - **Linux:** `gui-installer-ubuntu-latest` — unzip the **`.AppImage`**, run `chmod +x` on it if needed, then execute it. Install **FUSE** / **libfuse2** for AppImage support if your distro requires it.
+3. **Backend:** This package is only the UI. The GraphQL server must be running separately. The app uses **`http://localhost:8000/graphql`** by default (see [`src/apolloClient.js`](src/apolloClient.js)) unless the maintainer built it with another URL.
+
+**Maintainers:** See the root [`README.md`](../README.md) for the same end-user steps in the main project docs.
 
 **Custom GraphQL URL:** Set `REACT_APP_GRAPHQL_HTTP_URL` when creating the production bundle, then build again (CRA bakes this into the JS at build time):
 
@@ -68,33 +77,3 @@ If you aren't satisfied with the build tool and configuration choices, you can `
 Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
 
 You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
