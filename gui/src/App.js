@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import './App.css';
 import { ApolloProvider, useMutation, useQuery } from '@apollo/client';
 import client from './apolloClient';
@@ -37,7 +37,10 @@ function AppContent() {
       fetchPolicy: 'cache-and-network',
     }
   );
-  const robotPositions = positionsData?.robotPositions ?? [];
+  const robotPositions = useMemo(
+    () => positionsData?.robotPositions ?? [],
+    [positionsData]
+  );
 
   // State for theta, if needed
   const [currentTheta, setCurrentTheta] = useState(0);
