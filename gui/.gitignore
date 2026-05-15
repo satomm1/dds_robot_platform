@@ -8,8 +8,16 @@
 # testing
 /coverage
 
-# production
+# production (Create React App)
 /build
+
+# electron-builder: installers + unpacked app (Chromium *.pak, locales, *.asar, etc.)
+/electron-dist/
+/electron-dist-*/
+# default output name if directories.output is ever changed back to "dist"
+/dist/
+/out/
+/release/
 
 # misc
 .DS_Store

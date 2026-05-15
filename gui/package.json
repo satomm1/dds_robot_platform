@@ -2,18 +2,27 @@
   "name": "gui",
   "version": "0.1.0",
   "private": true,
-  "dependencies": {
+  "homepage": ".",
+  "description": "DDS Robot Platform desktop GUI",
+  "author": "",
+  "main": "electron/main.js",
+  "devDependencies": {
     "@apollo/client": "^3.13.8",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
+    "cross-env": "^7.0.3",
+    "electron": "^42.0.1",
+    "electron-builder": "^26.0.12",
     "graphql": "^16.10.0",
     "konva": "^9.3.20",
+    "patch-package": "^8.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-konva": "^19.0.3",
     "react-scripts": "5.0.1",
+    "serve": "^14.2.6",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
@@ -22,7 +31,48 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "electron": "electron .",
+    "clean:electron-dist": "node scripts/clean-electron-dist.cjs",
+    "dist": "npm run clean:electron-dist && npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder",
+    "dist:dir": "npm run clean:electron-dist && npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --dir"
+  },
+  "build": {
+    "extends": null,
+    "appId": "com.ddsrobot.platform.gui",
+    "productName": "DDS Robot GUI",
+    "directories": {
+      "output": "electron-dist"
+    },
+    "files": [
+      "build/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "notarize": false,
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "eslintConfig": {
     "extends": [
@@ -41,9 +91,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "devDependencies": {
-    "patch-package": "^8.0.1",
-    "serve": "^14.2.6"
   }
 }

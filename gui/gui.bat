@@ -4,6 +4,7 @@ title DDS Robot GUI (production)
 
 rem For a desktop shortcut: link to THIS file in the repo (do not copy only the .bat to the desktop).
 rem Always run from this folder so npm finds package.json and node_modules.
+rem For a native Windows installer (no Node on end-user PCs), maintainers run: npm run dist  (see README.md).
 cd /d "%~dp0"
 
 where npm >nul 2>nul

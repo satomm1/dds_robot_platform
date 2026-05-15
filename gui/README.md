@@ -1,6 +1,36 @@
-# Getting Started with Create React App
+# DDS Robot GUI
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+
+## Desktop installers (Electron)
+
+End users can install a **desktop build** without Node.js or the command line. Installers are produced by [electron-builder](https://www.electron.build/) (Windows NSIS, macOS DMG, Linux AppImage). CI builds all three on push/PR under **GitHub Actions** (see [`../.github/workflows/gui-electron.yml`](../.github/workflows/gui-electron.yml)); download the artifact for your OS.
+
+**Backend:** The packaged app only contains the UI. Start your GraphQL server separately. By default the UI calls `http://localhost:8000/graphql` (see [`src/apolloClient.js`](src/apolloClient.js)).
+
+**Custom GraphQL URL:** Set `REACT_APP_GRAPHQL_HTTP_URL` when creating the production bundle, then build again (CRA bakes this into the JS at build time):
+
+```bash
+# Example (Unix shell); on Windows use set in cmd or $env:... in PowerShell
+export REACT_APP_GRAPHQL_HTTP_URL=http://192.168.1.10:8000/graphql
+npm run build
+npm run dist
+```
+
+**Maintainer commands** (from this `gui` directory):
+
+- `npm run dist` — deletes `electron-dist/`, production React build, then OS installer into `electron-dist/`
+- `npm run dist:dir` — same, but unpackaged app folder only (faster smoke test)
+- `npm run clean:electron-dist` — remove `electron-dist/` only (helps clear locks before packaging)
+- `npm run electron` — opens Electron against existing `build/` (run `npm run build` first if missing)
+
+Windows builds use `signAndEditExecutable: false` and `CSC_IDENTITY_AUTO_DISCOVERY=false` so packaging works without a code-signing certificate (SmartScreen may still warn). Enable proper signing later for public distribution.
+
+**If `npm run dist` fails** with *cannot resolve … electron-builder-binaries … status code 503*: GitHub’s release CDN was temporarily unavailable while downloading tools (e.g. NSIS). **Retry** after a minute, or rely on the default **`ELECTRON_BUILDER_BINARIES_MIRROR`** baked into `npm run dist` / CI (npmmirror mirror of those binaries). To force the official GitHub URLs instead, clear the variable for that shell, e.g. PowerShell: `Remove-Item Env:ELECTRON_BUILDER_BINARIES_MIRROR` then run `npx electron-builder` manually after `npm run build`.
+
+**If `npm run dist` fails on Windows** with *cannot access the file … app.asar* / *being used by another process*: something still has the old `electron-dist` open (often a previous run of **DDS Robot GUI**, an **Explorer** window inside that folder, or **Defender** indexing). Quit the app, close those windows, end stray `electron.exe` in Task Manager if needed, then run `npm run dist` again. The `dist` script starts by deleting `electron-dist/`; if deletion fails, run `npm run clean:electron-dist` alone to see the same hints.
+
+macOS DMGs from CI are **unsigned**; users may need to right-click the app and choose Open the first time, or adjust Gatekeeper settings. Add Apple Developer ID signing and notarization for wider distribution.
 
 ## Available Scripts
 
