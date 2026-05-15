@@ -32,11 +32,42 @@ from dds_utils import (
 from dds_utils.config import INFLUX_BUCKET, INFLUX_ORG, INFLUX_URL, resolve_graphql_http_url
 from dds_utils.topics import location_topic_name
 
+LOCATION_GRAPHQL_TIMEOUT_SEC = float(os.environ.get("LOCATION_GRAPHQL_TIMEOUT_SEC", "8"))
+LOCATION_GRAPHQL_RETRIES = int(os.environ.get("LOCATION_GRAPHQL_RETRIES", "3"))
+
 ROBOT_POSITION_MUTATION =   """
                                 mutation($robot_id: Int!, $x: Float!, $y: Float!, $theta: Float!) {
                                     setRobotPosition(robot_id: $robot_id, x: $x, y: $y, theta: $theta)
                                 }
                             """
+
+CLEAR_ROBOT_MUTATION = """
+                        mutation($robot_id: Int!) {
+                            clearRobot(robot_id: $robot_id)
+                        }
+                    """
+
+def _post_graphql_with_retries(graphql_server, payload, *, context):
+    last_exc = None
+    for attempt in range(1, LOCATION_GRAPHQL_RETRIES + 1):
+        try:
+            response = requests.post(
+                graphql_server,
+                json=payload,
+                timeout=LOCATION_GRAPHQL_TIMEOUT_SEC,
+            )
+            if response.status_code != 200:
+                raise RuntimeError(f"{context}: HTTP {response.status_code}")
+            body = response.json()
+            if body.get("errors"):
+                raise RuntimeError(f"{context}: GraphQL errors {body.get('errors')}")
+            return response
+        except Exception as exc:
+            last_exc = exc
+            if attempt < LOCATION_GRAPHQL_RETRIES:
+                time.sleep(0.1 * attempt)
+    raise last_exc
+
 
 class LocationListener(Listener):
     """
@@ -97,19 +128,23 @@ class LocationListener(Listener):
 
                 # Update the robot position in Ignite
                 agent_id = int(sample.agent_id)
-                response =  requests.post(
-                                self.graphql_server,
-                                json={
-                                    'query': ROBOT_POSITION_MUTATION,
-                                    'variables': {
-                                        'robot_id': agent_id,
-                                        'x': x,
-                                        'y': y,
-                                        'theta': theta
-                                    }
-                                },
-                                timeout=1
-                            )
+                payload = {
+                    "query": ROBOT_POSITION_MUTATION,
+                    "variables": {
+                        "robot_id": agent_id,
+                        "x": x,
+                        "y": y,
+                        "theta": theta,
+                    },
+                }
+                try:
+                    _post_graphql_with_retries(
+                        self.graphql_server,
+                        payload,
+                        context=f"setRobotPosition robot_id={agent_id}",
+                    )
+                except Exception as exc:
+                    dds_log("loc_sub", f"setRobotPosition failed robot_id={agent_id}: {exc}")
 
                 # Write to InfluxDB if the write API is available
                 if self.influx_write_api is not None:
@@ -188,6 +223,17 @@ class LocationSubscriber:
                     self.location_listeners[agent_id] = None
                     self.location_listeners.pop(agent_id)
                     self.location_readers.pop(agent_id)
+                    try:
+                        _post_graphql_with_retries(
+                            self.graphql_server,
+                            {
+                                "query": CLEAR_ROBOT_MUTATION,
+                                "variables": {"robot_id": int(agent_id)},
+                            },
+                            context=f"clearRobot robot_id={agent_id}",
+                        )
+                    except Exception as exc:
+                        dds_log("loc_sub", f"clearRobot failed for {agent_id}: {exc}")
 
                 self.subscribed_agents = agents_to_subscribe
 

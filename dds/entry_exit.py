@@ -14,9 +14,9 @@ import signal
 import base64
 
 from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, OccupancyGrid, msg_to_dict
-from message_defs import EntryExit, Initialization, reliable_qos, best_effort_qos, get_ip
+from message_defs import EntryExit, Heartbeat, Initialization, reliable_qos, best_effort_qos, get_ip
 
-from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD, resolve_graphql_http_url
+from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD, HEARTBEAT_TIMEOUT, resolve_graphql_http_url
 from dds_utils import (
     AgentIdError,
     create_domain_participant,
@@ -27,7 +27,7 @@ from dds_utils import (
     transform_se2,
 )
 from dds_utils.gql_queries import AGENTS_QUERY
-from dds_utils.topics import ENTRY_EXIT_TOPIC, INITIALIZATION_TOPIC
+from dds_utils.topics import ENTRY_EXIT_TOPIC, HEARTBEAT_TOPIC, INITIALIZATION_TOPIC
 
 TRANSFORM_MUTATION =   """
                             mutation($R: [Float]!, $t: [Float]!, $timestamp: Float!) {
@@ -53,6 +53,13 @@ CLEAR_ROBOT_MUTATION = """
                         }
                     """
 
+# Temporary pose until location_subscriber receives the first DDS Location sample (GUI lists robots from robot_position).
+PLACEHOLDER_POSITION_MUTATION = """
+    mutation($robot_id: Int!, $x: Float!, $y: Float!, $theta: Float!) {
+        setRobotPosition(robot_id: $robot_id, x: $x, y: $y, theta: $theta)
+    }
+"""
+
 ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC = float(os.environ.get("ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC", "5"))
 ENTRY_EXIT_AGENTS_QUERY_TIMEOUT_SEC = float(
     os.environ.get("ENTRY_EXIT_AGENTS_QUERY_TIMEOUT_SEC", "15")
@@ -64,6 +71,26 @@ ENTRY_EXIT_MAP_MUTATION_TIMEOUT_SEC = float(
 ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC = float(
     os.environ.get("ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC", "5")
 )
+
+
+class EntryExitHeartbeatListener(Listener):
+    """Collects DDS Heartbeat samples (same topic as heartbeat_publisher / former heartbeat_subscriber)."""
+
+    def __init__(self, my_id_int):
+        super().__init__()
+        self.my_id_int = my_id_int
+        self.new_heartbeats = dict()
+
+    def on_data_available(self, reader):
+        for sample in reader.read():
+            if sample.agent_id == self.my_id_int:
+                continue
+            self.new_heartbeats[sample.agent_id] = sample.timestamp
+
+    def get_heartbeats(self):
+        out = self.new_heartbeats.copy()
+        self.new_heartbeats.clear()
+        return out
 
 
 class EntryExitListener(Listener):
@@ -170,7 +197,8 @@ class EntryExitListener(Listener):
                         'agent_type': sample.agent_type,
                         'ip_address': sample.ip_address,
                         'hash': new_robot_hash,
-                        'timestamp': sample.timestamp
+                        'timestamp': sample.timestamp,
+                        'heartbeat_ts': int(time.time()),
                     }  
 
                     # Remove from exited agents if it exists
@@ -433,6 +461,11 @@ class EntryExitCommunication:
         # We will start the readers later when it is necessary
         self.enter_exit_reader = None
         self.init_reader = None
+        self.heartbeat_listener = None
+        self.heartbeat_reader = None
+        self._last_pushed_agent_ids = None
+        # Track fleet ids already given a placeholder pose; updated in update_agents.
+        self._fleet_ids_previous_push = None
 
         self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
 
@@ -520,7 +553,8 @@ class EntryExitCommunication:
                 'agent_type': AGENT_TYPE,
                 'ip_address': self.my_ip,
                 'hash': self.my_hash,
-                'timestamp': int(time.time())
+                'timestamp': int(time.time()),
+                'heartbeat_ts': int(time.time()),
             }
 
             # Update the agents in the entry/exit listener
@@ -533,7 +567,8 @@ class EntryExitCommunication:
                 'agent_type': AGENT_TYPE,
                 'ip_address': self.my_ip,
                 'hash': self.my_hash,
-                'timestamp': int(time.time())
+                'timestamp': int(time.time()),
+                'heartbeat_ts': int(time.time()),
             }
 
         self.create_transform()  # Create the transform from the known points
@@ -551,6 +586,20 @@ class EntryExitCommunication:
         # Send confirmation message to entry_exit topic
         entry_message = EntryExit(self.my_id_int, AGENT_TYPE, 'initialized', self.my_ip, int(time.time()))
         self.enter_exit_writer.write(entry_message)
+
+        self.heartbeat_listener = EntryExitHeartbeatListener(self.my_id_int)
+        heartbeat_topic = Topic(self.participant, HEARTBEAT_TOPIC, Heartbeat)
+        self.heartbeat_reader = DataReader(
+            self.subscriber,
+            heartbeat_topic,
+            listener=self.heartbeat_listener,
+            qos=best_effort_qos,
+        )
+
+        for rid in list(self.agents.keys()):
+            if isinstance(rid, int) and rid != self.my_id_int:
+                self._seed_placeholder_position(rid)
+        self._fleet_ids_previous_push = set(self.agents.keys())
 
         dds_log("entry_exit", "setup complete")
 
@@ -640,6 +689,68 @@ class EntryExitCommunication:
         """
         return transform_se2(self.R, self.t, point, forward)
 
+    def _seed_placeholder_position(self, robot_id):
+        """Write (0,0,0) to GraphQL so the GUI shows the robot before first Location sample.
+
+        Not used for the local agent (orchestrator / no physical pose).
+        """
+        try:
+            requests.post(
+                self.graphql_server,
+                json={
+                    "query": PLACEHOLDER_POSITION_MUTATION,
+                    "variables": {
+                        "robot_id": int(robot_id),
+                        "x": 0.0,
+                        "y": 0.0,
+                        "theta": 0.0,
+                    },
+                },
+                timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
+            )
+            dds_log("entry_exit", f"placeholder pose (0,0) for robot_id={robot_id}")
+        except Exception as exc:
+            dds_log("entry_exit", f"placeholder position failed for robot_id={robot_id}: {exc}")
+
+    def _handle_immediate_entry_exit_events(self, exited_agents, current_time):
+        """
+        Apply DDS entry/exit listener updates to GraphQL without waiting for
+        HEARTBEAT_PERIOD. Keeps Ignite subscribed_agents in sync as soon as
+        enter/initialized/exit events are processed.
+        """
+        if not self.entry_exit_listener.agent_update_available():
+            return
+
+        self.agents, newly_exited_agents = self.entry_exit_listener.get_agents()
+
+        if len(newly_exited_agents):
+            for agent_id in newly_exited_agents:
+                exited_agents[agent_id] = newly_exited_agents[agent_id]
+
+                response = requests.post(
+                    self.graphql_server,
+                    json={'query': CLEAR_ROBOT_MUTATION, 'variables': {'robot_id': agent_id}},
+                    timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
+                )
+
+        current_agents_list = list(self.agents.keys())
+
+        for agent_id in current_agents_list:
+            if agent_id in exited_agents:
+                exited_agents.pop(agent_id)
+
+        for _aid, info in self.agents.items():
+            info.setdefault('heartbeat_ts', current_time)
+
+        if self.heartbeat_listener is not None:
+            for agent_id, ts in self.heartbeat_listener.get_heartbeats().items():
+                if agent_id in self.agents:
+                    self.agents[agent_id]['heartbeat_ts'] = ts
+        if self.my_id_int in self.agents:
+            self.agents[self.my_id_int]['heartbeat_ts'] = current_time
+
+        self.update_agents(exited_agents=exited_agents)
+
     def run(self):
         dds_log("entry_exit", "ready (agent sync)")
 
@@ -648,31 +759,47 @@ class EntryExitCommunication:
         while True:
             current_time = int(time.time())
 
-            # Periodically perform some updates
-            if current_time - self.last_time >= HEARTBEAT_PERIOD:  # FIXME different period...
+            self._handle_immediate_entry_exit_events(exited_agents, current_time)
+
+            # Periodic: heartbeat liveness, GraphQL cross-host reconciliation
+            if current_time - self.last_time >= HEARTBEAT_PERIOD:
                 self.last_time = current_time
                 update_to_active_agents = False
 
-                # Check for new agents
-                if self.entry_exit_listener.agent_update_available():
-                    self.agents, newly_exited_agents = self.entry_exit_listener.get_agents()
+                for _aid, info in self.agents.items():
+                    info.setdefault('heartbeat_ts', current_time)
 
-                    if len(newly_exited_agents):
-                        for agent_id in newly_exited_agents:
-                            exited_agents[agent_id] = newly_exited_agents[agent_id]
+                if self.heartbeat_listener is not None:
+                    for agent_id, ts in self.heartbeat_listener.get_heartbeats().items():
+                        if agent_id in self.agents:
+                            self.agents[agent_id]['heartbeat_ts'] = ts
+                if self.my_id_int in self.agents:
+                    self.agents[self.my_id_int]['heartbeat_ts'] = current_time
 
-                            # Remove exited agent position from the GraphQL server    
-                            response = requests.post(
-                                self.graphql_server,
-                                json={'query': CLEAR_ROBOT_MUTATION, 'variables': {'robot_id': agent_id}},
-                                timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
-                            )
+                hb_dead = []
+                for agent_id, agent_info in list(self.agents.items()):
+                    if agent_id == self.my_id_int:
+                        continue
+                    hb_ts = agent_info.get('heartbeat_ts', current_time)
+                    if current_time - hb_ts > HEARTBEAT_TIMEOUT:
+                        dds_log("entry_exit", f"agent {agent_id} heartbeat timed out")
+                        hb_dead.append(agent_id)
+
+                for agent_id in hb_dead:
+                    if agent_id in self.agents:
+                        self.agents.pop(agent_id)
+                        update_to_active_agents = True
+                        response = requests.post(
+                            self.graphql_server,
+                            json={'query': CLEAR_ROBOT_MUTATION, 'variables': {'robot_id': agent_id}},
+                            timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
+                        )
 
                 current_agents_list = list(self.agents.keys())
 
                 for agent_id in current_agents_list:
                     if agent_id in exited_agents:
-                        exited_agents.pop(agent_id)  # Remove from exited agents dictionary if reentered
+                        exited_agents.pop(agent_id)
 
                 # Get agents from the GraphQL server
                 try:
@@ -688,7 +815,8 @@ class EntryExitCommunication:
                             'agent_type': "unknown",
                             'ip_address': "unknown",
                             'hash': hash_func(str(agent_id)),
-                            'timestamp': int(time.time())
+                            'timestamp': int(time.time()),
+                            'heartbeat_ts': int(time.time()),
                         }
                         update_to_active_agents = True
 
@@ -747,6 +875,19 @@ class EntryExitCommunication:
             }
         """
         agent_list = list(self.agents.keys())
+        curr = set(agent_list)
+        prev = self._fleet_ids_previous_push
+        if prev is None:
+            prev = set()
+        for aid in curr - prev:
+            if isinstance(aid, int) and aid != self.my_id_int:
+                self._seed_placeholder_position(aid)
+        self._fleet_ids_previous_push = curr.copy()
+
+        sorted_ids = tuple(sorted(agent_list))
+        if sorted_ids != self._last_pushed_agent_ids:
+            dds_log("entry_exit", f"setAgentList -> {sorted_ids}")
+            self._last_pushed_agent_ids = sorted_ids
 
         response = requests.post(
             self.graphql_server,
@@ -776,6 +917,8 @@ class EntryExitCommunication:
             self.enter_exit_writer.write(exit_message)
         self.enter_exit_reader = None
         self.init_reader = None
+        self.heartbeat_reader = None
+        self.heartbeat_listener = None
         self.enter_exit_writer = None
         self.init_writer = None
         self.subscriber = None
