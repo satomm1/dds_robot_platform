@@ -34,6 +34,12 @@ export const REQUEST_ROBOT_STOP = gql`
   }
 `;
 
+export const REQUEST_ROBOT_SHUTDOWN = gql`
+  mutation RequestRobotShutdown($robotId: Int!) {
+    requestRobotShutdown(robot_id: $robotId)
+  }
+`;
+
 export const CLEAR_ROBOT_PATH = gql`
   mutation ClearRobotPath($robotId: Int!) {
     clearRobotPath(robot_id: $robotId)

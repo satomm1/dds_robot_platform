@@ -11,6 +11,7 @@ mutation = MutationType()
 logger = logging.getLogger(__name__)
 
 STOP_REQUEST_CACHE = "robot_stop_request"
+SHUTDOWN_REQUEST_CACHE = "robot_shutdown_request"
 MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
 MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 
@@ -38,6 +39,29 @@ def resolve_request_robot_stop(_, info, robot_id: int):
         return False
 
 
+@mutation.field("requestRobotShutdown")
+def resolve_request_robot_shutdown(_, info, robot_id: int):
+    shutdown_cache = ignite_client.get_or_create_cache(SHUTDOWN_REQUEST_CACHE)
+    path_cache = ignite_client.get_or_create_cache("cmd_smoothed_path")
+    payload = {
+        "requested_at": time.time(),
+        "pending": True,
+    }
+    try:
+        shutdown_cache.put(robot_id, json.dumps(payload))
+        try:
+            path_cache.remove_key(robot_id)
+        except Exception:
+            logger.debug(
+                "requestRobotShutdown: no path entry or remove_key failed for robot_id=%s",
+                robot_id,
+            )
+        return True
+    except Exception as exc:
+        logger.exception("requestRobotShutdown failed for robot_id=%s: %s", robot_id, exc)
+        return False
+
+
 @mutation.field("clearRobotPath")
 def resolve_clear_robot_path(_, info, robot_id: int):
     path_cache = ignite_client.get_or_create_cache("cmd_smoothed_path")
@@ -58,6 +82,21 @@ def resolve_consume_robot_stop_request(_, info, robot_id: int):
     except Exception as exc:
         logger.debug(
             "consumeRobotStopRequest remove_key for robot_id=%s: %s",
+            robot_id,
+            exc,
+        )
+        return False
+
+
+@mutation.field("consumeRobotShutdownRequest")
+def resolve_consume_robot_shutdown_request(_, info, robot_id: int):
+    shutdown_cache = ignite_client.get_or_create_cache(SHUTDOWN_REQUEST_CACHE)
+    try:
+        shutdown_cache.remove_key(robot_id)
+        return True
+    except Exception as exc:
+        logger.debug(
+            "consumeRobotShutdownRequest remove_key for robot_id=%s: %s",
             robot_id,
             exc,
         )
@@ -180,12 +219,17 @@ def resolve_clear_robot(_, info, robot_id):
     path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
     goal_cache = ignite_client.get_or_create_cache('robot_goal')
     stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
+    shutdown_cache = ignite_client.get_or_create_cache(SHUTDOWN_REQUEST_CACHE)
     try:
         position_cache.remove_key(robot_id)
         path_cache.remove_key(robot_id)
         goal_cache.remove_key(robot_id)
         try:
             stop_cache.remove_key(robot_id)
+        except Exception:
+            pass
+        try:
+            shutdown_cache.remove_key(robot_id)
         except Exception:
             pass
         return True

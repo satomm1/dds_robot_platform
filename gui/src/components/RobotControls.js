@@ -1,7 +1,7 @@
 // src/components/RobotControls.js
 import React from 'react';
 import { useMutation } from '@apollo/client';
-import { REQUEST_ROBOT_STOP } from '../mutations';
+import { REQUEST_ROBOT_SHUTDOWN, REQUEST_ROBOT_STOP } from '../mutations';
 
 const RobotControls = ({
   selectedRobotId,
@@ -11,6 +11,9 @@ const RobotControls = ({
   dismissPathForRobot,
 }) => {
   const [requestRobotStop, { loading: stopLoading }] = useMutation(REQUEST_ROBOT_STOP);
+  const [requestRobotShutdown, { loading: shutdownLoading }] = useMutation(
+    REQUEST_ROBOT_SHUTDOWN,
+  );
 
   const selectedRobot = robotPositions.find((r) => r.id === selectedRobotId);
 
@@ -37,6 +40,15 @@ const RobotControls = ({
     });
   };
 
+  const handleShutdown = () => {
+    dismissPathForRobot(selectedRobotId);
+    requestRobotShutdown({
+      variables: { robotId: selectedRobotId },
+    }).catch((error) => {
+      console.error('Error requesting robot shutdown:', error);
+    });
+  };
+
   return (
     <div className="robot-controls">
       <h3>{selectedRobot.name || `Robot ${selectedRobot.id}`}</h3>
@@ -58,6 +70,14 @@ const RobotControls = ({
           className="control-button stop"
         >
           Stop
+        </button>
+        <button
+          type="button"
+          onClick={handleShutdown}
+          disabled={shutdownLoading}
+          className="control-button shutdown"
+        >
+          Shutdown
         </button>
       </div>
     </div>

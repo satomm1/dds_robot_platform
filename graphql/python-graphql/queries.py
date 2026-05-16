@@ -12,6 +12,7 @@ map_cache = ignite_client.get_or_create_cache('map')
 query = QueryType()
 
 STOP_REQUEST_CACHE = "robot_stop_request"
+SHUTDOWN_REQUEST_CACHE = "robot_shutdown_request"
 MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
 MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 
@@ -229,6 +230,28 @@ def resolve_pending_robot_stops(*_):
                 )
     except Exception as exc:
         logger.exception("pendingRobotStops scan failed: %s", exc)
+    return pending
+
+
+@query.field("pendingRobotShutdowns")
+def resolve_pending_robot_shutdowns(*_):
+    shutdown_cache = ignite_client.get_or_create_cache(SHUTDOWN_REQUEST_CACHE)
+    pending = []
+    try:
+        for row in shutdown_cache.scan():
+            robot_id, raw = row[0], row[1]
+            if raw is None:
+                continue
+            doc = json.loads(raw)
+            if doc.get("pending"):
+                pending.append(
+                    {
+                        "id": int(robot_id),
+                        "requested_at": float(doc.get("requested_at", 0.0)),
+                    }
+                )
+    except Exception as exc:
+        logger.exception("pendingRobotShutdowns scan failed: %s", exc)
     return pending
 
 

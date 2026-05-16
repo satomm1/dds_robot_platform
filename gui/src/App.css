@@ -171,6 +171,15 @@
   background-color: #c82333;
 }
 
+.control-button.shutdown {
+  background-color: #343a40;
+  color: white;
+}
+
+.control-button.shutdown:hover {
+  background-color: #23272b;
+}
+
 .control-button.reset {
   background-color: #6c757d;
   color: white;

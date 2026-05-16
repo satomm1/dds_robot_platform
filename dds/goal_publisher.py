@@ -24,7 +24,13 @@ from dds_utils import (
 from dds_utils.config import resolve_graphql_http_url
 from dds_utils.gql_subscriber_sync import parse_graphql_response, post_graphql
 from dds_utils.topics import data_topic_name
-from dds_utils.message_types import MSG_GOAL, MSG_MULTI_ROBOT_GOAL, MSG_POSITION_INIT, MSG_STOP
+from dds_utils.message_types import (
+    MSG_GOAL,
+    MSG_MULTI_ROBOT_GOAL,
+    MSG_POSITION_INIT,
+    MSG_ROBOT_SHUTDOWN,
+    MSG_STOP,
+)
 
 INTER_DDS_WRITE_SLEEP_S = 0.02
 
@@ -75,6 +81,21 @@ query {
 CONSUME_STOP_MUTATION = """
 mutation ConsumeRobotStopRequest($robotId: Int!) {
     consumeRobotStopRequest(robot_id: $robotId)
+}
+"""
+
+PENDING_SHUTDOWN_QUERY = """
+query {
+    pendingRobotShutdowns {
+        id
+        requested_at
+    }
+}
+"""
+
+CONSUME_SHUTDOWN_MUTATION = """
+mutation ConsumeRobotShutdownRequest($robotId: Int!) {
+    consumeRobotShutdownRequest(robot_id: $robotId)
 }
 """
 
@@ -324,6 +345,40 @@ class GoalWriter:
                             cr = post_graphql(
                                 self.graphql_server,
                                 CONSUME_STOP_MUTATION,
+                                variables={"robotId": rid},
+                                timeout=5,
+                            )
+                            parse_graphql_response(cr)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                # Pending human shutdown requests -> DDS DataMessage(robot_shutdown)
+                try:
+                    response = post_graphql(
+                        self.graphql_server, PENDING_SHUTDOWN_QUERY, timeout=5
+                    )
+                    pdata = parse_graphql_response(response)
+                    for shutdown in pdata.get("pendingRobotShutdowns", []) or []:
+                        rid = int(shutdown["id"])
+                        ts = int(shutdown.get("requested_at", current_time))
+                        shutdown_payload = json.dumps({"source": "human"})
+                        command_message = DataMessage(
+                            MSG_ROBOT_SHUTDOWN, int(self.my_id), ts, shutdown_payload
+                        )
+                        message_topic = Topic(
+                            self.participant, data_topic_name(rid), DataMessage
+                        )
+                        message_writer = DataWriter(
+                            self.publisher, message_topic, qos=reliable_qos
+                        )
+                        message_writer.write(command_message)
+                        dds_log("goal_pub", f"published shutdown for robot {rid}")
+                        try:
+                            cr = post_graphql(
+                                self.graphql_server,
+                                CONSUME_SHUTDOWN_MUTATION,
                                 variables={"robotId": rid},
                                 timeout=5,
                             )
