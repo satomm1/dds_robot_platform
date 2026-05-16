@@ -18,6 +18,7 @@ from dds_utils import (
     dispose_participant,
     get_ip,
     reliable_qos,
+    reliable_transient_local_command_qos,
     require_agent_id_int,
     transform_se2,
 )
@@ -337,7 +338,7 @@ class GoalWriter:
                             self.participant, data_topic_name(rid), DataMessage
                         )
                         message_writer = DataWriter(
-                            self.publisher, message_topic, qos=reliable_qos
+                            self.publisher, message_topic, qos=reliable_transient_local_command_qos
                         )
                         message_writer.write(command_message)
                         dds_log("goal_pub", f"published stop for robot {rid}")
@@ -371,7 +372,7 @@ class GoalWriter:
                             self.participant, data_topic_name(rid), DataMessage
                         )
                         message_writer = DataWriter(
-                            self.publisher, message_topic, qos=reliable_qos
+                            self.publisher, message_topic, qos=reliable_transient_local_command_qos
                         )
                         message_writer.write(command_message)
                         dds_log("goal_pub", f"published shutdown for robot {rid}")

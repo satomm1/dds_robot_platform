@@ -39,7 +39,7 @@ from .network import (
     require_robot_id_int,
 )
 from .participant import create_domain_participant
-from .qos import best_effort_qos, reliable_qos
+from .qos import best_effort_qos, reliable_qos, reliable_transient_local_command_qos
 from .topics import (
     ENTRY_EXIT_TOPIC,
     HEARTBEAT_TOPIC,
@@ -96,6 +96,7 @@ __all__ = [
     "make_participant_qos",
     "parse_agent_id_int",
     "reliable_qos",
+    "reliable_transient_local_command_qos",
     "require_agent_id_int",
     "require_robot_id_int",
     "transform_se2",
