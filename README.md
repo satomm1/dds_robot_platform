@@ -29,28 +29,26 @@ You will also need a conda interpreter. I recommend [miniconda](https://www.anac
     ```
 
 3) Open 3 Terminals:
-    - Terminal 1: Start docker
+    - Terminal 1: Start docker and the relevant containers (from the main `dds_robot_platform` directory):
         ```
         docker compose up -d
         ```
-    - Terminal 2: Navigate to dds directory and activate dds environment
+    - Terminal 2: Navigate to `dds` directory:
         ```
         cd dds
-        conda activate dds
         ```
-        Run the dds code:
+        Run the DDS code:
         ```
-        . start_scripts.sh
+        ./start_scripts.sh
         ```
 
-    - Terminal 3: Navigate to dds directory and activate dds environment
+    - Terminal 3: Navigate to `dds` directory:
         ```
         cd dds
-        conda activate dds
         ```
-        Terminate the dds code:
+        After you are done using the GUI, terminate the DDS code:
         ```
-        . stop_scripts.sh
+        ./stop_scripts.sh
         ```
         
 ## GUI
@@ -61,12 +59,14 @@ The GUI can be used either as a **pre-built desktop app** (no Node.js) or from *
 
 These builds are produced automatically by GitHub Actions. You only need a normal GitHub login to download artifacts from a **public** repository (or access to the repo if it is private).
 
-1. Go to `https://github.com/satomm1/dds_robot_platform/actions/runs/25898705177`
-2. At the bottom of the run page, under **Artifacts**, download **one** ZIP for your system:
+1. Go to `https://github.com/satomm1/dds_robot_platform/actions/`
+2. Click the most recent successful workflow runs.
+3. At the bottom of the run page, under **Artifacts**, download **one** ZIP for your system:
    - **Windows:** `gui-installer-windows-latest` — unzip, then run **`DDS Robot GUI Setup … .exe`** and complete the installer. Launch **DDS Robot GUI** from the Start menu. If Windows SmartScreen appears (unsigned build), choose **More info** → **Run anyway** if you trust this source.
    - **macOS:** `gui-installer-macos-latest` — unzip, open the **`.dmg`**, drag **DDS Robot GUI** into Applications. First launch may require **right‑click → Open** (unsigned app), or allowing the app under **System Settings → Privacy & Security**.
    - **Linux:** `gui-installer-ubuntu-latest` — unzip the **`.AppImage`**, make it executable (`chmod +x "DDS Robot GUI"*.AppImage` or similar), then run it. Some distributions need **FUSE** / **libfuse2** for AppImages; install your distro’s fuse package if the app will not start.
-3. **Backend:** The desktop app is **only the UI**. Start the rest of the stack (Docker, DDS, GraphQL, etc.) so the GraphQL API is available. The app expects **`http://localhost:8000/graphql`** unless the maintainer changed the URL at build time (`REACT_APP_GRAPHQL_HTTP_URL` in `gui`).
+4. You should now have an executable to run on your machine to start and run the GUI!
+5. **Backend:** The desktop app is **only the UI**. Start the rest of the stack (Docker/GraphQL, DDS) so the GraphQL API is available (see the DDS section above). The app expects **`http://localhost:8000/graphql`** unless the maintainer changed the URL at build time (`REACT_APP_GRAPHQL_HTTP_URL` in `gui`).
 
 ### Run from source (developers)
 

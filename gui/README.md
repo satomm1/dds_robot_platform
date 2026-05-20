@@ -8,12 +8,13 @@ End users can install a **desktop build** without Node.js or the command line. I
 
 ### For end users: download from GitHub
 
-1. Go to `https://github.com/satomm1/dds_robot_platform/actions/runs/25898705177`
-2. Under **Artifacts** on the run summary, download the ZIP for your OS:
+1. Go to `https://github.com/satomm1/dds_robot_platform/actions/`
+2. Click the most recent successful workflow runs.
+3. Under **Artifacts** on the run summary, download the ZIP for your OS:
    - **Windows:** `gui-installer-windows-latest` — unzip, run **`DDS Robot GUI Setup … .exe`**, then start **DDS Robot GUI** from the Start menu. If SmartScreen warns (unsigned installer), use **More info** → **Run anyway** if you trust the source.
    - **macOS:** `gui-installer-macos-latest` — unzip, open the **`.dmg`**, drag **DDS Robot GUI** to Applications. If blocked, **right‑click → Open** the first time, or allow it under **System Settings → Privacy & Security**.
    - **Linux:** `gui-installer-ubuntu-latest` — unzip the **`.AppImage`**, run `chmod +x` on it if needed, then execute it. Install **FUSE** / **libfuse2** for AppImage support if your distro requires it.
-3. **Backend:** This package is only the UI. The GraphQL server must be running separately. The app uses **`http://localhost:8000/graphql`** by default (see [`src/apolloClient.js`](src/apolloClient.js)) unless the maintainer built it with another URL.
+4. **Backend:** This package is only the UI. The GraphQL server must be running separately. The app uses **`http://localhost:8000/graphql`** by default (see [`src/apolloClient.js`](src/apolloClient.js)) unless the maintainer built it with another URL.
 
 **Maintainers:** See the root [`README.md`](../README.md) for the same end-user steps in the main project docs.
 
