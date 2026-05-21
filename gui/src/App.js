@@ -10,6 +10,7 @@ import RobotStartup from './components/RobotStartup';
 import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
+import HelpModal from './components/HelpModal';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
 import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS } from './queries';
 
@@ -48,6 +49,7 @@ function AppContent() {
     side: 'right',
   });
 
+  const [helpOpen, setHelpOpen] = useState(false);
   const [selectedRobotId, setSelectedRobotId] = useState(null);
 
   const { data: positionsData, loading: positionsLoading, error: positionsError } = useQuery(
@@ -253,13 +255,46 @@ function AppContent() {
   return (
     <div className="App">
       <header className="App-header">
-        <h2 style={{ marginLeft: '30px' }}>Robot Controller</h2>
-        <div style={{ fontSize: '14px', color: '#ccc', marginTop: '5px', marginRight: '30px' }}>
-          Matthew Sato<br />
-          Engineering Informatics Group<br />
+        <button
+          type="button"
+          className="App-header__help-btn"
+          onClick={() => setHelpOpen(true)}
+        >
+          Help
+        </button>
+        <h1 className="App-header__title">
+          <a
+            className="App-header__title-link"
+            href="https://satomm1.github.io/mattbot/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Robot Controller
+          </a>
+        </h1>
+        <div className="App-header__credit">
+          <a
+            className="App-header__credit-link"
+            href="https://www.linkedin.com/in/matthew-sato-4ab47514b"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Matthew Sato
+          </a>
+          <br />
+          <a
+            className="App-header__credit-link"
+            href="https://eil.stanford.edu/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Engineering Informatics Group
+          </a>
+          <br />
           Stanford University
         </div>
       </header>
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       <div className="control-container">
         <div className="sidebar" style={{ width: leftSidebarWidth }}>
           <div style={{ overflowY: 'auto', maxHeight: '40%' }}>
