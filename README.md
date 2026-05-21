@@ -61,7 +61,7 @@ These builds are produced automatically by GitHub Actions. You only need a norma
 
 1. Go to `https://github.com/satomm1/dds_robot_platform/actions/`
 2. Click the most recent successful workflow runs.
-3. At the bottom of the run page, under **Artifacts**, download **one** ZIP for your system:
+3. At the bottom of the run page, under **Artifacts**, download **one** ZIP for your system (**NOTE: You must be logged in to GitHub to download the installers**):
    - **Windows:** `gui-installer-windows-latest` — unzip, then run **`DDS Robot GUI Setup … .exe`** and complete the installer. Launch **DDS Robot GUI** from the Start menu. If Windows SmartScreen appears (unsigned build), choose **More info** → **Run anyway** if you trust this source.
    - **macOS:** `gui-installer-macos-latest` — unzip, open the **`.dmg`**, drag **DDS Robot GUI** into Applications. First launch may require **right‑click → Open** (unsigned app), or allowing the app under **System Settings → Privacy & Security**.
    - **Linux:** `gui-installer-ubuntu-latest` — unzip the **`.AppImage`**, make it executable (`chmod +x "DDS Robot GUI"*.AppImage` or similar), then run it. Some distributions need **FUSE** / **libfuse2** for AppImages; install your distro’s fuse package if the app will not start.
