@@ -1,6 +1,7 @@
 import { DEFAULT_PORT, normalizeHostInput } from './robotLauncherStorage';
 
 const REQUEST_TIMEOUT_MS = 20000;
+const STATUS_REQUEST_TIMEOUT_MS = 5000;
 
 function launchUrl(host, port, path) {
   const h = normalizeHostInput(host);
@@ -23,11 +24,7 @@ async function parseResponse(res) {
   };
 }
 
-/**
- * GET the robot launch server (/start or /stop). Uses Electron IPC when available,
- * dev proxy in development, otherwise direct fetch (may fail on browser CORS).
- */
-export async function requestRobotLauncher(host, path) {
+async function requestRobotLauncherRaw(host, path, timeoutMs) {
   const cleanHost = normalizeHostInput(host);
   if (!cleanHost) {
     throw new Error('Enter a robot IP address or hostname.');
@@ -40,6 +37,7 @@ export async function requestRobotLauncher(host, path) {
       host: cleanHost,
       port: portNum,
       path: route,
+      timeoutMs,
     });
   }
 
@@ -50,7 +48,7 @@ export async function requestRobotLauncher(host, path) {
       path: route,
     });
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(`/api/robot-launcher?${params}`, {
         signal: controller.signal,
@@ -66,7 +64,7 @@ export async function requestRobotLauncher(host, path) {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(launchUrl(cleanHost, portNum, route), {
       method: 'GET',
@@ -82,5 +80,31 @@ export async function requestRobotLauncher(host, path) {
     );
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * GET the robot launch server (/start or /stop). Uses Electron IPC when available,
+ * dev proxy in development, otherwise direct fetch (may fail on browser CORS).
+ */
+export async function requestRobotLauncher(host, path) {
+  return requestRobotLauncherRaw(host, path, REQUEST_TIMEOUT_MS);
+}
+
+/** GET /status — short timeout, no throw on unreachable host (returns { ok: false }). */
+export async function fetchRobotLauncherStatus(host) {
+  const cleanHost = normalizeHostInput(host);
+  if (!cleanHost) {
+    return { ok: false, body: '' };
+  }
+  try {
+    const result = await requestRobotLauncherRaw(
+      cleanHost,
+      '/status',
+      STATUS_REQUEST_TIMEOUT_MS,
+    );
+    return { ok: Boolean(result.ok), body: result.body || '' };
+  } catch {
+    return { ok: false, body: '' };
   }
 }

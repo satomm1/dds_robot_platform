@@ -19,8 +19,9 @@ module.exports = function setupRobotLauncherProxy(app) {
       return;
     }
 
+    const timeout = path === '/status' ? 5000 : REQUEST_TIMEOUT_MS;
     const proxyReq = http.get(
-      { host, port, path, timeout: REQUEST_TIMEOUT_MS },
+      { host, port, path, timeout },
       (proxyRes) => {
         let body = '';
         proxyRes.setEncoding('utf8');

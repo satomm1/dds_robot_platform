@@ -53,10 +53,12 @@ function createWindow() {
   win.loadFile(htmlPath);
 }
 
-ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route }) => {
+ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route, timeoutMs }) => {
   const cleanHost = String(host || '').trim();
   const portNum = Number(port) > 0 ? Number(port) : 8080;
   const reqPath = route && String(route).startsWith('/') ? String(route) : '/start';
+  const timeout =
+    Number(timeoutMs) > 0 ? Number(timeoutMs) : ROBOT_LAUNCHER_TIMEOUT_MS;
 
   if (!cleanHost) {
     return Promise.reject(new Error('host is required'));
@@ -64,7 +66,7 @@ ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route }) =
 
   return new Promise((resolve, reject) => {
     const req = http.get(
-      { host: cleanHost, port: portNum, path: reqPath, timeout: ROBOT_LAUNCHER_TIMEOUT_MS },
+      { host: cleanHost, port: portNum, path: reqPath, timeout },
       (res) => {
         let body = '';
         res.setEncoding('utf8');
