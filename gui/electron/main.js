@@ -1,6 +1,9 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+
+const ROBOT_LAUNCHER_TIMEOUT_MS = 20000;
 
 // Windows taskbar uses the .exe icon; Shell also keys off AppUserModelId (match package.json build.appId).
 if (process.platform === 'win32') {
@@ -49,6 +52,43 @@ function createWindow() {
 
   win.loadFile(htmlPath);
 }
+
+ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route }) => {
+  const cleanHost = String(host || '').trim();
+  const portNum = Number(port) > 0 ? Number(port) : 8080;
+  const reqPath = route && String(route).startsWith('/') ? String(route) : '/start';
+
+  if (!cleanHost) {
+    return Promise.reject(new Error('host is required'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const req = http.get(
+      { host: cleanHost, port: portNum, path: reqPath, timeout: ROBOT_LAUNCHER_TIMEOUT_MS },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            body: body.trim(),
+          });
+        });
+      },
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timed out'));
+    });
+    req.on('error', (err) => {
+      reject(err);
+    });
+  });
+});
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin') {

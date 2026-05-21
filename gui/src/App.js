@@ -6,6 +6,7 @@ import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import RobotTypedGoals from './components/RobotTypedGoals';
+import RobotStartup from './components/RobotStartup';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
 import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS } from './queries';
@@ -317,17 +318,20 @@ function AppContent() {
           />
         </div>
         <aside className="sidebar-right" aria-label="Selected robot">
-          <RobotControls 
-            selectedRobotId={selectedRobotId}
-            robotPositions={robotPositions}
-            positionsLoading={positionsLoading}
-            positionsError={positionsError}
-            dismissPathForRobot={dismissPathForRobot}
-          />
-          <RobotTypedGoals
-            selectedRobotId={selectedRobotId} 
-            onSetGoal={handleUpdateTheta}
-          />
+          <div className="sidebar-right-main">
+            <RobotControls 
+              selectedRobotId={selectedRobotId}
+              robotPositions={robotPositions}
+              positionsLoading={positionsLoading}
+              positionsError={positionsError}
+              dismissPathForRobot={dismissPathForRobot}
+            />
+            <RobotTypedGoals
+              selectedRobotId={selectedRobotId} 
+              onSetGoal={handleUpdateTheta}
+            />
+          </div>
+          <RobotStartup />
         </aside>
       </div>
     </div>

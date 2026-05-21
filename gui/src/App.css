@@ -41,8 +41,17 @@
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   text-align: left;
+}
+
+.sidebar-right-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .map-container {
@@ -384,4 +393,153 @@
 .multi-robot-planner__muted {
   color: #888;
   font-size: 12px;
+}
+
+/* Robot startup panel (bottom of right sidebar) */
+.robot-startup {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #ddd;
+  font-size: 13px;
+}
+
+.robot-startup__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  text-align: center;
+}
+
+.robot-startup__field {
+  margin-bottom: 8px;
+}
+
+.robot-startup__label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.robot-startup__input,
+.robot-startup__select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.robot-startup__saved-row {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.robot-startup__saved-row .robot-startup__select {
+  flex: 1;
+  min-width: 0;
+}
+
+.robot-startup__delete-saved {
+  flex: 0 0 2rem;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f8f9fa;
+  color: #666;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.robot-startup__delete-saved:hover:not(:disabled) {
+  background: #f8d7da;
+  color: #c62828;
+  border-color: #f5c6cb;
+}
+
+.robot-startup__delete-saved:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.robot-startup__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.robot-startup__cell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 4.5rem;
+  min-width: 0;
+}
+
+.robot-startup__cell--ip {
+  flex: 2 1 6rem;
+}
+
+.robot-startup__row .robot-startup__btn {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  min-width: 3.25rem;
+}
+
+.robot-startup__btn {
+  padding: 8px 10px;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.robot-startup__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.robot-startup__btn--save {
+  background-color: #6c757d;
+  color: white;
+}
+
+.robot-startup__btn--save:hover:not(:disabled) {
+  background-color: #5a6268;
+}
+
+.robot-startup__start-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.robot-startup__btn--start {
+  width: 100%;
+  padding: 10px 16px;
+  background-color: #28a745;
+  color: white;
+}
+
+.robot-startup__btn--start:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.robot-startup__status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.robot-startup__status--success {
+  color: #155724;
+}
+
+.robot-startup__status--error {
+  color: #c62828;
 }
