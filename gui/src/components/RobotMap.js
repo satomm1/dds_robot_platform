@@ -29,7 +29,7 @@ const RobotMap = ({
   dismissPathForRobot = () => {},
   clearPathDismissalForRobot = () => {},
 }) => {
-  const [mapSize, setMapSize] = useState({ width: 1100, height: 600 });
+  const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   // Replace single goalMarker with a map of robot IDs to goal markers
   const [goalMarkers, setGoalMarkers] = useState({});
   const [robots, setRobots] = useState([]);
@@ -71,17 +71,6 @@ const RobotMap = ({
   const maxScale = 3;
   const [scale, setScale] = useState(minScale); // Start at minimum zoom level
 
-  // Update container size based on parent element
-  useEffect(() => {
-    if (containerRef.current) {
-      const { offsetWidth, offsetHeight } = containerRef.current;
-      setMapSize({
-        width: offsetWidth - 20, // Padding
-        height: offsetHeight - 20, // Padding
-      });
-    }
-  }, []);
-
   // Query for occupancy grid (server returns width/height 0 when no map is loaded yet)
   const { loading: mapLoading, error: mapError, data: mapData, refetch: refetchMap } = useQuery(
     GET_OCCUPANCY_GRID,
@@ -89,6 +78,26 @@ const RobotMap = ({
   );
 
   const hasMap = mapData?.map?.width > 0 && mapData?.map?.height > 0;
+
+  // Keep Konva stage matched to the map panel (resize with window / column drag)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+
+    const updateSize = () => {
+      const width = Math.floor(el.clientWidth);
+      const height = Math.floor(el.clientHeight);
+      if (width <= 0 || height <= 0) return;
+      setMapSize((prev) =>
+        prev.width === width && prev.height === height ? prev : { width, height },
+      );
+    };
+
+    updateSize();
+    const ro = new ResizeObserver(updateSize);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasMap]);
 
   // Calculate distance between two points
   const calculateDistance = (x1, y1, x2, y2) => {
@@ -655,6 +664,7 @@ const RobotMap = ({
       ref={containerRef}
       className={mapControlsDragging ? 'robot-map-host robot-map-host--panel-drag' : 'robot-map-host'}
     >
+      {mapSize.width > 0 && mapSize.height > 0 && (
       <Stage 
         ref={stageRef}
         width={mapSize.width} 
@@ -871,6 +881,7 @@ const RobotMap = ({
           })}
         </Layer>
       </Stage>
+      )}
 
       {/* Tooltip layer outside the main stage - not affected by transforms */}
       {mousePosition && (

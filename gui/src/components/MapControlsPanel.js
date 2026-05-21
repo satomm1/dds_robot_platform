@@ -105,34 +105,34 @@ const MapControlsPanel = ({ containerRef, onDraggingChange, children }) => {
     [containerRef],
   );
 
-  useLayoutEffect(() => {
+  const layoutPosition = useCallback(() => {
     const container = containerRef?.current;
     const panel = panelRef.current;
     if (!container || !panel) return;
+    if (container.clientWidth <= 0 || container.clientHeight <= 0) return;
 
     setPosition((prev) => {
-      if (prev) {
-        return clampPosition(prev.left, prev.top, container, panel);
-      }
-      return resolveInitialPosition(container, panel);
+      const next = prev
+        ? clampPosition(prev.left, prev.top, container, panel)
+        : resolveInitialPosition(container, panel);
+      return next;
     });
   }, [containerRef]);
+
+  useLayoutEffect(() => {
+    layoutPosition();
+  }, [layoutPosition]);
 
   useEffect(() => {
     const container = containerRef?.current;
     if (!container) return undefined;
 
     const ro = new ResizeObserver(() => {
-      const panel = panelRef.current;
-      if (!panel) return;
-      setPosition((prev) => {
-        if (!prev) return prev;
-        return clampPosition(prev.left, prev.top, container, panel);
-      });
+      layoutPosition();
     });
     ro.observe(container);
     return () => ro.disconnect();
-  }, [containerRef]);
+  }, [containerRef, layoutPosition]);
 
   const endDrag = useCallback(() => {
     const handle = handleRef.current;
@@ -220,23 +220,15 @@ const MapControlsPanel = ({ containerRef, onDraggingChange, children }) => {
     document.body.style.cursor = 'grabbing';
   };
 
-  if (!position) {
-    return (
-      <div ref={panelRef} className="map-controls map-controls--measuring" aria-hidden>
-        <div className="map-controls__handle">
-          <span className="map-controls__grip" aria-hidden />
-          Move
-        </div>
-        {children}
-      </div>
-    );
-  }
+  const panelStyle = position
+    ? { left: position.left, top: position.top, right: 'auto', bottom: 'auto' }
+    : { right: 16, bottom: 32, left: 'auto', top: 'auto' };
 
   return (
     <div
       ref={panelRef}
       className={`map-controls${dragging ? ' map-controls--dragging' : ''}`}
-      style={{ left: position.left, top: position.top, right: 'auto', bottom: 'auto' }}
+      style={panelStyle}
     >
       <div
         ref={handleRef}
