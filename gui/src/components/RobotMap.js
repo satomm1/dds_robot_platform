@@ -5,6 +5,7 @@ import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
 import { getRobotColor } from '../utils';
+import MapControlsPanel from './MapControlsPanel';
 
 const devLog = (...args) => {
   if (process.env.NODE_ENV === 'development') console.log(...args);
@@ -569,16 +570,15 @@ const RobotMap = ({
 
   // Toggle path visibility
   const [showPaths, setShowPaths] = useState(true);
-  
+  const [mapControlsDragging, setMapControlsDragging] = useState(false);
+
   const togglePaths = () => {
     setShowPaths(!showPaths);
   };
 
   const mapSlotStyle = {
     width: '100%',
-    height: '100%',
     minHeight: 280,
-    border: '1px solid #ccc',
     boxSizing: 'border-box',
     display: 'flex',
     flexDirection: 'column',
@@ -604,7 +604,7 @@ const RobotMap = ({
 
   if (mapError && !hasMap) {
     return (
-      <div ref={containerRef} style={mapSlotStyle}>
+      <div ref={containerRef} className="robot-map-host" style={mapSlotStyle}>
         <p style={{ margin: 0, maxWidth: 420, textAlign: 'center', lineHeight: 1.45 }}>
           Error loading map: {mapError.message}
         </p>
@@ -633,7 +633,7 @@ const RobotMap = ({
 
   if (mapData && !hasMap) {
     return (
-      <div ref={containerRef} style={mapSlotStyle}>
+      <div ref={containerRef} className="robot-map-host" style={mapSlotStyle}>
         <p style={{ margin: 0, maxWidth: 420, textAlign: 'center', lineHeight: 1.45 }}>
           No occupancy map is available from the server yet. After a map has been published to
           the backend, use the button below to query again.
@@ -651,9 +651,9 @@ const RobotMap = ({
   }
 
   return (
-    <div 
-      ref={containerRef} 
-      style={{ width: '100%', height: '100%', border: '1px solid #ccc', overflow: 'hidden' }}
+    <div
+      ref={containerRef}
+      className={mapControlsDragging ? 'robot-map-host robot-map-host--panel-drag' : 'robot-map-host'}
     >
       <Stage 
         ref={stageRef}
@@ -938,37 +938,28 @@ const RobotMap = ({
         </div>
       ))}
       
-      {/* Controls for zoom and goal management */}
-      <div style={{ position: 'absolute', bottom: '20px', right: '20px', background: 'white', padding: '5px', borderRadius: '5px', boxShadow: '0 0 5px rgba(0,0,0,0.3)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '10px' }}>
-          <button 
-            onClick={clearGoal}
-            disabled={!selectedRobotId}
-            style={{ margin: '2px', padding: '5px 10px' }}
-          >
+      {/* Controls for zoom and goal management (drag handle → snap to corner) */}
+      <MapControlsPanel
+        containerRef={containerRef}
+        onDraggingChange={setMapControlsDragging}
+      >
+        <div className="map-controls__group">
+          <button type="button" onClick={clearGoal} disabled={!selectedRobotId}>
             Clear Selected Goal
           </button>
-          <button 
-            onClick={clearAllGoals}
-            style={{ margin: '2px', padding: '5px 10px' }}
-          >
+          <button type="button" onClick={clearAllGoals}>
             Clear All Goals
           </button>
-          <button 
-            onClick={handleClearAllObjects}
-            style={{ margin: '2px', padding: '5px 10px' }}
-          >
+          <button type="button" onClick={handleClearAllObjects}>
             Clear All Objects
           </button>
-          <button 
-            onClick={togglePaths}
-            style={{ margin: '2px', padding: '5px 10px' }}
-          >
+          <button type="button" onClick={togglePaths}>
             {showPaths ? 'Hide Paths' : 'Show Paths'}
           </button>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <button 
+        <div className="map-controls__zoom">
+          <button
+            type="button"
             onClick={() => {
               if (stageRef.current) {
                 const stage = stageRef.current;
@@ -978,11 +969,11 @@ const RobotMap = ({
                 stage.batchDraw();
               }
             }}
-            style={{ margin: '2px', padding: '5px 10px' }}
           >
             +
           </button>
-          <button 
+          <button
+            type="button"
             onClick={() => {
               if (stageRef.current) {
                 const stage = stageRef.current;
@@ -992,11 +983,11 @@ const RobotMap = ({
                 stage.batchDraw();
               }
             }}
-            style={{ margin: '2px', padding: '5px 10px' }}
           >
             -
           </button>
-          <button 
+          <button
+            type="button"
             onClick={() => {
               if (stageRef.current) {
                 const stage = stageRef.current;
@@ -1005,12 +996,11 @@ const RobotMap = ({
                 stage.batchDraw();
               }
             }}
-            style={{ margin: '2px', padding: '5px 10px' }}
           >
             Reset
           </button>
         </div>
-      </div>
+      </MapControlsPanel>
       
     </div>
   );

@@ -7,11 +7,15 @@ import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import RobotTypedGoals from './components/RobotTypedGoals';
 import RobotStartup from './components/RobotStartup';
+import ColumnResizeHandle from './components/ColumnResizeHandle';
+import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
 import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS } from './queries';
 
 const ROBOT_POSITIONS_POLL_MS = 2000;
+const SIDEBAR_LEFT_WIDTH_KEY = 'dds_gui_sidebar_left_width';
+const SIDEBAR_RIGHT_WIDTH_KEY = 'dds_gui_sidebar_right_width';
 
 const devLog = (...args) => {
   if (process.env.NODE_ENV === 'development') {
@@ -29,6 +33,21 @@ function App() {
 
 // Create a new component that's wrapped by ApolloProvider
 function AppContent() {
+  const { width: leftSidebarWidth, beginResize: beginLeftResize } = useResizableColumnWidth({
+    storageKey: SIDEBAR_LEFT_WIDTH_KEY,
+    defaultWidth: 250,
+    minWidth: 180,
+    maxWidth: 520,
+    side: 'left',
+  });
+  const { width: rightSidebarWidth, beginResize: beginRightResize } = useResizableColumnWidth({
+    storageKey: SIDEBAR_RIGHT_WIDTH_KEY,
+    defaultWidth: 280,
+    minWidth: 220,
+    maxWidth: 520,
+    side: 'right',
+  });
+
   const [selectedRobotId, setSelectedRobotId] = useState(null);
 
   const { data: positionsData, loading: positionsLoading, error: positionsError } = useQuery(
@@ -242,7 +261,7 @@ function AppContent() {
         </div>
       </header>
       <div className="control-container">
-        <div className="sidebar">
+        <div className="sidebar" style={{ width: leftSidebarWidth }}>
           <div style={{ overflowY: 'auto', maxHeight: '40%' }}>
             <RobotSelector 
               selectedRobotId={selectedRobotId} 
@@ -298,6 +317,10 @@ function AppContent() {
             />
           )}
         </div>
+        <ColumnResizeHandle
+          onMouseDown={beginLeftResize}
+          label="Resize left panel"
+        />
         <div className="map-container">
           <RobotMap 
             selectedRobotId={selectedRobotId}
@@ -317,7 +340,15 @@ function AppContent() {
             clearPathDismissalForRobot={clearPathDismissalForRobot}
           />
         </div>
-        <aside className="sidebar-right" aria-label="Selected robot">
+        <ColumnResizeHandle
+          onMouseDown={beginRightResize}
+          label="Resize right panel"
+        />
+        <aside
+          className="sidebar-right"
+          aria-label="Selected robot"
+          style={{ width: rightSidebarWidth }}
+        >
           <div className="sidebar-right-main">
             <RobotControls 
               selectedRobotId={selectedRobotId}
