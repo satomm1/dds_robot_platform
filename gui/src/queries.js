@@ -11,6 +11,14 @@ export const GET_OCCUPANCY_GRID = gql`
   }
 `;
 
+export const GET_SUBSCRIBED_AGENTS = gql`
+  query {
+    subscribed_agents {
+      id
+    }
+  }
+`;
+
 export const GET_ROBOT_POSITIONS = gql`
   query {
     robotPositions {

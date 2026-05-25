@@ -1,7 +1,9 @@
 // src/components/RobotControls.js
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation } from '@apollo/client';
 import { REQUEST_ROBOT_SHUTDOWN, REQUEST_ROBOT_STOP } from '../mutations';
+
+const NOTICE_DISMISS_MS = 5000;
 
 const RobotControls = ({
   selectedRobotId,
@@ -10,48 +12,136 @@ const RobotControls = ({
   positionsError,
   dismissPathForRobot,
 }) => {
+  const [notice, setNotice] = useState(null);
+  const noticeTimerRef = useRef(null);
   const [requestRobotStop, { loading: stopLoading }] = useMutation(REQUEST_ROBOT_STOP);
   const [requestRobotShutdown, { loading: shutdownLoading }] = useMutation(
     REQUEST_ROBOT_SHUTDOWN,
   );
 
   const selectedRobot = robotPositions.find((r) => r.id === selectedRobotId);
+  const canStop =
+    selectedRobotId != null && Boolean(selectedRobot) && !stopLoading && !positionsLoading;
 
-  if (selectedRobotId == null) {
-    return <div className="robot-controls">No robot selected</div>;
-  }
+  const showNotice = useCallback((message, type = 'success') => {
+    setNotice({ message, type });
+    if (noticeTimerRef.current) {
+      clearTimeout(noticeTimerRef.current);
+    }
+    noticeTimerRef.current = setTimeout(() => {
+      setNotice(null);
+      noticeTimerRef.current = null;
+    }, NOTICE_DISMISS_MS);
+  }, []);
 
-  if (positionsLoading && !selectedRobot) {
-    return <div className="robot-controls">Loading robot data...</div>;
-  }
-  if (positionsError) {
-    return <div className="robot-controls">Error: {positionsError.message}</div>;
-  }
-  if (!selectedRobot) {
-    return <div className="robot-controls">Robot not found</div>;
-  }
-
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
+    if (!canStop) return;
+    const label = selectedRobot.name || `Robot ${selectedRobotId}`;
     dismissPathForRobot(selectedRobotId);
     requestRobotStop({
       variables: { robotId: selectedRobotId },
-    }).catch((error) => {
-      console.error('Error requesting robot stop:', error);
-    });
-  };
+    })
+      .then(() => {
+        showNotice(`${label} stop message sent`);
+      })
+      .catch((error) => {
+        console.error('Error requesting robot stop:', error);
+        showNotice(`Could not send stop message to ${label}`, 'error');
+      });
+  }, [
+    canStop,
+    dismissPathForRobot,
+    requestRobotStop,
+    selectedRobot,
+    selectedRobotId,
+    showNotice,
+  ]);
+
+  useEffect(() => {
+    const isTypingTarget = (el) =>
+      el &&
+      (el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT' ||
+        el.isContentEditable);
+
+    const onKeyDown = (e) => {
+      if (isTypingTarget(e.target) || e.repeat) return;
+      if (e.key !== 's' && e.key !== 'S') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      handleStop();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleStop]);
+
+  useEffect(
+    () => () => {
+      if (noticeTimerRef.current) {
+        clearTimeout(noticeTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const renderNotice = () =>
+    notice ? (
+      <p
+        className={`robot-controls__notice robot-controls__notice--${notice.type}`}
+        role="status"
+      >
+        {notice.message}
+      </p>
+    ) : null;
+
+  const wrap = (body) => (
+    <>
+      {body}
+      {renderNotice()}
+    </>
+  );
+
+  if (positionsError) {
+    return wrap(
+      <div className="robot-controls">Error: {positionsError.message}</div>,
+    );
+  }
+
+  if (selectedRobotId == null || (!selectedRobot && !positionsLoading)) {
+    return wrap(
+      <div className="robot-controls robot-controls--placeholder">
+        No robot selected
+      </div>,
+    );
+  }
+
+  if (positionsLoading && !selectedRobot) {
+    return wrap(<div className="robot-controls">Loading robot data...</div>);
+  }
+
+  const robotLabel = selectedRobot.name || `Robot ${selectedRobotId}`;
 
   const handleShutdown = () => {
-    dismissPathForRobot(selectedRobotId);
+    const label = robotLabel;
+    const robotId = selectedRobotId;
+    dismissPathForRobot(robotId);
     requestRobotShutdown({
-      variables: { robotId: selectedRobotId },
-    }).catch((error) => {
-      console.error('Error requesting robot shutdown:', error);
-    });
+      variables: { robotId },
+    })
+      .then(() => {
+        showNotice(`${label} shut down message sent`);
+      })
+      .catch((error) => {
+        console.error('Error requesting robot shutdown:', error);
+        showNotice(`Could not send shut down message to ${label}`, 'error');
+      });
   };
 
-  return (
+  return wrap(
     <div className="robot-controls">
-      <h3>{selectedRobot.name || `Robot ${selectedRobot.id}`}</h3>
+      <h3>{robotLabel}</h3>
       <div className="control-stats">
         <p>
           <strong>Position:</strong> ({selectedRobot.x.toFixed(2)},{' '}
@@ -66,7 +156,7 @@ const RobotControls = ({
         <button
           type="button"
           onClick={handleStop}
-          disabled={stopLoading}
+          disabled={!canStop}
           className="control-button stop"
         >
           Stop
@@ -77,10 +167,10 @@ const RobotControls = ({
           disabled={shutdownLoading}
           className="control-button shutdown"
         >
-          Shutdown
+          Shut Down
         </button>
       </div>
-    </div>
+    </div>,
   );
 };
 

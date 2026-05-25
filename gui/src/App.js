@@ -10,6 +10,7 @@ import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
 import HelpModal from './components/HelpModal';
+import SystemHealthBar from './components/SystemHealthBar';
 import RobotMarkerSizeSlider, {
   readStoredRobotMarkerRadius,
   ROBOT_MARKER_RADIUS_KEY,
@@ -139,6 +140,40 @@ function AppContent() {
     }
     prevRobotCountRef.current = n;
   }, [robotPositions, positionsError]);
+
+  const selectGoalMode = useCallback(() => {
+    setPositionMode('goal');
+    setMultiSubmitError('');
+  }, []);
+
+  const selectInitialMode = useCallback(() => {
+    setPositionMode('initial');
+    setMultiSubmitError('');
+  }, []);
+
+  useEffect(() => {
+    const isTypingTarget = (el) =>
+      el &&
+      (el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT' ||
+        el.isContentEditable);
+
+    const onKeyDown = (e) => {
+      if (helpOpen || isTypingTarget(e.target) || e.repeat) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'g' || e.key === 'G') {
+        e.preventDefault();
+        selectGoalMode();
+      } else if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        selectInitialMode();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [helpOpen, selectGoalMode, selectInitialMode]);
 
   // Mutation for setting the robot's initial position
   const [setRobotInitialPosition] = useMutation(SET_ROBOT_INITIAL_POSITION);
@@ -307,19 +342,13 @@ function AppContent() {
           <div className="mode-toggle">
             <button 
               className={positionMode === 'goal' ? 'btn-goal-init-active btn-goal-narrow' : 'btn-goal-init-inactive btn-goal-narrow'}
-              onClick={() => {
-                setPositionMode('goal');
-                setMultiSubmitError('');
-              }}
+              onClick={selectGoalMode}
             >
               Set Robot Goal
             </button>
             <button 
               className={positionMode === 'initial' ? 'btn-goal-init-active btn-goal-narrow' : 'btn-goal-init-inactive btn-goal-narrow'}
-              onClick={() => {
-                setPositionMode('initial');
-                setMultiSubmitError('');
-              }}
+              onClick={selectInitialMode}
             >
               Set Initial Position
             </button>
@@ -354,6 +383,7 @@ function AppContent() {
             value={robotMarkerRadius}
             onChange={setRobotMarkerRadius}
           />
+          <SystemHealthBar />
         </div>
         <ColumnResizeHandle
           onMouseDown={beginLeftResize}

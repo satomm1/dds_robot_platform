@@ -78,6 +78,83 @@
   background: #4a5362;
 }
 
+.system-health-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #ddd;
+  font-size: 11px;
+  color: #343a40;
+  text-align: left;
+}
+
+.system-health-bar__pill {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  max-width: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  line-height: 1.3;
+  box-sizing: border-box;
+}
+
+.system-health-bar__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.system-health-bar__pill--ok .system-health-bar__dot {
+  background: #28a745;
+}
+
+.system-health-bar__pill--warn .system-health-bar__dot {
+  background: #ffc107;
+}
+
+.system-health-bar__pill--error .system-health-bar__dot {
+  background: #dc3545;
+}
+
+.system-health-bar__pill--checking .system-health-bar__dot {
+  background: #6c757d;
+}
+
+.system-health-bar__label {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.system-health-bar__detail {
+  color: #495057;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.system-health-bar__pill--detail-hover .system-health-bar__detail {
+  display: none;
+}
+
+.system-health-bar__pill--detail-hover:hover .system-health-bar__detail,
+.system-health-bar__pill--detail-hover:focus-visible .system-health-bar__detail {
+  display: block;
+}
+
+.system-health-bar__pill--detail-hover:focus-visible {
+  outline: 2px solid #0066cc;
+  outline-offset: 1px;
+}
+
 .help-overlay {
   position: fixed;
   inset: 0;
@@ -486,6 +563,36 @@
   margin-top: 0;
   padding: 0;
   border-top: none;
+}
+
+.sidebar-right-main .robot-controls--placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-transform: capitalize;
+  color: #6c757d;
+  font-weight: 600;
+}
+
+.robot-controls__notice {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.robot-controls__notice--success {
+  color: #155724;
+  background: #d4edda;
+}
+
+.robot-controls__notice--error {
+  color: #721c24;
+  background: #f8d7da;
 }
 
 .control-stats {

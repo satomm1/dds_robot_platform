@@ -12,7 +12,20 @@ const RobotSelector = ({
 
   useEffect(() => {
     const robots = robotPositions;
-    if (!onSelectRobot || robots.length === 0) return;
+    if (!onSelectRobot) return;
+
+    if (robots.length === 0) {
+      if (selectedRobotId != null) {
+        onSelectRobot(null);
+      }
+      return;
+    }
+
+    const selectedStillExists = robots.some((r) => r.id === selectedRobotId);
+    if (selectedRobotId != null && !selectedStillExists) {
+      onSelectRobot(null);
+      return;
+    }
 
     const firstId = robots[0].id;
     if (robots.length === 1) {

@@ -58,7 +58,7 @@ const HelpModal = ({ onClose }) => {
             </HelpChip>
             . When the robot is reachable, <strong>Start</strong> appears green. To shut down
             the robot, select it in the <strong>Select Robot</strong> list, then click{' '}
-            <HelpChip className="control-button shutdown">Shutdown</HelpChip> in the{' '}
+            <HelpChip className="control-button shutdown">Shut Down</HelpChip> in the{' '}
             <strong>right sidebar</strong> (the panel that shows the selected robot&apos;s name,
             position, and heading).
           </p>
