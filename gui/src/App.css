@@ -463,6 +463,22 @@
   gap: 12px;
 }
 
+.shutdown-all {
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+.shutdown-all__btn {
+  width: 100%;
+  padding: 9px 14px;
+  font-size: 13px;
+}
+
+.shutdown-all__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .map-container {
   flex: 1;
   min-width: 0;

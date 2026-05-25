@@ -5,6 +5,7 @@ import client from './apolloClient';
 import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
+import ShutDownAllButton from './components/ShutDownAllButton';
 import RobotStartup from './components/RobotStartup';
 import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
@@ -428,6 +429,11 @@ function AppContent() {
             />
           </div>
           <RobotStartup />
+          <ShutDownAllButton
+            robotPositions={robotPositions}
+            positionsLoading={positionsLoading}
+            dismissPathForRobot={dismissPathForRobot}
+          />
         </aside>
       </div>
     </div>
