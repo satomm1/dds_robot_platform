@@ -11,6 +11,10 @@ import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
 import HelpModal from './components/HelpModal';
+import RobotMarkerSizeSlider, {
+  readStoredRobotMarkerRadius,
+  ROBOT_MARKER_RADIUS_KEY,
+} from './components/RobotMarkerSizeSlider';
 import { RobotColorProvider } from './hooks/useRobotColors';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
 import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS } from './queries';
@@ -54,6 +58,11 @@ function AppContent() {
 
   const [helpOpen, setHelpOpen] = useState(false);
   const [selectedRobotId, setSelectedRobotId] = useState(null);
+  const [robotMarkerRadius, setRobotMarkerRadius] = useState(readStoredRobotMarkerRadius);
+
+  useEffect(() => {
+    localStorage.setItem(ROBOT_MARKER_RADIUS_KEY, String(robotMarkerRadius));
+  }, [robotMarkerRadius]);
 
   const { data: positionsData, loading: positionsLoading, error: positionsError } = useQuery(
     GET_ROBOT_POSITIONS,
@@ -300,7 +309,7 @@ function AppContent() {
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       <div className="control-container">
         <div className="sidebar" style={{ width: leftSidebarWidth }}>
-          <div style={{ overflowY: 'auto', maxHeight: '40%' }}>
+          <div className="sidebar__main">
             <RobotSelector 
               selectedRobotId={selectedRobotId} 
               onSelectRobot={setSelectedRobotId}
@@ -308,7 +317,6 @@ function AppContent() {
               positionsLoading={positionsLoading}
               positionsError={positionsError}
             />
-          </div>
           <div className="mode-toggle">
             <button 
               className={positionMode === 'goal' ? 'btn-goal-init-active btn-goal-narrow' : 'btn-goal-init-inactive btn-goal-narrow'}
@@ -354,6 +362,11 @@ function AppContent() {
               submitError={multiSubmitError}
             />
           )}
+          </div>
+          <RobotMarkerSizeSlider
+            value={robotMarkerRadius}
+            onChange={setRobotMarkerRadius}
+          />
         </div>
         <ColumnResizeHandle
           onMouseDown={beginLeftResize}
@@ -362,6 +375,7 @@ function AppContent() {
         <div className="map-container">
           <RobotMap 
             selectedRobotId={selectedRobotId}
+            robotMarkerRadius={robotMarkerRadius}
             robotPositions={robotPositions}
             positionsLoading={positionsLoading}
             positionsError={positionsError}

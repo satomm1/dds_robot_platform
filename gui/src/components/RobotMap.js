@@ -16,6 +16,7 @@ const devWarn = (...args) => {
 
 const RobotMap = ({
   selectedRobotId,
+  robotMarkerRadius = 12,
   robotPositions = [],
   positionsLoading,
   positionsError,
@@ -737,39 +738,48 @@ const RobotMap = ({
         
         {/* Separate layer for robots - updates with robot positions */}
         <Layer ref={robotsLayerRef}>
-          {robots.map(robot => (
-            <React.Fragment key={robot.id}>
-              <Circle
-                x={(occGridWidth*occGridResolution - robot.x)*gridCellSize/occGridResolution} // Invert x for correct orientation
-                y={(robot.y)*gridCellSize/occGridResolution} // Keep y as is for correct orientation
-                radius={12}
-                fill={getRobotColor(robot.id)}
-                stroke="#000"
-                strokeWidth={robot.id === selectedRobotId ? 4 : 2}
-              />
-              {/* Arrow to indicate direction */}
-              <Line
-                points={[
-                  (occGridWidth - robot.x/occGridResolution)*gridCellSize, // Start x
-                  (robot.y)*gridCellSize/occGridResolution, // Start y
-                  (occGridWidth - robot.x/occGridResolution)*gridCellSize - Math.cos(robot.theta)*15, // Arrow tip x
-                  (robot.y)*gridCellSize/occGridResolution + Math.sin(robot.theta)*15 // Arrow tip y
-                ]}
-                stroke="#000"
-                strokeWidth={2}
-                pointerLength={5}
-                pointerWidth={5}
-                tension={0.5}
-              />
-              <Text
-                x={(occGridWidth - robot.x/occGridResolution)* gridCellSize-3} // Adjust position to center the text
-                y={(robot.y)*gridCellSize/occGridResolution-3} // Adjust position to center the text
-                text={robot.id.toString()}
-                fontSize={12}
-                fill="#fff"
-              />
-            </React.Fragment>
-          ))}
+          {robots.map((robot) => {
+            const cx =
+              ((occGridWidth * occGridResolution - robot.x) * gridCellSize) /
+              occGridResolution;
+            const cy = (robot.y * gridCellSize) / occGridResolution;
+            const arrowLen = robotMarkerRadius * 1.25;
+            const labelSize = Math.max(8, Math.round(robotMarkerRadius * 0.95));
+            const labelOffset = robotMarkerRadius * 0.28;
+            const isSelected = robot.id === selectedRobotId;
+            return (
+              <React.Fragment key={robot.id}>
+                <Circle
+                  x={cx}
+                  y={cy}
+                  radius={robotMarkerRadius}
+                  fill={getRobotColor(robot.id)}
+                  stroke="#000"
+                  strokeWidth={isSelected ? Math.max(2, robotMarkerRadius / 3) : 2}
+                />
+                <Line
+                  points={[
+                    cx,
+                    cy,
+                    cx - Math.cos(robot.theta) * arrowLen,
+                    cy + Math.sin(robot.theta) * arrowLen,
+                  ]}
+                  stroke="#000"
+                  strokeWidth={2}
+                  pointerLength={5}
+                  pointerWidth={5}
+                  tension={0.5}
+                />
+                <Text
+                  x={cx - labelOffset}
+                  y={cy - labelOffset}
+                  text={robot.id.toString()}
+                  fontSize={labelSize}
+                  fill="#fff"
+                />
+              </React.Fragment>
+            );
+          })}
         </Layer>
         
         {/* Separate layer for the goal markers - only this layer is redrawn on clicks */}
