@@ -1,5 +1,5 @@
 import React from 'react';
-import { getRobotColor } from '../utils';
+import { useRobotColors } from '../hooks/useRobotColors';
 
 /**
  * Controls for coordinated multi-robot goal plans (staged on map, sent via GraphQL).
@@ -18,6 +18,7 @@ const MultiRobotGoalPlanner = ({
   submitting,
   submitError,
 }) => {
+  const { getRobotColor } = useRobotColors();
   const fleetIds = Object.keys(multiFleet)
     .map(Number)
     .filter((id) => multiFleet[id]);

@@ -19,6 +19,13 @@ module.exports = function setupRobotLauncherProxy(app) {
       return;
     }
 
+    let responded = false;
+    const sendOnce = (status, payload) => {
+      if (responded) return;
+      responded = true;
+      res.status(status).json(payload);
+    };
+
     const timeout = path === '/status' ? 5000 : REQUEST_TIMEOUT_MS;
     const proxyReq = http.get(
       { host, port, path, timeout },
@@ -30,10 +37,16 @@ module.exports = function setupRobotLauncherProxy(app) {
         });
         proxyRes.on('end', () => {
           const ok = proxyRes.statusCode >= 200 && proxyRes.statusCode < 300;
-          res.status(ok ? 200 : 502).json({
+          sendOnce(ok ? 200 : 502, {
             ok,
             status: proxyRes.statusCode,
             body: body.trim(),
+          });
+        });
+        proxyRes.on('error', (err) => {
+          sendOnce(502, {
+            ok: false,
+            error: err.message || 'Error reading launcher response',
           });
         });
       },
@@ -41,11 +54,11 @@ module.exports = function setupRobotLauncherProxy(app) {
 
     proxyReq.on('timeout', () => {
       proxyReq.destroy();
-      res.status(504).json({ ok: false, error: 'Request timed out' });
+      sendOnce(504, { ok: false, error: 'Request timed out' });
     });
 
     proxyReq.on('error', (err) => {
-      res.status(502).json({
+      sendOnce(502, {
         ok: false,
         error: err.message || 'Could not reach robot launcher',
       });

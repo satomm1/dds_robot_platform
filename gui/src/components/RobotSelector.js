@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { getRobotColor } from '../utils';
+import { useRobotColors } from '../hooks/useRobotColors';
 
 const RobotSelector = ({
   selectedRobotId,
@@ -8,12 +8,13 @@ const RobotSelector = ({
   positionsLoading,
   positionsError,
 }) => {
+  const { getRobotColor, setRobotColor } = useRobotColors();
+
   useEffect(() => {
     const robots = robotPositions;
     if (!onSelectRobot || robots.length === 0) return;
 
     const firstId = robots[0].id;
-    // Single robot in the environment: always select it (covers stale selection after others left).
     if (robots.length === 1) {
       if (selectedRobotId !== firstId) {
         onSelectRobot(firstId);
@@ -30,7 +31,9 @@ const RobotSelector = ({
     return <div className="robot-selector">Loading robots...</div>;
   }
   if (positionsError) {
-    return <div className="robot-selector">Error loading robots: {positionsError.message}</div>;
+    return (
+      <div className="robot-selector">Error loading robots: {positionsError.message}</div>
+    );
   }
 
   const robots = robotPositions;
@@ -42,18 +45,21 @@ const RobotSelector = ({
         <p>No robots available</p>
       ) : (
         <ul>
-          {robots.map(robot => (
+          {robots.map((robot) => (
             <li
               key={robot.id}
               className={robot.id === selectedRobotId ? 'selected' : ''}
               onClick={() => onSelectRobot(robot.id)}
             >
               {robot.name || `Robot ${robot.id}`}
-              <span
-                className="status-indicator"
-                style={{
-                  backgroundColor: getRobotColor(robot.id),
-                }}
+              <input
+                type="color"
+                className="robot-selector__color-input"
+                value={getRobotColor(robot.id)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setRobotColor(robot.id, e.target.value)}
+                aria-label={`Color for ${robot.name || `Robot ${robot.id}`}`}
+                title="Choose robot color"
               />
             </li>
           ))}

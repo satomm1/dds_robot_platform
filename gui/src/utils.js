@@ -1,23 +1,53 @@
-// Utility function to get the color of a robot based on its ID
-export const getRobotColor = (robotId) => {
-  // Generate a color based on the robot ID
-  // This is a simple hash function to generate a color
-  // Special case for robot ID 1
-  if (Number(robotId) === 1) {
-    return '#00ec15'; // Green for robot ID 1
-  } else if (Number(robotId) === 2) {
-    return '#e700cf'; // Pink for robot ID 2
-  } else if (Number(robotId) === 3) {
-    return '#007bff'; // Blue for robot ID 3
-  } else if (Number(robotId) === 4) {
-    return '#FF7F50'; // Coral for robot ID 4
-  } else if (Number(robotId) === 5) {
-    return '#00ec15'; // Green for robot ID 5
-  } else if (Number(robotId) === 6) {
-    return '#FF13F0'; // Pink for robot ID 6
+function hslToHex(h, s, l) {
+  const sat = s / 100;
+  const light = l / 100;
+  const chroma = (1 - Math.abs(2 * light - 1)) * sat;
+  const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = light - chroma / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+
+  if (h < 60) {
+    r = chroma;
+    g = x;
+  } else if (h < 120) {
+    r = x;
+    g = chroma;
+  } else if (h < 180) {
+    g = chroma;
+    b = x;
+  } else if (h < 240) {
+    g = x;
+    b = chroma;
+  } else if (h < 300) {
+    r = x;
+    b = chroma;
   } else {
-    // For other robot IDs, generate a color based on the ID
-    const hash = Number(robotId) * 137 % 360;
-    return `hsl(${hash}, 70%, 50%)`; // Use HSL for more distinct colors
+    r = chroma;
+    b = x;
   }
+
+  const toHex = (channel) =>
+    Math.round((channel + m) * 255)
+      .toString(16)
+      .padStart(2, '0');
+
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+/** Default map color for a robot ID (before any user override). */
+export const getDefaultRobotColor = (robotId) => {
+  const id = Number(robotId);
+  if (id === 1) return '#00ec15';
+  if (id === 2) return '#e700cf';
+  if (id === 3) return '#007bff';
+  if (id === 4) return '#ff7f50';
+  if (id === 5) return '#00ec15';
+  if (id === 6) return '#ff13f0';
+  const hash = id * 137 % 360;
+  return hslToHex(hash, 70, 50);
 };
+
+/** @deprecated Use useRobotColors().getRobotColor for persisted user colors. */
+export const getRobotColor = (robotId) => getDefaultRobotColor(robotId);

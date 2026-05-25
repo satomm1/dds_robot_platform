@@ -11,6 +11,7 @@ import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
 import HelpModal from './components/HelpModal';
+import { RobotColorProvider } from './hooks/useRobotColors';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
 import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS } from './queries';
 
@@ -27,7 +28,9 @@ const devLog = (...args) => {
 function App() {
   return (
     <ApolloProvider client={client}>
-      <AppContent />
+      <RobotColorProvider>
+        <AppContent />
+      </RobotColorProvider>
     </ApolloProvider>
   );
 }

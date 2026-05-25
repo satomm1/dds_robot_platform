@@ -4,7 +4,7 @@ import { Image as KonvaImage } from 'react-konva'; // Add this line
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
-import { getRobotColor } from '../utils';
+import { useRobotColors } from '../hooks/useRobotColors';
 import MapControlsPanel from './MapControlsPanel';
 
 const devLog = (...args) => {
@@ -29,6 +29,7 @@ const RobotMap = ({
   dismissPathForRobot = () => {},
   clearPathDismissalForRobot = () => {},
 }) => {
+  const { getRobotColor } = useRobotColors();
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   // Replace single goalMarker with a map of robot IDs to goal markers
   const [goalMarkers, setGoalMarkers] = useState({});
@@ -726,7 +727,7 @@ const RobotMap = ({
               <Line
                 key={`path-${robotId}`}
                 points={path.points}
-                stroke={path.color}
+                stroke={getRobotColor(robotId)}
                 strokeWidth={2}
                 opacity={0.7}
               />
@@ -787,7 +788,7 @@ const RobotMap = ({
                   x={marker.x}
                   y={marker.y}
                   radius={8}
-                  fill={marker.color || "green"}
+                  fill={getRobotColor(robotId)}
                   opacity={0.6}
                 />
                 <Line
@@ -797,7 +798,7 @@ const RobotMap = ({
                     marker.x,
                     marker.y
                   ]}
-                  stroke={marker.color || "green"}
+                  stroke={getRobotColor(robotId)}
                   strokeWidth={2}
                   dash={[5, 5]}
                 />

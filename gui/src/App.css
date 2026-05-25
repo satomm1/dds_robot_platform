@@ -425,6 +425,36 @@
   margin-left: 10px;
 }
 
+.robot-selector__color-input {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin-left: 8px;
+  border: 1px solid #bbb;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.robot-selector__color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 50%;
+}
+
+.robot-selector__color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.robot-selector__color-input::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
 /* Robot controls styling */
 .robot-controls {
   flex: 1;
