@@ -29,6 +29,20 @@ function worldToMapCoords(worldPos, occGridWidth, gridCellSize, occGridResolutio
   };
 }
 
+function worldToStagePointer(stage, worldPoint) {
+  return stage.getAbsoluteTransform().point(worldPoint);
+}
+
+function resolveInvalidGoalOverlayPosition(stage, info) {
+  if (info?.screenX != null && info?.screenY != null) {
+    return { x: info.screenX, y: info.screenY };
+  }
+  if (stage && info?.worldX != null && info?.worldY != null) {
+    return worldToStagePointer(stage, { x: info.worldX, y: info.worldY });
+  }
+  return null;
+}
+
 const RobotMap = ({
   selectedRobotId,
   robotMarkerRadius = 12,
@@ -75,6 +89,7 @@ const RobotMap = ({
   const [mapImage, setMapImage] = useState(null);
   const prevRobotCountRef = useRef(null);
   const prevGoalSignaturesRef = useRef({});
+  const goalClickScreenRef = useRef({});
   const proximityDismissLatchRef = useRef(new Set());
   const prevPathDismissedRef = useRef({});
 
@@ -194,24 +209,27 @@ const RobotMap = ({
           prevGoalSignaturesRef.current[goal.id] = sig;
 
           if (!goal.goal_valid) {
-            newGoalMarkers[goal.id] = {
-              x: (occGridWidth - goal.x_goal/occGridResolution) * gridCellSize, // Convert grid coordinates to pixels
-              y: goal.y_goal * gridCellSize / occGridResolution, // Convert grid coordinates to pixels
-              color: 'red'
-            };
+            const worldX =
+              (occGridWidth - goal.x_goal / occGridResolution) * gridCellSize;
+            const worldY = (goal.y_goal * gridCellSize) / occGridResolution;
 
-            // Check if goal_timestamp is recent (less than 10 seconds ago)
-            const goalTime = new Date(goal.goal_timestamp).getTime();
-            const currentTime = Date.now()/1000;
-            const timeDiffInSeconds = (currentTime - goalTime) ;
-            
-            if (timeDiffInSeconds < 5) {
-              devWarn(`Invalid goal for robot ${goal.id} at (${goal.x_goal}, ${goal.y_goal}) - too old`);
+            // Show near the click for a few seconds after the robot rejects the goal.
+            const goalTimeSec = Number(goal.goal_timestamp);
+            const timeDiffInSeconds = Date.now() / 1000 - goalTimeSec;
+
+            if (timeDiffInSeconds >= 0 && timeDiffInSeconds < 5) {
+              devWarn(`Invalid goal for robot ${goal.id} at (${goal.x_goal}, ${goal.y_goal})`);
+              const clickPos = goalClickScreenRef.current[goal.id];
               newInvalidGoalMessages[goal.id] = {
-                timestamp: goalTime
+                timestamp: goalTimeSec,
+                screenX: clickPos?.x,
+                screenY: clickPos?.y,
+                worldX,
+                worldY,
               };
             }
           } else {
+            delete goalClickScreenRef.current[goal.id];
             newGoalMarkers[goal.id] = {
               x: (occGridWidth - goal.x_goal/occGridResolution) * gridCellSize, // Convert grid coordinates to pixels
               y: goal.y_goal * gridCellSize / occGridResolution, // Convert grid coordinates to pixels
@@ -431,6 +449,10 @@ const RobotMap = ({
         onStageMultiGoal(selectedRobotId, mapX, mapY, thetaRad);
       } else if (positionMode === 'goal') {
         devLog(`Setting goal for robot ${selectedRobotId} at`, mapX, mapY, thetaRad);
+        goalClickScreenRef.current[selectedRobotId] = {
+          x: drag.anchorScreen.x,
+          y: drag.anchorScreen.y,
+        };
         setGoalMarkers((prevMarkers) => ({
           ...prevMarkers,
           [selectedRobotId]: {
@@ -1129,13 +1151,20 @@ const RobotMap = ({
       )}
 
       {/* Render tooltips for invalid goals */}
-      {Object.entries(invalidGoalMessages).map(([robotId, info]) => (
+      {Object.entries(invalidGoalMessages).map(([robotId, info]) => {
+        const overlayPos = resolveInvalidGoalOverlayPosition(
+          stageRef.current,
+          info,
+        );
+        if (!overlayPos) return null;
+
+        return (
         <div
           key={`tooltip-${robotId}`}
           style={{
             position: 'absolute',
-            left: `${stageRef.current ? stageRef.current.container().offsetLeft + (mousePosition?.x * scale) : 0}px`,
-            top: `${stageRef.current ? stageRef.current.container().offsetTop + (mousePosition?.y * scale) - 35 : 0}px`,
+            left: `${overlayPos.x}px`,
+            top: `${overlayPos.y}px`,
             backgroundColor: '#F44336',
             color: 'white',
             padding: '5px 10px',
@@ -1149,7 +1178,8 @@ const RobotMap = ({
         >
           Goal is invalid
         </div>
-      ))}
+        );
+      })}
       
       {/* Controls for zoom and goal management (drag handle → snap to corner) */}
       <MapControlsPanel

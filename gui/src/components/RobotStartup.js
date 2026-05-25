@@ -124,7 +124,14 @@ const RobotStartup = () => {
   const pollHost = useCallback(async (host) => {
     const clean = normalizeHostInput(host);
     if (!clean) return;
-    setHostStatus((prev) => ({ ...prev, [clean]: HOST_STATUS.CHECKING }));
+    setHostStatus((prev) => {
+      const current = prev[clean];
+      // Keep last known status during refresh polls to avoid Start-button flicker.
+      if (current === HOST_STATUS.AVAILABLE || current === HOST_STATUS.RUNNING) {
+        return prev;
+      }
+      return { ...prev, [clean]: HOST_STATUS.CHECKING };
+    });
     const result = await fetchRobotLauncherStatus(clean);
     const reach = result.ok
       ? parseLauncherStatusBody(result.body)
@@ -143,7 +150,10 @@ const RobotStartup = () => {
     setHostStatus((prev) => {
       const next = { ...prev };
       for (const host of backgroundPollHosts) {
-        next[host] = HOST_STATUS.CHECKING;
+        const current = prev[host];
+        if (current !== HOST_STATUS.AVAILABLE && current !== HOST_STATUS.RUNNING) {
+          next[host] = HOST_STATUS.CHECKING;
+        }
       }
       return next;
     });
