@@ -5,6 +5,10 @@ const LEGACY_CORNER_KEY = 'dds_gui_map_controls_corner';
 
 const LEGACY_CORNERS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
+const INSET_X = 16;
+const INSET_TOP = 16;
+const INSET_BOTTOM = 32;
+
 function clampPosition(left, top, containerEl, panelEl) {
   const maxLeft = Math.max(0, containerEl.clientWidth - panelEl.offsetWidth);
   const maxTop = Math.max(0, containerEl.clientHeight - panelEl.offsetHeight);
@@ -14,13 +18,50 @@ function clampPosition(left, top, containerEl, panelEl) {
   };
 }
 
-function loadSavedPosition() {
+function maxPosition(containerEl, panelEl) {
+  return {
+    maxLeft: Math.max(0, containerEl.clientWidth - panelEl.offsetWidth),
+    maxTop: Math.max(0, containerEl.clientHeight - panelEl.offsetHeight),
+  };
+}
+
+function ratiosFromPosition(left, top, containerEl, panelEl) {
+  const { maxLeft, maxTop } = maxPosition(containerEl, panelEl);
+  if (maxLeft <= 0 || maxTop <= 0) {
+    return { leftRatio: 0, topRatio: 0 };
+  }
+  return {
+    leftRatio: Math.min(1, Math.max(0, left / maxLeft)),
+    topRatio: Math.min(1, Math.max(0, top / maxTop)),
+  };
+}
+
+function positionFromRatios(leftRatio, topRatio, containerEl, panelEl) {
+  const { maxLeft, maxTop } = maxPosition(containerEl, panelEl);
+  return clampPosition(leftRatio * maxLeft, topRatio * maxTop, containerEl, panelEl);
+}
+
+function saveRatios(ratios) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ratios));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadSavedRatios() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw);
+    if (Number.isFinite(p.leftRatio) && Number.isFinite(p.topRatio)) {
+      return {
+        leftRatio: Math.min(1, Math.max(0, p.leftRatio)),
+        topRatio: Math.min(1, Math.max(0, p.topRatio)),
+      };
+    }
     if (Number.isFinite(p.left) && Number.isFinite(p.top)) {
-      return { left: p.left, top: p.top };
+      return { legacyLeft: p.left, legacyTop: p.top };
     }
   } catch {
     /* ignore */
@@ -28,27 +69,16 @@ function loadSavedPosition() {
   return null;
 }
 
-function savePosition(pos) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
-  } catch {
-    /* ignore */
-  }
-}
-
 function defaultBottomRight(containerEl, panelEl) {
   return clampPosition(
-    containerEl.clientWidth - panelEl.offsetWidth - 16,
-    containerEl.clientHeight - panelEl.offsetHeight - 32,
+    containerEl.clientWidth - panelEl.offsetWidth - INSET_X,
+    containerEl.clientHeight - panelEl.offsetHeight - INSET_BOTTOM,
     containerEl,
     panelEl,
   );
 }
 
 function positionFromLegacyCorner(corner, containerEl, panelEl) {
-  const insetX = 16;
-  const insetTop = 16;
-  const insetBottom = 32;
   const pw = panelEl.offsetWidth;
   const ph = panelEl.offsetHeight;
   const cw = containerEl.clientWidth;
@@ -56,35 +86,41 @@ function positionFromLegacyCorner(corner, containerEl, panelEl) {
 
   switch (corner) {
     case 'top-left':
-      return clampPosition(insetX, insetTop, containerEl, panelEl);
+      return clampPosition(INSET_X, INSET_TOP, containerEl, panelEl);
     case 'top-right':
-      return clampPosition(cw - pw - insetX, insetTop, containerEl, panelEl);
+      return clampPosition(cw - pw - INSET_X, INSET_TOP, containerEl, panelEl);
     case 'bottom-left':
-      return clampPosition(insetX, ch - ph - insetBottom, containerEl, panelEl);
+      return clampPosition(INSET_X, ch - ph - INSET_BOTTOM, containerEl, panelEl);
     default:
       return defaultBottomRight(containerEl, panelEl);
   }
 }
 
-function resolveInitialPosition(containerEl, panelEl) {
-  const saved = loadSavedPosition();
-  if (saved) {
-    return clampPosition(saved.left, saved.top, containerEl, panelEl);
+function resolveInitialRatios(containerEl, panelEl) {
+  const saved = loadSavedRatios();
+  if (saved?.leftRatio != null) {
+    return { leftRatio: saved.leftRatio, topRatio: saved.topRatio };
   }
 
-  try {
-    const legacy = localStorage.getItem(LEGACY_CORNER_KEY);
-    if (LEGACY_CORNERS.includes(legacy)) {
-      const pos = positionFromLegacyCorner(legacy, containerEl, panelEl);
-      savePosition(pos);
-      localStorage.removeItem(LEGACY_CORNER_KEY);
-      return pos;
+  let pixelPos;
+  if (saved?.legacyLeft != null) {
+    pixelPos = clampPosition(saved.legacyLeft, saved.legacyTop, containerEl, panelEl);
+  } else {
+    try {
+      const legacy = localStorage.getItem(LEGACY_CORNER_KEY);
+      if (LEGACY_CORNERS.includes(legacy)) {
+        pixelPos = positionFromLegacyCorner(legacy, containerEl, panelEl);
+        localStorage.removeItem(LEGACY_CORNER_KEY);
+      }
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
   }
 
-  return defaultBottomRight(containerEl, panelEl);
+  pixelPos = pixelPos || defaultBottomRight(containerEl, panelEl);
+  const ratios = ratiosFromPosition(pixelPos.left, pixelPos.top, containerEl, panelEl);
+  saveRatios(ratios);
+  return ratios;
 }
 
 const MapControlsPanel = ({ containerRef, onDraggingChange, children }) => {
@@ -94,45 +130,55 @@ const MapControlsPanel = ({ containerRef, onDraggingChange, children }) => {
   const handleRef = useRef(null);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const activePointerIdRef = useRef(null);
+  const ratiosRef = useRef(null);
 
-  const measureAndSetPosition = useCallback(
-    (nextLeft, nextTop) => {
-      const container = containerRef?.current;
-      const panel = panelRef.current;
-      if (!container || !panel) return;
-      setPosition(clampPosition(nextLeft, nextTop, container, panel));
-    },
-    [containerRef],
-  );
-
-  const layoutPosition = useCallback(() => {
+  const applyStoredRatios = useCallback(() => {
     const container = containerRef?.current;
     const panel = panelRef.current;
     if (!container || !panel) return;
     if (container.clientWidth <= 0 || container.clientHeight <= 0) return;
 
-    setPosition((prev) => {
-      const next = prev
-        ? clampPosition(prev.left, prev.top, container, panel)
-        : resolveInitialPosition(container, panel);
-      return next;
-    });
+    if (!ratiosRef.current) {
+      ratiosRef.current = resolveInitialRatios(container, panel);
+    }
+
+    const next = positionFromRatios(
+      ratiosRef.current.leftRatio,
+      ratiosRef.current.topRatio,
+      container,
+      panel,
+    );
+    setPosition(next);
   }, [containerRef]);
 
+  const persistPosition = useCallback(
+    (left, top) => {
+      const container = containerRef?.current;
+      const panel = panelRef.current;
+      if (!container || !panel) return null;
+      const clamped = clampPosition(left, top, container, panel);
+      const ratios = ratiosFromPosition(clamped.left, clamped.top, container, panel);
+      ratiosRef.current = ratios;
+      saveRatios(ratios);
+      return clamped;
+    },
+    [containerRef],
+  );
+
   useLayoutEffect(() => {
-    layoutPosition();
-  }, [layoutPosition]);
+    applyStoredRatios();
+  }, [applyStoredRatios]);
 
   useEffect(() => {
     const container = containerRef?.current;
     if (!container) return undefined;
 
     const ro = new ResizeObserver(() => {
-      layoutPosition();
+      applyStoredRatios();
     });
     ro.observe(container);
     return () => ro.disconnect();
-  }, [containerRef, layoutPosition]);
+  }, [containerRef, applyStoredRatios]);
 
   const endDrag = useCallback(() => {
     const handle = handleRef.current;
@@ -152,10 +198,10 @@ const MapControlsPanel = ({ containerRef, onDraggingChange, children }) => {
     document.body.style.userSelect = '';
     document.body.style.cursor = '';
     setPosition((pos) => {
-      if (pos) savePosition(pos);
-      return pos;
+      if (!pos) return pos;
+      return persistPosition(pos.left, pos.top) ?? pos;
     });
-  }, [onDraggingChange]);
+  }, [onDraggingChange, persistPosition]);
 
   useEffect(() => {
     if (!dragging) return undefined;
@@ -213,7 +259,7 @@ const MapControlsPanel = ({ containerRef, onDraggingChange, children }) => {
       x: e.clientX - pr.left,
       y: e.clientY - pr.top,
     };
-    measureAndSetPosition(pr.left - cr.left, pr.top - cr.top);
+    setPosition(persistPosition(pr.left - cr.left, pr.top - cr.top));
     setDragging(true);
     onDraggingChange?.(true);
     document.body.style.userSelect = 'none';
@@ -222,7 +268,7 @@ const MapControlsPanel = ({ containerRef, onDraggingChange, children }) => {
 
   const panelStyle = position
     ? { left: position.left, top: position.top, right: 'auto', bottom: 'auto' }
-    : { right: 16, bottom: 32, left: 'auto', top: 'auto' };
+    : { right: INSET_X, bottom: INSET_BOTTOM, left: 'auto', top: 'auto' };
 
   return (
     <div
