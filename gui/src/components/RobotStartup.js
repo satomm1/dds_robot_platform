@@ -9,6 +9,7 @@ import {
 import {
   HOST_STATUS,
   POLL_INTERVAL_MS,
+  SELECTED_POLL_INTERVAL_MS,
   STATUS_LABELS,
   parseLauncherStatusBody,
 } from '../utils/robotLauncherStatus';
@@ -129,19 +130,24 @@ const RobotStartup = () => {
     setHostStatus((prev) => ({ ...prev, [clean]: reach }));
   }, []);
 
-  const pollAllHosts = useCallback(async () => {
-    if (pollHosts.length === 0) return;
+  const backgroundPollHosts = useMemo(
+    () => pollHosts.filter((host) => host !== activeHost),
+    [pollHosts, activeHost],
+  );
+
+  const pollBackgroundHosts = useCallback(async () => {
+    if (backgroundPollHosts.length === 0) return;
 
     setHostStatus((prev) => {
       const next = { ...prev };
-      for (const host of pollHosts) {
+      for (const host of backgroundPollHosts) {
         next[host] = HOST_STATUS.CHECKING;
       }
       return next;
     });
 
-    await Promise.all(pollHosts.map((host) => pollHost(host)));
-  }, [pollHosts, pollHost]);
+    await Promise.all(backgroundPollHosts.map((host) => pollHost(host)));
+  }, [backgroundPollHosts, pollHost]);
 
   useEffect(() => {
     saveSavedHosts(saved);
@@ -156,10 +162,17 @@ const RobotStartup = () => {
   }, [status.message, status.type]);
 
   useEffect(() => {
-    pollAllHosts();
-    const interval = setInterval(pollAllHosts, POLL_INTERVAL_MS);
+    pollBackgroundHosts();
+    const interval = setInterval(pollBackgroundHosts, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [pollAllHosts]);
+  }, [pollBackgroundHosts]);
+
+  useEffect(() => {
+    if (!activeHost) return undefined;
+    pollHost(activeHost);
+    const interval = setInterval(() => pollHost(activeHost), SELECTED_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [activeHost, pollHost]);
 
   const applyEntry = useCallback((entry) => {
     if (!entry) return;

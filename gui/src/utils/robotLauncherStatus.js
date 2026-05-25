@@ -7,6 +7,7 @@ export const HOST_STATUS = {
 };
 
 export const POLL_INTERVAL_MS = 15000;
+export const SELECTED_POLL_INTERVAL_MS = 3000;
 
 export const STATUS_LABELS = {
   [HOST_STATUS.CHECKING]: 'Checking…',
