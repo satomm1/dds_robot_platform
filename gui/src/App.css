@@ -145,6 +145,22 @@
   line-height: 1.6;
 }
 
+.help-modal__list {
+  margin: 8px 0 0;
+  padding-left: 1.25rem;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #333;
+}
+
+.help-modal__list li {
+  margin-bottom: 8px;
+}
+
+.help-modal__list li:last-child {
+  margin-bottom: 0;
+}
+
 .help-modal__chip {
   display: inline-block;
   vertical-align: middle;
@@ -197,12 +213,6 @@
   white-space: nowrap;
 }
 
-.help-modal__chip.btn-set-orientation {
-  width: auto;
-  padding: 5px 10px;
-  font-size: 12px;
-}
-
 .help-modal__robot-item {
   display: inline-flex;
   align-items: center;
@@ -223,39 +233,6 @@
   width: 8px;
   height: 8px;
   margin-left: 0;
-}
-
-.help-modal__orientation-wheel {
-  width: 28px;
-  height: 28px;
-  border: 2px solid #bdbdbd;
-  border-radius: 50%;
-  background: #fafafa;
-  box-sizing: border-box;
-  position: relative;
-}
-
-.help-modal__orientation-wheel::before {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border-radius: 50%;
-  border: 3px solid transparent;
-  border-top-color: #1976d2;
-  border-right-color: #1976d2;
-  transform: rotate(-30deg);
-}
-
-.help-modal__orientation-wheel::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 2px;
-  height: 42%;
-  background: #e53935;
-  transform: translate(-50%, -100%) rotate(35deg);
-  transform-origin: bottom center;
 }
 
 .help-modal__chip.multi-robot-planner__label {
@@ -614,6 +591,14 @@
   pointer-events: none;
 }
 
+.robot-map-host--pose-place canvas {
+  cursor: crosshair;
+}
+
+.robot-map-host--modifier-pan canvas {
+  cursor: grab;
+}
+
 /* Map controls (overlay on map; drag handle to place anywhere) */
 .map-controls {
   position: absolute;
@@ -687,38 +672,6 @@
 
 .map-controls button:disabled {
   opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.rotating-wheel {
-  display: flex;
-  justify-content: center;
-  margin: 10px 0;
-}
-
-.form-group {
-  margin-bottom: 15px;
-}
-
-.angle-display {
-  text-align: center;
-  margin-top: 5px;
-  font-weight: bold;
-}
-
-.btn-set-orientation {
-  background-color: #0066CC;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: bold;
-  width: 100%;
-}
-
-.btn-set-orientation:disabled {
-  background-color: #cccccc;
   cursor: not-allowed;
 }
 

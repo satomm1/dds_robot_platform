@@ -5,7 +5,6 @@ import client from './apolloClient';
 import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
-import RobotTypedGoals from './components/RobotTypedGoals';
 import RobotStartup from './components/RobotStartup';
 import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
@@ -76,9 +75,6 @@ function AppContent() {
     [positionsData]
   );
 
-  // State for theta, if needed
-  const [currentTheta, setCurrentTheta] = useState(0);
-  
   // Now this hook is inside the ApolloProvider context
   const [setRobotGoal] = useMutation(SET_ROBOT_GOAL);
 
@@ -147,18 +143,19 @@ function AppContent() {
   // Mutation for setting the robot's initial position
   const [setRobotInitialPosition] = useMutation(SET_ROBOT_INITIAL_POSITION);
   
-  const handleSetRobotGoal = (robotId, x, y) => {
-    devLog(`Setting goal for robot ${robotId} to position (${x}, ${y}, ${currentTheta}°)`);
+  const handleSetRobotGoal = (robotId, x, y, thetaRad) => {
+    devLog(
+      `Setting goal for robot ${robotId} to position (${x}, ${y}, ${((thetaRad * 180) / Math.PI).toFixed(1)}°)`,
+    );
     clearPathDismissalForRobot(robotId);
 
     const timestamp = new Date().getTime() / 1000; // Convert to seconds
-    const theta_rad = (currentTheta * Math.PI) / 180; // Convert degrees to radians
     setRobotGoal({
       variables: {
         robotId: robotId,
         xGoal: x,
         yGoal: y,
-        thetaGoal: theta_rad,
+        thetaGoal: thetaRad,
         timestamp: timestamp
       }
     })
@@ -170,11 +167,10 @@ function AppContent() {
       });
   };
 
-  const handleStageMultiGoal = (robotId, mapX, mapY) => {
-    const theta_rad = (currentTheta * Math.PI) / 180;
+  const handleStageMultiGoal = (robotId, mapX, mapY, thetaRad) => {
     setStagedMultiGoals((prev) => ({
       ...prev,
-      [robotId]: { mapX, mapY, theta: theta_rad },
+      [robotId]: { mapX, mapY, theta: thetaRad },
     }));
     setMultiSubmitError('');
   };
@@ -236,27 +232,18 @@ function AppContent() {
       });
   };
 
-  const handleUpdateTheta = (robotId, thetaDegrees) => {
-    devLog(`Updating orientation for robot ${robotId} to ${thetaDegrees}°`);
-    
-    // Flip the angle about the y-axis
-    const flippedTheta = (180 - thetaDegrees) % 360;
+  const handleSetRobotInitialPosition = (robotId, x, y, thetaRad) => {
+    devLog(
+      `Setting initial position for robot ${robotId} to (${x}, ${y}, ${((thetaRad * 180) / Math.PI).toFixed(1)}°)`,
+    );
 
-    // Update the current theta value
-    setCurrentTheta(flippedTheta);
-  };
-
-  const handleSetRobotInitialPosition = (robotId, x, y) => {
-    devLog(`Setting initial position for robot ${robotId} to (${x}, ${y}, ${currentTheta}°)`);
-    
     const timestamp = new Date().getTime() / 1000;
-    const theta_rad = (currentTheta * Math.PI) / 180;
     setRobotInitialPosition({
       variables: {
         robotId: robotId,
         x: x,
         y: y,
-        theta: theta_rad,
+        theta: thetaRad,
         timestamp: timestamp
       }
     }).catch(error => {
@@ -408,10 +395,6 @@ function AppContent() {
               positionsLoading={positionsLoading}
               positionsError={positionsError}
               dismissPathForRobot={dismissPathForRobot}
-            />
-            <RobotTypedGoals
-              selectedRobotId={selectedRobotId} 
-              onSetGoal={handleUpdateTheta}
             />
           </div>
           <RobotStartup />

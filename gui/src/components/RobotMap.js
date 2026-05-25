@@ -1,10 +1,11 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Stage, Layer, Rect, Circle, Line, Text, Label, Tag } from 'react-konva';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { Stage, Layer, Rect, Circle, Line, Arrow, Text, Label, Tag } from 'react-konva';
 import { Image as KonvaImage } from 'react-konva'; // Add this line
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
 import { useRobotColors } from '../hooks/useRobotColors';
+import { mapDragToRobotThetaRad } from '../utils';
 import MapControlsPanel from './MapControlsPanel';
 
 const devLog = (...args) => {
@@ -13,6 +14,20 @@ const devLog = (...args) => {
 const devWarn = (...args) => {
   if (process.env.NODE_ENV === 'development') console.warn(...args);
 };
+
+const MIN_DRAG_PX = 8;
+
+function pointerToWorld(stage, pointerPosition) {
+  const transform = stage.getAbsoluteTransform().copy().invert();
+  return transform.point(pointerPosition);
+}
+
+function worldToMapCoords(worldPos, occGridWidth, gridCellSize, occGridResolution) {
+  return {
+    mapX: (occGridWidth - worldPos.x / gridCellSize) * occGridResolution,
+    mapY: (worldPos.y * occGridResolution) / gridCellSize,
+  };
+}
 
 const RobotMap = ({
   selectedRobotId,
@@ -50,6 +65,12 @@ const RobotMap = ({
   const tooltipLayerRef = useRef(null);
   const [confirmationMessage, setConfirmationMessage] = useState('');
   const [invalidGoalMessages, setInvalidGoalMessages] = useState({});
+  const [poseDrag, setPoseDrag] = useState(null);
+  const [spacePanActive, setSpacePanActive] = useState(false);
+  const [shiftPanActive, setShiftPanActive] = useState(false);
+  const poseDragRef = useRef(null);
+  const middlePanRef = useRef(null);
+  poseDragRef.current = poseDrag;
 
   const [mapImage, setMapImage] = useState(null);
   const prevRobotCountRef = useRef(null);
@@ -390,95 +411,217 @@ const RobotMap = ({
     }
   }, [robotPaths]);
 
-  const handleMapClick = (e) => {
-    if (!stageRef.current || !selectedRobotId) return;
-    
-    const stage = stageRef.current;
-    const pointerPosition = stage.getPointerPosition();
-    
-    if (pointerPosition) {
-      // Get current scale and position of the stage
-      const transform = stage.getAbsoluteTransform().copy().invert();
-      // Convert screen coordinates to world coordinates
-      const worldPos = transform.point(pointerPosition);
+  const isPosePlacementMode =
+    positionMode === 'goal' ||
+    positionMode === 'initial' ||
+    positionMode === 'multiPlan';
 
-      // Calculate map coordinates
-      const mapX = (occGridWidth - worldPos.x/gridCellSize)*occGridResolution;
-      const mapY = worldPos.y*occGridResolution/gridCellSize;
+  const canStartPoseDrag =
+    Boolean(selectedRobotId) &&
+    isPosePlacementMode &&
+    (positionMode !== 'multiPlan' || multiPlanFleetIds.includes(selectedRobotId));
+
+  const commitPoseDrag = useCallback(
+    (drag) => {
+      const { anchorWorld, pointerWorld, mapX, mapY } = drag;
+      const thetaRad = mapDragToRobotThetaRad(anchorWorld, pointerWorld);
 
       if (positionMode === 'multiPlan') {
-        if (!multiPlanFleetIds.includes(selectedRobotId)) {
-          return;
-        }
-        devLog(`Staging multi goal for robot ${selectedRobotId} at`, mapX, mapY);
-        onStageMultiGoal(selectedRobotId, mapX, mapY);
-        if (goalLayerRef.current) {
-          goalLayerRef.current.batchDraw();
-        }
-        return;
-      }
-      
-      if (positionMode === 'goal') {
-        devLog(`Setting new goal marker for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
-        
-        // Update goalMarkers
-        setGoalMarkers(prevMarkers => ({
+        devLog(`Staging multi goal for robot ${selectedRobotId} at`, mapX, mapY, thetaRad);
+        onStageMultiGoal(selectedRobotId, mapX, mapY, thetaRad);
+      } else if (positionMode === 'goal') {
+        devLog(`Setting goal for robot ${selectedRobotId} at`, mapX, mapY, thetaRad);
+        setGoalMarkers((prevMarkers) => ({
           ...prevMarkers,
           [selectedRobotId]: {
-            x: worldPos.x,
-            y: worldPos.y,
-            color: getRobotColor(selectedRobotId)
-          }
+            x: anchorWorld.x,
+            y: anchorWorld.y,
+            color: getRobotColor(selectedRobotId),
+          },
         }));
-        
-        // Send goal to backend
-        onSetGoal(selectedRobotId, mapX, mapY);
+        onSetGoal(selectedRobotId, mapX, mapY, thetaRad);
       } else {
-        devLog(`Setting initial position for robot ${selectedRobotId} at`, worldPos.x, worldPos.y);
-        
-        // Send initial position to backend without setting a marker
-        onSetInitialPosition(selectedRobotId, mapX, mapY);
-
-        // Show confirmation message
+        devLog(`Setting initial position for robot ${selectedRobotId} at`, mapX, mapY, thetaRad);
+        onSetInitialPosition(selectedRobotId, mapX, mapY, thetaRad);
         setConfirmationMessage(`Initial position set for Robot ${selectedRobotId}`);
-
-        // Clear message after 1.5 seconds
-        setTimeout(() => {
-          setConfirmationMessage('');
-        }, 1500);
+        setTimeout(() => setConfirmationMessage(''), 1500);
       }
 
-      // Only redraw the goal layer
       if (goalLayerRef.current) {
         goalLayerRef.current.batchDraw();
       }
+    },
+    [
+      positionMode,
+      selectedRobotId,
+      onStageMultiGoal,
+      onSetGoal,
+      onSetInitialPosition,
+      getRobotColor,
+    ],
+  );
+
+  const finishPoseDrag = useCallback(() => {
+    const drag = poseDragRef.current;
+    if (!drag) return;
+
+    poseDragRef.current = null;
+    setPoseDrag(null);
+    if (stageRef.current) {
+      stageRef.current.draggable(true);
+    }
+
+    const screenDist = Math.hypot(
+      drag.pointerScreen.x - drag.anchorScreen.x,
+      drag.pointerScreen.y - drag.anchorScreen.y,
+    );
+    if (screenDist < MIN_DRAG_PX) {
+      return;
+    }
+
+    commitPoseDrag(drag);
+  }, [commitPoseDrag]);
+
+  useEffect(() => {
+    if (!poseDrag) return undefined;
+    const onWindowMouseUp = () => finishPoseDrag();
+    window.addEventListener('mouseup', onWindowMouseUp);
+    return () => window.removeEventListener('mouseup', onWindowMouseUp);
+  }, [poseDrag, finishPoseDrag]);
+
+  useEffect(() => {
+    const isTypingTarget = (el) =>
+      el &&
+      (el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT' ||
+        el.isContentEditable);
+
+    const onKeyDown = (e) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.code === 'Space' && !e.repeat) {
+        e.preventDefault();
+        setSpacePanActive(true);
+      } else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        setShiftPanActive(true);
+      }
+    };
+    const onKeyUp = (e) => {
+      if (e.code === 'Space') {
+        setSpacePanActive(false);
+      } else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        setShiftPanActive(false);
+      }
+    };
+    const onBlur = () => {
+      setSpacePanActive(false);
+      setShiftPanActive(false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
+
+  const handleStageMouseUp = () => {
+    middlePanRef.current = null;
+    finishPoseDrag();
+  };
+
+  const handlePoseMouseDown = (e) => {
+    if (!stageRef.current) return;
+
+    const stage = stageRef.current;
+    const button = e.evt?.button ?? 0;
+
+    if (button === 1) {
+      middlePanRef.current = {
+        clientX: e.evt.clientX,
+        clientY: e.evt.clientY,
+        stageX: stage.x(),
+        stageY: stage.y(),
+      };
+      return;
+    }
+
+    const modifierPan = spacePanActive || shiftPanActive || e.evt?.shiftKey;
+    if (!canStartPoseDrag || button !== 0 || modifierPan) return;
+    const pointerPosition = stage.getPointerPosition();
+    if (!pointerPosition) return;
+
+    const worldPos = pointerToWorld(stage, pointerPosition);
+    const { mapX, mapY } = worldToMapCoords(
+      worldPos,
+      occGridWidth,
+      gridCellSize,
+      occGridResolution,
+    );
+
+    const drag = {
+      anchorWorld: { x: worldPos.x, y: worldPos.y },
+      pointerWorld: { x: worldPos.x, y: worldPos.y },
+      anchorScreen: { x: pointerPosition.x, y: pointerPosition.y },
+      pointerScreen: { x: pointerPosition.x, y: pointerPosition.y },
+      mapX,
+      mapY,
+    };
+    poseDragRef.current = drag;
+    setPoseDrag(drag);
+    stage.stopDrag();
+    stage.draggable(false);
+
+    if (e.evt) {
+      e.evt.preventDefault();
     }
   };
 
   const handleMouseMove = (e) => {
     if (!stageRef.current) return;
-    
+
     const stage = stageRef.current;
+
+    if (middlePanRef.current && e?.evt) {
+      const mp = middlePanRef.current;
+      stage.position({
+        x: mp.stageX + (e.evt.clientX - mp.clientX),
+        y: mp.stageY + (e.evt.clientY - mp.clientY),
+      });
+      stage.batchDraw();
+    }
+
     const pointerPosition = stage.getPointerPosition();
-    
+
     if (pointerPosition) {
-      // Get current transform to convert screen to world coordinates
-      const transform = stage.getAbsoluteTransform().copy().invert();
-      // Convert screen coordinates to world coordinates
-      const worldPos = transform.point(pointerPosition);
-      
-      // Calculate the actual map coordinates using the same formula you use when setting goals
-      const mapX = (occGridWidth - worldPos.x/gridCellSize)*occGridResolution;
-      const mapY = worldPos.y*occGridResolution/gridCellSize;
-      
+      const worldPos = pointerToWorld(stage, pointerPosition);
+      const { mapX, mapY } = worldToMapCoords(
+        worldPos,
+        occGridWidth,
+        gridCellSize,
+        occGridResolution,
+      );
+
+      if (poseDragRef.current) {
+        const next = {
+          ...poseDragRef.current,
+          pointerWorld: { x: worldPos.x, y: worldPos.y },
+          pointerScreen: { x: pointerPosition.x, y: pointerPosition.y },
+        };
+        poseDragRef.current = next;
+        setPoseDrag(next);
+      }
+
       setMousePosition({
         x: pointerPosition.x,
         y: pointerPosition.y,
         worldX: mapX,
-        worldY: mapY
+        worldY: mapY,
       });
-      
-      // Update the tooltip layer
+
       if (tooltipLayerRef.current) {
         tooltipLayerRef.current.batchDraw();
       }
@@ -543,8 +686,10 @@ const RobotMap = ({
     stage.batchDraw();
   };
   
-  const handleDragStart = () => {
-    // Optional: Add any behavior you want when dragging starts
+  const handleDragStart = (e) => {
+    if (poseDragRef.current) {
+      e.target.stopDrag();
+    }
   };
   
   const handleDragEnd = () => {
@@ -661,20 +806,40 @@ const RobotMap = ({
     );
   }
 
+  const modifierPanActive = spacePanActive || shiftPanActive;
+
+  const hostClass = [
+    'robot-map-host',
+    mapControlsDragging ? 'robot-map-host--panel-drag' : '',
+    modifierPanActive ? 'robot-map-host--modifier-pan' : '',
+    canStartPoseDrag && !modifierPanActive ? 'robot-map-host--pose-place' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const mapHostTitle = canStartPoseDrag
+    ? 'Click and drag to set pose and heading. Hold Space or Shift and drag, or middle-mouse drag, to pan.'
+    : 'Drag to pan. Scroll to zoom.';
+
+  const posePreviewColor =
+    positionMode === 'initial'
+      ? '#2196F3'
+      : selectedRobotId != null
+        ? getRobotColor(selectedRobotId)
+        : '#333';
+
   return (
-    <div
-      ref={containerRef}
-      className={mapControlsDragging ? 'robot-map-host robot-map-host--panel-drag' : 'robot-map-host'}
-    >
+    <div ref={containerRef} className={hostClass} title={mapHostTitle}>
       {mapSize.width > 0 && mapSize.height > 0 && (
       <Stage 
         ref={stageRef}
         width={mapSize.width} 
         height={mapSize.height}
-        onClick={handleMapClick}
+        onMouseDown={handlePoseMouseDown}
+        onMouseUp={handleStageMouseUp}
         onWheel={handleWheel}
         onMouseMove={handleMouseMove}
-        draggable={true}
+        draggable={!poseDrag && (!canStartPoseDrag || modifierPanActive)}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         scaleX={scale}
@@ -757,7 +922,7 @@ const RobotMap = ({
                   stroke="#000"
                   strokeWidth={isSelected ? Math.max(2, robotMarkerRadius / 3) : 2}
                 />
-                <Line
+                <Arrow
                   points={[
                     cx,
                     cy,
@@ -765,10 +930,11 @@ const RobotMap = ({
                     cy + Math.sin(robot.theta) * arrowLen,
                   ]}
                   stroke="#000"
+                  fill="#000"
                   strokeWidth={2}
-                  pointerLength={5}
-                  pointerWidth={5}
-                  tension={0.5}
+                  pointerAtEnding
+                  pointerLength={10}
+                  pointerWidth={8}
                 />
                 <Text
                   x={cx - labelOffset}
@@ -784,6 +950,31 @@ const RobotMap = ({
         
         {/* Separate layer for the goal markers - only this layer is redrawn on clicks */}
         <Layer ref={goalLayerRef}>
+          {poseDrag && (
+            <>
+              <Circle
+                x={poseDrag.anchorWorld.x}
+                y={poseDrag.anchorWorld.y}
+                radius={8}
+                fill={posePreviewColor}
+                opacity={0.75}
+              />
+              <Arrow
+                points={[
+                  poseDrag.anchorWorld.x,
+                  poseDrag.anchorWorld.y,
+                  poseDrag.pointerWorld.x,
+                  poseDrag.pointerWorld.y,
+                ]}
+                stroke={posePreviewColor}
+                fill={posePreviewColor}
+                strokeWidth={3}
+                pointerAtEnding
+                pointerLength={20}
+                pointerWidth={15}
+              />
+            </>
+          )}
           {Object.entries(goalMarkers).map(([robotId, marker]) => {
             const rid = Number(robotId);
             if (pathDisplayDismissed[rid]) {

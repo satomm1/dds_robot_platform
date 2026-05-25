@@ -51,3 +51,23 @@ export const getDefaultRobotColor = (robotId) => {
 
 /** @deprecated Use useRobotColors().getRobotColor for persisted user colors. */
 export const getRobotColor = (robotId) => getDefaultRobotColor(robotId);
+
+/**
+ * Map UI angle (degrees, 0–360) to robot-frame heading used by the backend.
+ * Y-axis flip between map UI drag angle and robot-frame heading.
+ */
+export function uiDegreesToRobotThetaDegrees(uiDegrees) {
+  return (180 - uiDegrees) % 360;
+}
+
+/** Heading in radians for GraphQL from a map drag in stage/world pixels. */
+export function mapDragToRobotThetaRad(anchorWorld, pointerWorld) {
+  const dx = pointerWorld.x - anchorWorld.x;
+  const dy = pointerWorld.y - anchorWorld.y;
+  let uiDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  if (uiDeg < 0) {
+    uiDeg += 360;
+  }
+  const robotDeg = uiDegreesToRobotThetaDegrees(uiDeg);
+  return (robotDeg * Math.PI) / 180;
+}

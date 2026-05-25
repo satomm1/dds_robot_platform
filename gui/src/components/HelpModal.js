@@ -7,10 +7,6 @@ const HelpChip = ({ className = '', children }) => (
   </span>
 );
 
-const HelpOrientationWheel = () => (
-  <span className="help-modal__chip help-modal__orientation-wheel" aria-hidden="true" />
-);
-
 const HelpModal = ({ onClose }) => {
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -66,6 +62,31 @@ const HelpModal = ({ onClose }) => {
           </p>
         </section>
 
+        <section className="help-modal__section" aria-labelledby="help-map-heading">
+          <h3 id="help-map-heading" className="help-modal__section-title">
+            Navigating the map
+          </h3>
+          <p className="help-modal__body">
+            The center panel shows the occupancy grid, robot positions, goals, and paths. Use the
+            draggable map controls overlay (grab its handle to move it) for goal and path options.
+          </p>
+          <ul className="help-modal__list">
+            <li>
+              <strong>Pan:</strong> Hold <strong>Space</strong> or <strong>Shift</strong> and drag with
+              the left mouse button, or <strong>middle-mouse drag</strong>. In goal, initial-pose, or
+              multi-robot planning modes, a plain left-click drag places a pose instead of panning.
+            </li>
+            <li>
+              <strong>Zoom:</strong> Scroll the mouse wheel over the map, or use the{' '}
+              <strong>+</strong> and <strong>−</strong> buttons on the map controls panel.
+            </li>
+            <li>
+              <strong>Robot size:</strong> Use the <strong>Robot size on map</strong> slider at the
+              bottom of the left sidebar to make robot markers larger or smaller.
+            </li>
+          </ul>
+        </section>
+
         <section className="help-modal__section" aria-labelledby="help-operate-heading">
           <h3 id="help-operate-heading" className="help-modal__section-title">
             Operating the robot
@@ -84,14 +105,12 @@ const HelpModal = ({ onClose }) => {
             <HelpChip className="btn-goal-init-active btn-goal-narrow">
               Set Initial Position
             </HelpChip>
-            , then click the desired location on the map. To send a navigation goal, click{' '}
+            , then on the map <strong>click and drag</strong> from the pose location: drag to set
+            heading, then release. A short click without dragging does nothing. To send a navigation
+            goal, click{' '}
             <HelpChip className="btn-goal-init-active btn-goal-narrow">Set Robot Goal</HelpChip>
-            , then click the map. For initial-pose or goal heading, drag the{' '}
-            <HelpOrientationWheel /> orientation wheel on the right and click{' '}
-            <HelpChip className="btn-set-orientation">Set Orientation</HelpChip> before placing
-            the point on the map. To stop robot motion, click{' '}
-            <HelpChip className="control-button stop">Stop</HelpChip> in that same right-hand
-            panel.
+            , then use the same click-drag gesture on the map. To stop robot motion, click{' '}
+            <HelpChip className="control-button stop">Stop</HelpChip> in the right sidebar.
           </p>
         </section>
 
@@ -109,10 +128,10 @@ const HelpModal = ({ onClose }) => {
               <span className="multi-robot-planner__dot" style={{ backgroundColor: '#2196F3' }} />
               Robot 1 (staged)
             </HelpChip>
-            . For each fleet robot, select it in <strong>Select Robot</strong>, then click the map to
-            stage its goal. Optionally set heading with the <HelpOrientationWheel /> orientation
-            wheel and <HelpChip className="btn-set-orientation">Set Orientation</HelpChip> before
-            each map click. Edit the <HelpChip className="multi-robot-planner__label">Plan ID</HelpChip>{' '}
+            . For each fleet robot, select it in <strong>Select Robot</strong>, then click-drag on
+            the map to stage its goal and heading (a short click without dragging does nothing).
+            See <strong>Navigating the map</strong> for pan and zoom. Edit the{' '}
+            <HelpChip className="multi-robot-planner__label">Plan ID</HelpChip>{' '}
             if needed, and use the{' '}
             <HelpChip className="help-modal__coordinated-check">
               <span className="help-modal__checkbox help-modal__checkbox--checked" aria-hidden="true" />
