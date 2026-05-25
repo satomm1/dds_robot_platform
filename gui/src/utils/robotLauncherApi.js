@@ -83,12 +83,28 @@ async function requestRobotLauncherRaw(host, path, timeoutMs) {
   }
 }
 
+function buildLauncherPath(path, options = {}) {
+  const route = path.startsWith('/') ? path : `/${path}`;
+  const pathname = route.split('?')[0];
+  if (pathname !== '/start') {
+    return route;
+  }
+  const params = new URLSearchParams();
+  params.set('social', Boolean(options.social) ? 'true' : 'false');
+  params.set('multi', Boolean(options.multi) ? 'true' : 'false');
+  return `/start?${params.toString()}`;
+}
+
 /**
  * GET the robot launch server (/start or /stop). Uses Electron IPC when available,
  * dev proxy in development, otherwise direct fetch (may fail on browser CORS).
+ * @param {string} host
+ * @param {string} path
+ * @param {{ social?: boolean, multi?: boolean }} [options] — for /start, planner launch args
  */
-export async function requestRobotLauncher(host, path) {
-  return requestRobotLauncherRaw(host, path, REQUEST_TIMEOUT_MS);
+export async function requestRobotLauncher(host, path, options = {}) {
+  const route = buildLauncherPath(path, options);
+  return requestRobotLauncherRaw(host, route, REQUEST_TIMEOUT_MS);
 }
 
 /** GET /status — short timeout, no throw on unreachable host (returns { ok: false }). */

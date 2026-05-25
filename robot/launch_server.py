@@ -4,8 +4,18 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import subprocess
+from urllib.parse import parse_qs, urlparse
 
 launch_process = None
+
+
+def _parse_bool_query(query_string, param_name):
+    """True when query param is true, 1, or yes (case-insensitive). Missing → false."""
+    if not query_string:
+        return False
+    values = parse_qs(query_string).get(param_name, ["false"])
+    token = (values[0] if values else "false").strip().lower()
+    return token in ("true", "1", "yes")
 
 
 class LaunchServer(BaseHTTPRequestHandler):
@@ -21,7 +31,10 @@ class LaunchServer(BaseHTTPRequestHandler):
     def do_GET(self):
         global launch_process
 
-        if self.path == "/status":
+        parsed = urlparse(self.path)
+        pathname = parsed.path
+
+        if pathname == "/status":
             ros_running = self._ros_running()
             payload = {
                 "launcher": True,
@@ -36,27 +49,57 @@ class LaunchServer(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        elif self.path == "/start":
+        elif pathname == "/start":
+            social = _parse_bool_query(parsed.query, "social")
+            multi = _parse_bool_query(parsed.query, "multi")
+            social_arg = "true" if social else "false"
+            multi_arg = "true" if multi else "false"
+
             if launch_process is None or launch_process.poll() is not None:
+                env_cmd = (
+                    "source /opt/ros/noetic/setup.bash && "
+                    "source /workspace/catkin_ws/devel/setup.bash && "
+                    "source /workspace/catkin_ws/src/robot_env.sh && "
+                    "printf '%s\\n%s' \"$ROBOT_HEIGHT\" \"$ROBOT_CAR\""
+                )
+                env_out = subprocess.run(
+                    env_cmd,
+                    shell=True,
+                    executable="/bin/bash",
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                parts = env_out.split("\n", 1)
+                robot_height = (parts[0] if parts else "").strip().lower()
+                robot_car = (parts[1] if len(parts) > 1 else "false").strip().lower()
+                launch_file = "tall.launch" if robot_height == "tall" else "short.launch"
+                car_arg = "true" if robot_car == "true" else "false"
                 cmd = (
                     "source /opt/ros/noetic/setup.bash && "
                     "source /workspace/catkin_ws/devel/setup.bash && "
                     "source /workspace/catkin_ws/src/robot_env.sh && "
-                    "roslaunch mattbot_bringup short.launch"
+                    f"roslaunch mattbot_bringup {launch_file} car:={car_arg} "
+                    f"social:={social_arg} multi:={multi_arg}"
                 )
                 launch_process = subprocess.Popen(
                     cmd, shell=True, executable="/bin/bash"
                 )
+                planner = "social" if social else "A*"
+                multi_note = ", multi-robot planning on" if multi else ""
+                msg = (
+                    f"ROS Launch started successfully "
+                    f"({launch_file}, {planner} planner{multi_note})."
+                )
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(b"ROS Launch started successfully!")
+                self.wfile.write(msg.encode("utf-8"))
             else:
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(b"Launch file is already running.")
             return
 
-        elif self.path == "/stop":
+        elif pathname == "/stop":
             if launch_process and launch_process.poll() is None:
                 launch_process.terminate()
                 launch_process = None

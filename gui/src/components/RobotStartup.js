@@ -109,6 +109,8 @@ const RobotStartup = () => {
   const [hostInput, setHostInput] = useState('');
   const [status, setStatus] = useState({ type: '', message: '' });
   const [busy, setBusy] = useState(false);
+  const [useSocialPlanner, setUseSocialPlanner] = useState(false);
+  const [useMultiRobotPlanner, setUseMultiRobotPlanner] = useState(false);
   const [hostStatus, setHostStatus] = useState({});
 
   const activeHost = useMemo(() => normalizeHostInput(hostInput), [hostInput]);
@@ -277,7 +279,10 @@ const RobotStartup = () => {
     setBusy(true);
     setStatus({ type: '', message: '' });
     try {
-      const result = await requestRobotLauncher(host, '/start');
+      const result = await requestRobotLauncher(host, '/start', {
+        social: useSocialPlanner,
+        multi: useMultiRobotPlanner,
+      });
       const detail = result.body ? `: ${result.body}` : '';
       if (result.ok) {
         setStatus({
@@ -383,6 +388,36 @@ const RobotStartup = () => {
         >
           Save
         </button>
+      </div>
+
+      <div className="robot-startup__planner-settings">
+        <p className="robot-startup__planner-settings-title">Planner Settings (beta)</p>
+        <div className="robot-startup__planner-settings-row">
+          <label
+            className="robot-startup__planner-option"
+            title="Unchecked uses regular A* planner; checked uses social planner"
+          >
+            <input
+              type="checkbox"
+              checked={useSocialPlanner}
+              onChange={(e) => setUseSocialPlanner(e.target.checked)}
+              disabled={busy}
+            />
+            Social
+          </label>
+          <label
+            className="robot-startup__planner-option"
+            title="Enable multi-robot planning on this robot at launch"
+          >
+            <input
+              type="checkbox"
+              checked={useMultiRobotPlanner}
+              onChange={(e) => setUseMultiRobotPlanner(e.target.checked)}
+              disabled={busy}
+            />
+            Multi
+          </label>
+        </div>
       </div>
 
       <div className="robot-startup__start-wrap">

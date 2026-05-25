@@ -1055,6 +1055,43 @@
   background-color: #5a6268;
 }
 
+.robot-startup__planner-settings {
+  margin-top: 10px;
+}
+
+.robot-startup__planner-settings-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #495057;
+  letter-spacing: 0.02em;
+}
+
+.robot-startup__planner-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.robot-startup__planner-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.robot-startup__planner-option input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.robot-startup__planner-option input:disabled {
+  cursor: not-allowed;
+}
+
 .robot-startup__start-wrap {
   display: flex;
   justify-content: center;

@@ -50,7 +50,9 @@ const HelpModal = ({ onClose }) => {
               <span className="robot-startup__picker-label">Lab robot (192.168.1.10)</span>
               <span className="robot-startup__picker-caret">▾</span>
             </HelpChip>{' '}
-            menu, then click{' '}
+            menu, then under <strong>Planner Settings (beta)</strong> optionally check{' '}
+            <strong>social</strong> (regular A* when off; social planner when on) and/or{' '}
+            <strong>multi</strong> (multi-robot planning at launch), and click{' '}
             <HelpChip className="robot-startup__btn robot-startup__btn--start robot-startup__btn--start-ready">
               Start
             </HelpChip>
