@@ -973,7 +973,11 @@
   background-color: #adb5bd;
 }
 
-.robot-startup__reach--available,
+.robot-startup__reach--available {
+  background-color: #e6a700;
+  box-shadow: 0 0 0 2px rgba(230, 167, 0, 0.28);
+}
+
 .robot-startup__reach--running {
   background-color: #28a745;
   box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.25);

@@ -53,7 +53,8 @@ function SavedHostPicker({ hosts, hostStatus, selectedId, disabled, onSelect }) 
         {selected ? (
           <span
             className={`robot-startup__reach robot-startup__reach--${selectedReach}`}
-            aria-hidden
+            title={STATUS_LABELS[selectedReach]}
+            aria-label={STATUS_LABELS[selectedReach]}
           />
         ) : null}
         <span className="robot-startup__picker-label">{displayText}</span>
@@ -89,7 +90,8 @@ function SavedHostPicker({ hosts, hostStatus, selectedId, disabled, onSelect }) 
                 >
                   <span
                     className={`robot-startup__reach robot-startup__reach--${reach}`}
-                    aria-hidden
+                    title={STATUS_LABELS[reach]}
+                    aria-label={STATUS_LABELS[reach]}
                   />
                   {h.label} ({h.host})
                 </button>
