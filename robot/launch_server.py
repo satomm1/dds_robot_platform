@@ -8,6 +8,14 @@ from urllib.parse import parse_qs, urlparse
 
 launch_process = None
 
+# Single-robot vs multi-robot bringup (same car/social args on each).
+LAUNCH_FILES = {
+    ("tall", False): "tall.launch",
+    ("short", False): "short.launch",
+    ("tall", True): "multi_agent_tall.launch",
+    ("short", True): "multi_agent_short.launch",
+}
+
 
 def _parse_bool_query(query_string, param_name):
     """True when query param is true, 1, or yes (case-insensitive). Missing → false."""
@@ -53,7 +61,6 @@ class LaunchServer(BaseHTTPRequestHandler):
             social = _parse_bool_query(parsed.query, "social")
             multi = _parse_bool_query(parsed.query, "multi")
             social_arg = "true" if social else "false"
-            multi_arg = "true" if multi else "false"
 
             if launch_process is None or launch_process.poll() is not None:
                 env_cmd = (
@@ -72,23 +79,23 @@ class LaunchServer(BaseHTTPRequestHandler):
                 parts = env_out.split("\n", 1)
                 robot_height = (parts[0] if parts else "").strip().lower()
                 robot_car = (parts[1] if len(parts) > 1 else "false").strip().lower()
-                launch_file = "tall.launch" if robot_height == "tall" else "short.launch"
+                is_tall = robot_height == "tall"
                 car_arg = "true" if robot_car == "true" else "false"
+                launch_file = LAUNCH_FILES[("tall" if is_tall else "short", multi)]
                 cmd = (
                     "source /opt/ros/noetic/setup.bash && "
                     "source /workspace/catkin_ws/devel/setup.bash && "
                     "source /workspace/catkin_ws/src/robot_env.sh && "
-                    f"roslaunch mattbot_bringup {launch_file} car:={car_arg} "
-                    f"social:={social_arg} multi:={multi_arg}"
+                    f"roslaunch mattbot_bringup {launch_file} car:={car_arg} social:={social_arg}"
                 )
                 launch_process = subprocess.Popen(
                     cmd, shell=True, executable="/bin/bash"
                 )
                 planner = "social" if social else "A*"
-                multi_note = ", multi-robot planning on" if multi else ""
+                mode = "multi-robot" if multi else "single-robot"
                 msg = (
                     f"ROS Launch started successfully "
-                    f"({launch_file}, {planner} planner{multi_note})."
+                    f"({launch_file}, {mode}, {planner} planner)."
                 )
                 self.send_response(200)
                 self.end_headers()
