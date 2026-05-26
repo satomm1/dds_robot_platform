@@ -3,7 +3,7 @@ const {
   escapeBashSingleQuoted,
   normalizeDdsSettings,
   resolveDdsDirForShell,
-} = require('./ddsLocalPaths');
+} = require('../../electron/ddsLocalPaths');
 
 describe('windowsPathToWsl', () => {
   it('converts drive letter paths', () => {

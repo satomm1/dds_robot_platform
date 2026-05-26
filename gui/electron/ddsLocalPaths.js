@@ -1,5 +1,6 @@
 /**
  * Pure helpers for local DDS launcher (Windows WSL paths, bash escaping).
+ * Lives under electron/ so packaged builds include it (see package.json build.files).
  */
 
 /**

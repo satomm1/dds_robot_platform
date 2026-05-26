@@ -5,7 +5,7 @@ const {
   escapeBashSingleQuoted,
   normalizeDdsSettings,
   resolveDdsDirForShell,
-} = require('../src/utils/ddsLocalPaths');
+} = require('./ddsLocalPaths');
 
 const STOP_TIMEOUT_MS = 15000;
 const STATUS_TIMEOUT_MS = 8000;
