@@ -43,6 +43,7 @@ You will also need a conda interpreter. I recommend [miniconda](https://www.anac
         ```
         ./start_scripts.sh
         ```
+        **Alternatively**, from the GUI desktop app or `npm start` in `gui`, use the **Local DDS** panel (left sidebar): set the path to this `dds` folder, validate, then **Start DDS** / **Stop DDS**. On Windows, the GUI runs the scripts via WSL; conda env `dds` and operator env vars must be available (see above).
 
     - Terminal 3: Navigate to `dds` directory:
         ```
@@ -52,6 +53,7 @@ You will also need a conda interpreter. I recommend [miniconda](https://www.anac
         ```
         ./stop_scripts.sh
         ```
+        Or click **Stop DDS** in the GUI **Local DDS** panel.
         
 ## GUI
 

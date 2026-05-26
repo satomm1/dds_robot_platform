@@ -1109,18 +1109,11 @@ const RobotMap = ({
 
       {/* Tooltip layer outside the main stage - not affected by transforms */}
       {mousePosition && (
-        <div 
+        <div
+          className="robot-map__cursor-coords"
           style={{
-            position: 'absolute',
-            left: `${mousePosition.x + 20}px`,
-            top: `${mousePosition.y + 20}px`,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            color: 'white',
-            padding: '5px',
-            borderRadius: '3px',
-            fontSize: '12px',
-            pointerEvents: 'none', // Make sure it doesn't interfere with clicks
-            zIndex: 1000
+            left: `${mousePosition.x + 14}px`,
+            top: `${mousePosition.y}px`,
           }}
         >
           ({mousePosition.worldX.toFixed(2)}, {mousePosition.worldY.toFixed(2)})

@@ -37,6 +37,25 @@ const HelpModal = ({ onClose }) => {
           Help
         </h2>
 
+        <section className="help-modal__section" aria-labelledby="help-local-dds-heading">
+          <h3 id="help-local-dds-heading" className="help-modal__section-title">
+            Local DDS (this computer)
+          </h3>
+          <p className="help-modal__body">
+            The <strong>Local DDS</strong> panel in the <strong>left sidebar</strong> (below{' '}
+            <strong>Robot size on map</strong>, above the connection status pills) starts and stops
+            the DDS bridge on your operator PC (<code>start_scripts.sh</code> /{' '}
+            <code>stop_scripts.sh</code>). Configure <code>dds/dds_env.sh</code> (copy from{' '}
+            <code>dds_env.sh.example</code>) with <code>AGENT_ID</code>,{' '}
+            <code>INFLUXDB_TOKEN</code>, etc. Set your <code>dds</code> folder path in settings
+            (▾); the app checks the path on startup. Use <strong>Check</strong> after changing the
+            path, then <strong>Start</strong> / <strong>Stop</strong>. On Windows, DDS runs in WSL;
+            conda env <strong>dds</strong> must be installed there. Docker and GraphQL are started
+            separately. Use the Electron app or <code>npm start</code> — not a static browser-only
+            build.
+          </p>
+        </section>
+
         <section className="help-modal__section" aria-labelledby="help-start-stop-heading">
           <h3 id="help-start-stop-heading" className="help-modal__section-title">
             Starting and stopping the robot

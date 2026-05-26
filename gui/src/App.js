@@ -6,6 +6,7 @@ import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import ShutDownAllButton from './components/ShutDownAllButton';
+import DdsLocalControl from './components/DdsLocalControl';
 import RobotStartup from './components/RobotStartup';
 import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
@@ -384,6 +385,7 @@ function AppContent() {
             value={robotMarkerRadius}
             onChange={setRobotMarkerRadius}
           />
+          <DdsLocalControl />
           <SystemHealthBar />
         </div>
         <ColumnResizeHandle

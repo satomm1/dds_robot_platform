@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const ddsLocalRunner = require('./ddsLocalRunner');
 
 const ROBOT_LAUNCHER_TIMEOUT_MS = 20000;
 
@@ -53,6 +54,28 @@ function createWindow() {
   win.loadFile(htmlPath);
 }
 
+ipcMain.handle('dds-local-get-defaults', () => ({
+  ddsDir: ddsLocalRunner.getDefaultDdsDir(),
+  wslDistro: process.platform === 'win32' ? ddsLocalRunner.defaultWslDistro() : '',
+  platform: process.platform,
+}));
+
+ipcMain.handle('dds-local-validate', (_event, settings) =>
+  ddsLocalRunner.validateSettings(settings || {}),
+);
+
+ipcMain.handle('dds-local-status', (_event, settings) =>
+  ddsLocalRunner.getDdsStatus(settings || {}),
+);
+
+ipcMain.handle('dds-local-start', (_event, settings) =>
+  ddsLocalRunner.startDds(settings || {}),
+);
+
+ipcMain.handle('dds-local-stop', (_event, settings) =>
+  ddsLocalRunner.stopDds(settings || {}),
+);
+
 ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route, timeoutMs }) => {
   const cleanHost = String(host || '').trim();
   const portNum = Number(port) > 0 ? Number(port) : 8080;
@@ -61,10 +84,14 @@ ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route, tim
     Number(timeoutMs) > 0 ? Number(timeoutMs) : ROBOT_LAUNCHER_TIMEOUT_MS;
 
   if (!cleanHost) {
-    return Promise.reject(new Error('host is required'));
+    return { ok: false, status: 0, body: '', error: 'host is required' };
   }
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
+    const fail = (error) => {
+      resolve({ ok: false, status: 0, body: '', error });
+    };
+
     const req = http.get(
       { host: cleanHost, port: portNum, path: reqPath, timeout },
       (res) => {
@@ -84,10 +111,10 @@ ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route, tim
     );
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error('Request timed out'));
+      fail('Request timed out');
     });
     req.on('error', (err) => {
-      reject(err);
+      fail(err.message || 'Request failed');
     });
   });
 });
