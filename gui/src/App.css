@@ -1507,8 +1507,8 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(100% + 2px);
-  z-index: 20;
+  top: calc(100% + 2px);
+  z-index: 100;
   margin: 0;
   padding: 4px 0;
   list-style: none;
