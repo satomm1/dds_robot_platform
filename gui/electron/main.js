@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const ddsLocalRunner = require('./ddsLocalRunner');
+const dockerComposeRunner = require('./dockerComposeRunner');
+const localStackRunner = require('./localStackRunner');
 
 const ROBOT_LAUNCHER_TIMEOUT_MS = 20000;
 
@@ -55,7 +57,7 @@ function createWindow() {
 }
 
 ipcMain.handle('dds-local-get-defaults', () => ({
-  ddsDir: ddsLocalRunner.getDefaultDdsDir(),
+  platformDir: ddsLocalRunner.getDefaultPlatformDir(),
   wslDistro: process.platform === 'win32' ? ddsLocalRunner.defaultWslDistro() : '',
   platform: process.platform,
 }));
@@ -74,6 +76,22 @@ ipcMain.handle('dds-local-start', (_event, settings) =>
 
 ipcMain.handle('dds-local-stop', (_event, settings) =>
   ddsLocalRunner.stopDds(settings || {}),
+);
+
+ipcMain.handle('local-stack-status', (_event, settings) =>
+  localStackRunner.getLocalStackStatus(settings || {}),
+);
+
+ipcMain.handle('docker-compose-status', (_event, settings) =>
+  dockerComposeRunner.getDockerStatus(settings || {}),
+);
+
+ipcMain.handle('docker-compose-up', (_event, settings) =>
+  dockerComposeRunner.dockerComposeUp(settings || {}),
+);
+
+ipcMain.handle('docker-compose-down', (_event, settings) =>
+  dockerComposeRunner.dockerComposeDown(settings || {}),
 );
 
 ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route, timeoutMs }) => {

@@ -25,7 +25,7 @@ async function devFetch(path, options = {}) {
 }
 
 /**
- * @param {{ ddsDir?: string, wslDistro?: string }} settings
+ * @returns {Promise<{ platformDir: string, wslDistro: string, platform: string }>}
  */
 export async function fetchDdsLocalDefaults() {
   if (window.ddsLocal?.getDefaults) {
@@ -34,11 +34,11 @@ export async function fetchDdsLocalDefaults() {
   if (process.env.NODE_ENV === 'development') {
     return devFetch('/api/dds-local/defaults');
   }
-  return { ddsDir: '', wslDistro: '', platform: '' };
+  return { platformDir: '', wslDistro: '', platform: '' };
 }
 
 /**
- * @param {{ ddsDir?: string, wslDistro?: string }} settings
+ * @param {{ platformDir?: string, wslDistro?: string }} settings
  */
 export async function validateDdsLocalSettings(settings) {
   if (window.ddsLocal?.validate) {
@@ -55,7 +55,7 @@ export async function validateDdsLocalSettings(settings) {
 }
 
 /**
- * @param {{ ddsDir?: string, wslDistro?: string }} settings
+ * @param {{ platformDir?: string, wslDistro?: string }} settings
  */
 export async function fetchDdsLocalStatus(settings) {
   if (!hasDdsBridge()) {
@@ -66,7 +66,7 @@ export async function fetchDdsLocalStatus(settings) {
   }
   if (process.env.NODE_ENV === 'development') {
     const params = new URLSearchParams({
-      ddsDir: settings.ddsDir || '',
+      platformDir: settings.platformDir || '',
       wslDistro: settings.wslDistro || '',
     });
     return devFetch(`/api/dds-local/status?${params}`);
@@ -75,7 +75,7 @@ export async function fetchDdsLocalStatus(settings) {
 }
 
 /**
- * @param {{ ddsDir?: string, wslDistro?: string }} settings
+ * @param {{ platformDir?: string, wslDistro?: string }} settings
  */
 export async function startDdsLocal(settings) {
   if (window.ddsLocal?.start) {
@@ -92,7 +92,7 @@ export async function startDdsLocal(settings) {
 }
 
 /**
- * @param {{ ddsDir?: string, wslDistro?: string }} settings
+ * @param {{ platformDir?: string, wslDistro?: string }} settings
  */
 export async function stopDdsLocal(settings) {
   if (window.ddsLocal?.stop) {

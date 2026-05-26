@@ -1,5 +1,7 @@
 const http = require('http');
 const ddsLocalRunner = require('../electron/ddsLocalRunner');
+const dockerComposeRunner = require('../electron/dockerComposeRunner');
+const localStackRunner = require('../electron/localStackRunner');
 
 const REQUEST_TIMEOUT_MS = 20000;
 
@@ -26,7 +28,7 @@ function parseJsonBody(req) {
 
 function settingsFromQuery(query) {
   return {
-    ddsDir: (query.ddsDir || '').trim(),
+    platformDir: (query.platformDir || query.ddsDir || '').trim(),
     wslDistro: (query.wslDistro || '').trim(),
   };
 }
@@ -36,6 +38,17 @@ function settingsFromQuery(query) {
  * Packaged Electron uses IPC instead (see electron/main.js).
  */
 module.exports = function setupRobotLauncherProxy(app) {
+  app.get('/api/local-stack/status', async (req, res) => {
+    try {
+      const payload = await localStackRunner.getLocalStackStatus(
+        settingsFromQuery(req.query),
+      );
+      res.json(payload);
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Local stack status failed' });
+    }
+  });
+
   app.get('/api/dds-local/status', async (req, res) => {
     try {
       const payload = await ddsLocalRunner.getDdsStatus(settingsFromQuery(req.query));
@@ -47,7 +60,7 @@ module.exports = function setupRobotLauncherProxy(app) {
 
   app.get('/api/dds-local/defaults', (_req, res) => {
     res.json({
-      ddsDir: ddsLocalRunner.getDefaultDdsDir(),
+      platformDir: ddsLocalRunner.getDefaultPlatformDir(),
       wslDistro: process.platform === 'win32' ? ddsLocalRunner.defaultWslDistro() : '',
       platform: process.platform,
     });
@@ -87,6 +100,45 @@ module.exports = function setupRobotLauncherProxy(app) {
       }
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message || 'Stop failed' });
+    }
+  });
+
+  app.get('/api/docker-compose/status', async (req, res) => {
+    try {
+      const payload = await dockerComposeRunner.getDockerStatus(
+        settingsFromQuery(req.query),
+      );
+      res.json(payload);
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Docker status check failed' });
+    }
+  });
+
+  app.post('/api/docker-compose/up', async (req, res) => {
+    try {
+      const body = await parseJsonBody(req);
+      const result = await dockerComposeRunner.dockerComposeUp(body);
+      if (result.ok) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message || 'Docker up failed' });
+    }
+  });
+
+  app.post('/api/docker-compose/down', async (req, res) => {
+    try {
+      const body = await parseJsonBody(req);
+      const result = await dockerComposeRunner.dockerComposeDown(body);
+      if (result.ok) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message || 'Docker down failed' });
     }
   });
 

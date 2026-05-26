@@ -16,7 +16,7 @@ End users can install a **desktop build** without Node.js or the command line. I
    - **Linux:** `gui-installer-ubuntu-latest` — unzip the **`.AppImage`**, run `chmod +x` on it if needed, then execute it. Install **FUSE** / **libfuse2** for AppImage support if your distro requires it.
 4. **Backend:** This package is only the UI. The GraphQL server must be running separately. The app uses **`http://localhost:8000/graphql`** by default (see [`src/apolloClient.js`](src/apolloClient.js)) unless the maintainer built it with another URL.
 
-**Local DDS:** The **Local DDS** panel (left sidebar) can start/stop `dds/start_scripts.sh` and `dds/stop_scripts.sh`. Configure `dds/dds_env.sh` (from `dds_env.sh.example`) for `AGENT_ID`, `INFLUXDB_TOKEN`, etc. The app validates your `dds` folder path on startup. Works in **Electron** and **`npm start`** (not a static browser-only build). On Windows, scripts run via WSL.
+**Local Stack:** The left-sidebar panel runs **Docker Compose** (`docker compose up -d` / `down` in the repo root) and **DDS** (`dds/start_scripts.sh` / `stop_scripts.sh`). Set the **dds_robot_platform** repo path in settings; DDS uses `./dds` automatically. Configure `dds/dds_env.sh` (from `dds_env.sh.example`) for compose and DDS env vars. Path is auto-validated on startup. Works in **Electron** and **`npm start`** (not a static browser-only build). On Windows, commands run via WSL.
 
 **Maintainers:** See the root [`README.md`](../README.md) for the same end-user steps in the main project docs.
 

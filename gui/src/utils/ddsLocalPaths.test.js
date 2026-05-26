@@ -2,17 +2,23 @@ const {
   windowsPathToWsl,
   escapeBashSingleQuoted,
   normalizeDdsSettings,
+  resolvePathForShell,
   resolveDdsDirForShell,
+  shellPlatformRoot,
+  shellDdsDirFromPlatform,
+  migrateLegacyDdsPathToPlatform,
 } = require('../../electron/ddsLocalPaths');
 
 describe('windowsPathToWsl', () => {
   it('converts drive letter paths', () => {
-    expect(windowsPathToWsl('C:\\Users\\foo\\dds')).toBe('/mnt/c/Users/foo/dds');
+    expect(windowsPathToWsl('C:\\Users\\foo\\dds_robot_platform')).toBe(
+      '/mnt/c/Users/foo/dds_robot_platform',
+    );
   });
 
   it('handles forward slashes', () => {
-    expect(windowsPathToWsl('D:/projects/dds_robot_platform/dds')).toBe(
-      '/mnt/d/projects/dds_robot_platform/dds',
+    expect(windowsPathToWsl('D:/projects/dds_robot_platform')).toBe(
+      '/mnt/d/projects/dds_robot_platform',
     );
   });
 
@@ -33,26 +39,67 @@ describe('escapeBashSingleQuoted', () => {
 });
 
 describe('normalizeDdsSettings', () => {
-  it('trims strings', () => {
+  it('trims strings and migrates legacy dds path', () => {
     expect(
       normalizeDdsSettings({ ddsDir: '  /foo/dds  ', wslDistro: ' Ubuntu ' }),
-    ).toEqual({ ddsDir: '/foo/dds', wslDistro: 'Ubuntu' });
+    ).toEqual({ platformDir: '/foo', wslDistro: 'Ubuntu' });
+  });
+
+  it('keeps platform root paths', () => {
+    expect(
+      normalizeDdsSettings({
+        platformDir: '  /home/user/dds_robot_platform  ',
+        wslDistro: '',
+      }),
+    ).toEqual({ platformDir: '/home/user/dds_robot_platform', wslDistro: '' });
   });
 });
 
-describe('resolveDdsDirForShell', () => {
+describe('migrateLegacyDdsPathToPlatform', () => {
+  it('strips trailing /dds', () => {
+    expect(migrateLegacyDdsPathToPlatform('/foo/dds')).toBe('/foo');
+  });
+});
+
+describe('resolvePathForShell', () => {
   it('keeps WSL home paths on Windows', () => {
     expect(
-      resolveDdsDirForShell('/home/satomm/dds_robot_platform/dds', true),
-    ).toBe('/home/satomm/dds_robot_platform/dds');
+      resolvePathForShell('/home/satomm/dds_robot_platform', true),
+    ).toBe('/home/satomm/dds_robot_platform');
   });
 
   it('converts wsl.localhost UNC paths', () => {
     expect(
-      resolveDdsDirForShell(
-        '\\\\wsl.localhost\\Ubuntu\\home\\satomm\\dds_robot_platform\\dds',
+      resolvePathForShell(
+        '\\\\wsl.localhost\\Ubuntu\\home\\satomm\\dds_robot_platform',
         true,
       ),
+    ).toBe('/home/satomm/dds_robot_platform');
+  });
+});
+
+describe('resolveDdsDirForShell', () => {
+  it('aliases resolvePathForShell', () => {
+    expect(resolveDdsDirForShell('/foo', false)).toBe('/foo');
+  });
+});
+
+describe('shellDdsDirFromPlatform', () => {
+  it('appends dds under platform root', () => {
+    expect(
+      shellDdsDirFromPlatform('/home/satomm/dds_robot_platform', true),
     ).toBe('/home/satomm/dds_robot_platform/dds');
+  });
+
+  it('returns empty for invalid input', () => {
+    expect(shellDdsDirFromPlatform('', true)).toBe('');
+  });
+});
+
+describe('shellPlatformRoot', () => {
+  it('resolves platform root on WSL paths', () => {
+    expect(shellPlatformRoot('/home/satomm/dds_robot_platform', true)).toBe(
+      '/home/satomm/dds_robot_platform',
+    );
   });
 });

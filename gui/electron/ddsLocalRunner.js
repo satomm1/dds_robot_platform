@@ -1,11 +1,19 @@
-const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const {
   escapeBashSingleQuoted,
   normalizeDdsSettings,
-  resolveDdsDirForShell,
+  shellDdsDirFromPlatform,
+  DDS_SUBDIR,
 } = require('./ddsLocalPaths');
+const {
+  isWindows,
+  getPlatform,
+  defaultWslDistro,
+  spawnShellCommand,
+  combineShellOutput,
+} = require('./shellRunner');
+const dockerComposeRunner = require('./dockerComposeRunner');
 
 const STOP_TIMEOUT_MS = 15000;
 const STATUS_TIMEOUT_MS = 8000;
@@ -22,78 +30,16 @@ const DDS_SCRIPT_NAMES = [
   'image_subscriber.py',
 ];
 
-let startWrapperPid = null;
-
-function getPlatform() {
-  return process.platform;
+function shellDdsDir(platformDir) {
+  return shellDdsDirFromPlatform(platformDir, isWindows());
 }
 
-function isWindows() {
-  return process.platform === 'win32';
+function nativeDdsDir(platformDir) {
+  return path.join(path.resolve(platformDir.trim()), DDS_SUBDIR);
 }
 
-function shellDdsDir(ddsDir) {
-  return resolveDdsDirForShell(ddsDir, isWindows());
-}
-
-function defaultWslDistro() {
-  try {
-    const result = spawnSync('wsl.exe', ['-l', '-q'], {
-      encoding: 'utf8',
-      timeout: 5000,
-      windowsHide: true,
-    });
-    const line = (result.stdout || '')
-      .split(/\r?\n/)
-      .map((l) => l.replace(/\0/g, '').trim())
-      .find((l) => l.length > 0);
-    if (line) return line;
-  } catch {
-    /* ignore */
-  }
-  return 'Ubuntu';
-}
-
-function effectiveWslDistro(settings) {
-  const distro = normalizeDdsSettings(settings).wslDistro;
-  return distro || defaultWslDistro();
-}
-
-function spawnShellCommand(innerCommand, settings, options = {}) {
-  const { detached = false, sync = false, timeoutMs } = options;
-
-  if (isWindows()) {
-    const distro = effectiveWslDistro(settings);
-    const wslArgs = ['-d', distro, '--', 'bash', '-lc', innerCommand];
-    if (sync) {
-      return spawnSync('wsl.exe', wslArgs, {
-        encoding: 'utf8',
-        timeout: timeoutMs,
-        windowsHide: true,
-      });
-    }
-    return spawn('wsl.exe', wslArgs, {
-      detached,
-      stdio: detached ? 'ignore' : 'pipe',
-      windowsHide: true,
-    });
-  }
-
-  const bashArgs = ['-lc', innerCommand];
-  if (sync) {
-    return spawnSync('bash', bashArgs, {
-      encoding: 'utf8',
-      timeout: timeoutMs,
-    });
-  }
-  return spawn('bash', bashArgs, {
-    detached,
-    stdio: detached ? 'ignore' : 'pipe',
-  });
-}
-
-function scriptExists(ddsDir, settings) {
-  const shellDir = shellDdsDir(ddsDir);
+function scriptExists(platformDir, settings) {
+  const shellDir = shellDdsDir(platformDir);
   if (!shellDir) return false;
 
   if (isWindows()) {
@@ -107,12 +53,11 @@ function scriptExists(ddsDir, settings) {
     return result.status === 0;
   }
 
-  const nativePath = path.resolve(ddsDir.trim());
-  return fs.existsSync(path.join(nativePath, START_SCRIPT));
+  return fs.existsSync(path.join(nativeDdsDir(platformDir), START_SCRIPT));
 }
 
-function ddsEnvExists(ddsDir, settings) {
-  const shellDir = shellDdsDir(ddsDir);
+function ddsEnvExists(platformDir, settings) {
+  const shellDir = shellDdsDir(platformDir);
   if (!shellDir) return false;
 
   if (isWindows()) {
@@ -124,33 +69,46 @@ function ddsEnvExists(ddsDir, settings) {
     return result.status === 0;
   }
 
-  const nativePath = path.resolve(ddsDir.trim());
-  return fs.existsSync(path.join(nativePath, DDS_ENV_FILE));
+  return fs.existsSync(path.join(nativeDdsDir(platformDir), DDS_ENV_FILE));
 }
 
-function getDefaultDdsDir() {
-  const candidate = path.resolve(__dirname, '..', '..', 'dds');
-  if (fs.existsSync(path.join(candidate, START_SCRIPT))) {
+function getDefaultPlatformDir() {
+  const candidate = path.resolve(__dirname, '..', '..');
+  if (
+    fs.existsSync(path.join(candidate, 'compose.yaml')) &&
+    fs.existsSync(path.join(candidate, DDS_SUBDIR, START_SCRIPT))
+  ) {
     return candidate;
   }
   return '';
 }
 
+/** @deprecated use getDefaultPlatformDir */
+function getDefaultDdsDir() {
+  return getDefaultPlatformDir();
+}
+
 function validateSettings(settings) {
-  const { ddsDir } = normalizeDdsSettings(settings);
-  if (!ddsDir) {
-    return { valid: false, error: 'Enter the path to the dds folder.' };
+  const { platformDir } = normalizeDdsSettings(settings);
+  if (!platformDir) {
+    return { valid: false, error: 'Enter the path to the dds_robot_platform folder.' };
   }
-  if (!scriptExists(ddsDir, settings)) {
+  if (!scriptExists(platformDir, settings)) {
     const hint = isWindows()
-      ? 'Path not found in WSL (check WSL distro and /mnt/c/ path).'
-      : 'start_scripts.sh not found at that path.';
+      ? 'dds/start_scripts.sh not found in WSL (check path and WSL distro).'
+      : 'dds/start_scripts.sh not found under that folder.';
     return { valid: false, error: hint };
   }
-  if (!ddsEnvExists(ddsDir, settings)) {
+  if (!ddsEnvExists(platformDir, settings)) {
     return {
       valid: false,
-      error: `Missing dds/${DDS_ENV_FILE}. Copy dds_env.sh.example to dds_env.sh in that folder.`,
+      error: `Missing dds/${DDS_ENV_FILE}. Copy dds_env.sh.example to dds_env.sh.`,
+    };
+  }
+  if (!dockerComposeRunner.composeYamlExistsForSettings(settings)) {
+    return {
+      valid: false,
+      error: 'Missing compose.yaml at platform root.',
     };
   }
   return { valid: true, error: null };
@@ -158,9 +116,6 @@ function validateSettings(settings) {
 
 function statusProbeCommand(shellDir) {
   const dir = escapeBashSingleQuoted(shellDir);
-  // IMPORTANT: avoid `pgrep -f pattern` self-matching the probe command line.
-  // Use the "[p]attern" trick so the regex matches the target process text,
-  // but does not match the literal probe string in this bash command.
   const checks = DDS_SCRIPT_NAMES.map((name) => {
     const safe = String(name || '').replace(/'/g, '');
     const first = safe[0];
@@ -174,8 +129,8 @@ function statusProbeCommand(shellDir) {
 
 async function getDdsStatus(settings) {
   const platform = getPlatform();
-  const { ddsDir } = normalizeDdsSettings(settings);
-  const configured = Boolean(ddsDir);
+  const { platformDir } = normalizeDdsSettings(settings);
+  const configured = Boolean(platformDir);
   if (!configured) {
     return { running: false, platform, configured: false };
   }
@@ -190,22 +145,18 @@ async function getDdsStatus(settings) {
     };
   }
 
-  const shellDir = shellDdsDir(ddsDir);
+  const shellDir = shellDdsDir(platformDir);
   const result = spawnShellCommand(statusProbeCommand(shellDir), settings, {
     sync: true,
     timeoutMs: STATUS_TIMEOUT_MS,
   });
 
   if (result.error || result.status !== 0) {
-    const errText = [result.stderr, result.stdout, result.error?.message]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
     return {
       running: false,
       platform,
       configured: true,
-      probeError: errText || 'Status check failed in WSL/bash',
+      probeError: combineShellOutput(result) || 'Status check failed in WSL/bash',
     };
   }
 
@@ -214,10 +165,6 @@ async function getDdsStatus(settings) {
   return { running, platform, configured: true };
 }
 
-/**
- * Non-interactive WSL/bash often skips .bashrc (and thus conda init).
- * Source common conda.sh locations before start_scripts.sh runs.
- */
 const BASH_INIT_CONDA =
   'export PATH="$HOME/miniconda3/bin:${PATH:-}"; ' +
   'if ! command -v conda >/dev/null 2>&1; then ' +
@@ -233,21 +180,10 @@ function quoteForBashC(command) {
   return `'${String(command).replace(/'/g, `'\\''`)}'`;
 }
 
-/** Run start_scripts.sh (sources repo dds_env.sh internally). */
 function nohupStartScriptsCommand(shellDir) {
   const dir = escapeBashSingleQuoted(shellDir);
   const inner = `${BASH_INIT_CONDA} && cd '${dir}' && ./${START_SCRIPT}`;
   return `nohup bash -c ${quoteForBashC(inner)}`;
-}
-
-function startCommand(shellDir) {
-  const dir = escapeBashSingleQuoted(shellDir);
-  const inner = `${BASH_INIT_CONDA} && cd '${dir}' && ./${START_SCRIPT}`;
-  return `bash -c ${quoteForBashC(inner)}`;
-}
-
-function stopCommand(shellDir) {
-  return `cd '${escapeBashSingleQuoted(shellDir)}' && ./stop_scripts.sh`;
 }
 
 async function startDds(settings) {
@@ -261,10 +197,8 @@ async function startDds(settings) {
     return { ok: true, body: 'DDS is already running.' };
   }
 
-  const shellDir = shellDdsDir(normalizeDdsSettings(settings).ddsDir);
+  const shellDir = shellDdsDir(normalizeDdsSettings(settings).platformDir);
 
-  // Start via `nohup` so background jobs survive after the shell exits.
-  // Then verify the expected DDS python processes actually came up.
   const checks = DDS_SCRIPT_NAMES.map((name) => {
     const safe = String(name || '').replace(/'/g, '');
     const first = safe[0];
@@ -285,19 +219,15 @@ async function startDds(settings) {
     timeoutMs: 30000,
   });
 
-  const stdout = (result.stdout || '').trim();
-  const stderr = (result.stderr || '').trim();
-  const combined = [stdout, stderr].filter(Boolean).join(' ').trim();
+  const combined = combineShellOutput(result);
 
-  if (stdout.toLowerCase().includes('running')) {
-    startWrapperPid = null;
+  if ((result.stdout || '').toLowerCase().includes('running')) {
     return { ok: true, body: 'DDS started.' };
   }
 
   return {
     ok: false,
-    error:
-      combined || 'DDS failed to start (no matching processes found).',
+    error: combined || 'DDS failed to start (no matching processes found).',
   };
 }
 
@@ -307,16 +237,17 @@ async function stopDds(settings) {
     return { ok: false, error: validation.error };
   }
 
-  const shellDir = shellDdsDir(normalizeDdsSettings(settings).ddsDir);
-  const result = spawnShellCommand(stopCommand(shellDir), settings, {
-    sync: true,
-    timeoutMs: STOP_TIMEOUT_MS,
-  });
+  const shellDir = shellDdsDir(normalizeDdsSettings(settings).platformDir);
+  const result = spawnShellCommand(
+    `cd '${escapeBashSingleQuoted(shellDir)}' && ./${STOP_SCRIPT}`,
+    settings,
+    {
+      sync: true,
+      timeoutMs: STOP_TIMEOUT_MS,
+    },
+  );
 
-  startWrapperPid = null;
-  const stderr = (result.stderr || '').trim();
-  const stdout = (result.stdout || '').trim();
-  const combined = [stdout, stderr].filter(Boolean).join(' ');
+  const combined = combineShellOutput(result);
 
   if (result.error) {
     return { ok: false, error: result.error.message || 'Stop failed.' };
@@ -332,6 +263,7 @@ async function stopDds(settings) {
 }
 
 module.exports = {
+  getDefaultPlatformDir,
   getDefaultDdsDir,
   validateSettings,
   getDdsStatus,

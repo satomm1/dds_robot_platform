@@ -39,20 +39,22 @@ const HelpModal = ({ onClose }) => {
 
         <section className="help-modal__section" aria-labelledby="help-local-dds-heading">
           <h3 id="help-local-dds-heading" className="help-modal__section-title">
-            Local DDS (this computer)
+            Local Stack (this computer)
           </h3>
           <p className="help-modal__body">
-            The <strong>Local DDS</strong> panel in the <strong>left sidebar</strong> (below{' '}
-            <strong>Robot size on map</strong>, above the connection status pills) starts and stops
-            the DDS bridge on your operator PC (<code>start_scripts.sh</code> /{' '}
-            <code>stop_scripts.sh</code>). Configure <code>dds/dds_env.sh</code> (copy from{' '}
-            <code>dds_env.sh.example</code>) with <code>AGENT_ID</code>,{' '}
-            <code>INFLUXDB_TOKEN</code>, etc. Set your <code>dds</code> folder path in settings
-            (▾); the app checks the path on startup. Use <strong>Check</strong> after changing the
-            path, then <strong>Start</strong> / <strong>Stop</strong>. On Windows, DDS runs in WSL;
-            conda env <strong>dds</strong> must be installed there. Docker and GraphQL are started
-            separately. Use the Electron app or <code>npm start</code> — not a static browser-only
-            build.
+            The <strong>Local Stack</strong> panel in the <strong>left sidebar</strong> (below{' '}
+            <strong>Robot size on map</strong>) controls Docker and DDS on your operator PC.{' '}
+            <strong>Docker</strong> runs <code>docker compose up -d</code> /{' '}
+            <code>docker compose down</code> in the repo root (where <code>compose.yaml</code>{' '}
+            lives). <strong>DDS</strong> runs <code>start_scripts.sh</code> /{' '}
+            <code>stop_scripts.sh</code> under <code>dds/</code>. Configure{' '}
+            <code>dds/dds_env.sh</code> (from <code>dds_env.sh.example</code>) for{' '}
+            <code>AGENT_ID</code>, <code>INFLUXDB_TOKEN</code>, and compose variables. Set the{' '}
+            <code>dds_robot_platform</code> repo path in settings (▾); the app uses{' '}
+            <code>./dds</code> for DDS and checks{' '}
+            <code>compose.yaml</code>, and <code>dds_env.sh</code> on startup. Use{' '}
+            <strong>Check</strong> after changing the path. On Windows, both run in WSL; conda env{' '}
+            <strong>dds</strong> is required for DDS. Use the Electron app or <code>npm start</code>.
           </p>
         </section>
 

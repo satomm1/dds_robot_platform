@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchDdsLocalDefaults,
-  fetchDdsLocalStatus,
   hasDdsBridge,
   startDdsLocal,
   stopDdsLocal,
   validateDdsLocalSettings,
 } from '../utils/ddsLocalApi';
+import {
+  dockerComposeDown,
+  dockerComposeUp,
+  hasDockerBridge,
+} from '../utils/dockerComposeApi';
+import { fetchLocalStackStatus } from '../utils/localStackApi';
 import { loadDdsLocalSettings, saveDdsLocalSettings } from '../utils/ddsLocalStorage';
 import {
   DDS_POLL_INTERVAL_MS,
@@ -16,22 +21,78 @@ import {
 } from '../utils/ddsLocalStatus';
 
 const STATUS_AUTO_DISMISS_MS = 5000;
+const PATH_INVALID_TITLE = 'Check path in Settings first';
+
+/** One action per row: Start when stopped, Stop when running; Start disabled if path not verified. */
+function StackRowActions({
+  reach,
+  pathValidated,
+  bridgeAvailable,
+  busy,
+  onStart,
+  onStop,
+  startTitle,
+  stopTitle,
+}) {
+  const isRunning = reach === DDS_STATUS.RUNNING;
+  const startReady =
+    bridgeAvailable &&
+    pathValidated &&
+    !busy &&
+    !isRunning &&
+    reach !== DDS_STATUS.CHECKING &&
+    reach !== DDS_STATUS.UNSUPPORTED;
+
+  if (isRunning) {
+    const stopEnabled = bridgeAvailable && pathValidated && !busy;
+    return (
+      <button
+        type="button"
+        className="dds-local__btn dds-local__btn--stop"
+        onClick={onStop}
+        disabled={!stopEnabled}
+        title={stopEnabled ? stopTitle : 'Stopping…'}
+      >
+        {busy ? '…' : 'Stop'}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={`dds-local__btn dds-local__btn--start${
+        startReady ? ' dds-local__btn--start-ready' : ''
+      }`}
+      onClick={onStart}
+      disabled={!startReady}
+      title={!pathValidated ? PATH_INVALID_TITLE : startTitle}
+    >
+      {busy ? '…' : 'Start'}
+    </button>
+  );
+}
 
 const DdsLocalControl = () => {
-  const bridgeAvailable = useMemo(() => hasDdsBridge(), []);
-  const [ddsDir, setDdsDir] = useState(() => loadDdsLocalSettings().ddsDir);
+  const ddsBridgeAvailable = useMemo(() => hasDdsBridge(), []);
+  const dockerBridgeAvailable = useMemo(() => hasDockerBridge(), []);
+  const bridgeAvailable = ddsBridgeAvailable && dockerBridgeAvailable;
+
+  const [platformDir, setPlatformDir] = useState(() => loadDdsLocalSettings().platformDir);
   const [wslDistro, setWslDistro] = useState(() => loadDdsLocalSettings().wslDistro);
   const [showWslDistro, setShowWslDistro] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(() => !loadDdsLocalSettings().ddsDir);
+  const [settingsOpen, setSettingsOpen] = useState(() => !loadDdsLocalSettings().platformDir);
   const [pathValidated, setPathValidated] = useState(false);
-  const [reach, setReach] = useState(DDS_STATUS.CHECKING);
+  const [dockerReach, setDockerReach] = useState(DDS_STATUS.CHECKING);
+  const [ddsReach, setDdsReach] = useState(DDS_STATUS.CHECKING);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
   const startupCheckDoneRef = useRef(false);
+  const pollInFlightRef = useRef(false);
 
   const settings = useMemo(
-    () => ({ ddsDir: ddsDir.trim(), wslDistro: wslDistro.trim() }),
-    [ddsDir, wslDistro],
+    () => ({ platformDir: platformDir.trim(), wslDistro: wslDistro.trim() }),
+    [platformDir, wslDistro],
   );
 
   useEffect(() => {
@@ -40,44 +101,71 @@ const DdsLocalControl = () => {
 
   useEffect(() => {
     setPathValidated(false);
-  }, [settings.ddsDir, settings.wslDistro]);
+  }, [settings.platformDir, settings.wslDistro]);
 
-  const pollStatus = useCallback(async () => {
-    if (!bridgeAvailable) {
-      setReach(DDS_STATUS.UNSUPPORTED);
-      return;
-    }
-    setReach((prev) =>
-      prev === DDS_STATUS.RUNNING || prev === DDS_STATUS.STOPPED
-        ? prev
-        : DDS_STATUS.CHECKING,
-    );
-    try {
-      const payload = await fetchDdsLocalStatus(settings);
+  const reachFromPayload = useCallback(
+    (payload, pathValid) => {
       let next = parseDdsStatusPayload(payload, {
         hasBridge: bridgeAvailable,
-        ddsDir: settings.ddsDir,
+        platformDir: settings.platformDir,
       });
-      if (pathValidated && next === DDS_STATUS.UNCONFIGURED) {
+      if (pathValid && next === DDS_STATUS.UNCONFIGURED) {
         next = DDS_STATUS.STOPPED;
       }
-      setReach(next);
-    } catch {
-      setReach(
-        settings.ddsDir && pathValidated
-          ? DDS_STATUS.STOPPED
-          : settings.ddsDir
-            ? DDS_STATUS.STOPPED
-            : DDS_STATUS.UNCONFIGURED,
-      );
+      return next;
+    },
+    [bridgeAvailable, settings.platformDir],
+  );
+
+  const setReachIfChanged = useCallback((setter, next) => {
+    setter((prev) => (prev === next ? prev : next));
+  }, []);
+
+  const pollStackStatus = useCallback(async () => {
+    if (!bridgeAvailable) {
+      setReachIfChanged(setDockerReach, DDS_STATUS.UNSUPPORTED);
+      setReachIfChanged(setDdsReach, DDS_STATUS.UNSUPPORTED);
+      return;
     }
-  }, [bridgeAvailable, settings, pathValidated]);
+
+    if (!pathValidated) {
+      setReachIfChanged(setDockerReach, DDS_STATUS.UNCONFIGURED);
+      setReachIfChanged(setDdsReach, DDS_STATUS.UNCONFIGURED);
+      return;
+    }
+
+    if (pollInFlightRef.current) {
+      return;
+    }
+    pollInFlightRef.current = true;
+
+    try {
+      const { docker: dockerPayload, dds: ddsPayload } = await fetchLocalStackStatus(
+        settings,
+      );
+      const dockerNext = reachFromPayload(dockerPayload, true);
+      const ddsNext = reachFromPayload(ddsPayload, true);
+      setReachIfChanged(setDockerReach, dockerNext);
+      setReachIfChanged(setDdsReach, ddsNext);
+    } catch {
+      setReachIfChanged(setDockerReach, DDS_STATUS.STOPPED);
+      setReachIfChanged(setDdsReach, DDS_STATUS.STOPPED);
+    } finally {
+      pollInFlightRef.current = false;
+    }
+  }, [bridgeAvailable, pathValidated, reachFromPayload, setReachIfChanged, settings]);
 
   useEffect(() => {
-    pollStatus();
-    const interval = setInterval(pollStatus, DDS_POLL_INTERVAL_MS);
+    if (!pathValidated) {
+      setReachIfChanged(setDockerReach, DDS_STATUS.UNCONFIGURED);
+      setReachIfChanged(setDdsReach, DDS_STATUS.UNCONFIGURED);
+      return undefined;
+    }
+
+    pollStackStatus();
+    const interval = setInterval(pollStackStatus, DDS_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [pollStatus]);
+  }, [pathValidated, pollStackStatus, setReachIfChanged]);
 
   useEffect(() => {
     if (!status.message || status.type !== 'success') return undefined;
@@ -90,9 +178,12 @@ const DdsLocalControl = () => {
   const runValidate = useCallback(
     async ({ silent = false, settings: settingsOverride } = {}) => {
       const toValidate = settingsOverride || settings;
-      if (!toValidate.ddsDir) {
+      if (!toValidate.platformDir) {
         if (!silent) {
-          setStatus({ type: 'error', message: 'Enter the path to the dds folder.' });
+          setStatus({
+            type: 'error',
+            message: 'Enter the path to the dds_robot_platform folder.',
+          });
         }
         return false;
       }
@@ -110,8 +201,9 @@ const DdsLocalControl = () => {
           }
           setSettingsOpen(false);
           setPathValidated(true);
-          setReach(DDS_STATUS.STOPPED);
-          pollStatus();
+          setDockerReach(DDS_STATUS.STOPPED);
+          setDdsReach(DDS_STATUS.STOPPED);
+          pollStackStatus();
           return true;
         }
         setPathValidated(false);
@@ -131,7 +223,7 @@ const DdsLocalControl = () => {
         setBusy(false);
       }
     },
-    [settings, pollStatus],
+    [settings, pollStackStatus],
   );
 
   useEffect(() => {
@@ -145,11 +237,11 @@ const DdsLocalControl = () => {
         setShowWslDistro(true);
       }
 
-      const nextDir = ddsDir.trim() || defaults.ddsDir || '';
+      const nextDir = platformDir.trim() || defaults.platformDir || '';
       const nextWsl = wslDistro.trim() || defaults.wslDistro || '';
 
-      if (!ddsDir.trim() && defaults.ddsDir) {
-        setDdsDir(defaults.ddsDir);
+      if (!platformDir.trim() && defaults.platformDir) {
+        setPlatformDir(defaults.platformDir);
         setSettingsOpen(false);
       }
       if (!wslDistro.trim() && defaults.wslDistro) {
@@ -163,7 +255,7 @@ const DdsLocalControl = () => {
 
       await runValidate({
         silent: true,
-        settings: { ddsDir: nextDir, wslDistro: nextWsl },
+        settings: { platformDir: nextDir, wslDistro: nextWsl },
       });
     })();
 
@@ -173,114 +265,154 @@ const DdsLocalControl = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- startup check once
   }, []);
 
-  const canStart =
-    bridgeAvailable &&
-    pathValidated &&
-    reach !== DDS_STATUS.RUNNING &&
-    !busy;
-
-  const canStop =
-    bridgeAvailable &&
-    Boolean(settings.ddsDir) &&
-    reach === DDS_STATUS.RUNNING &&
-    !busy;
-
   const handleValidate = () => runValidate({ silent: false });
 
-  const handleStart = async () => {
+  const handleDockerStart = async () => {
+    setBusy(true);
+    setStatus({ type: '', message: '' });
+    try {
+      const result = await dockerComposeUp(settings);
+      if (result.ok) {
+        setStatus({ type: '', message: '' });
+        setDockerReach(DDS_STATUS.RUNNING);
+        setTimeout(pollStackStatus, 2000);
+      } else {
+        setStatus({
+          type: 'error',
+          message: result.error || 'Docker start failed.',
+        });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: err.message || 'Docker start failed.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDockerStop = async () => {
+    setBusy(true);
+    setStatus({ type: '', message: '' });
+    try {
+      const result = await dockerComposeDown(settings);
+      if (result.ok) {
+        setStatus({ type: '', message: '' });
+        setDockerReach(DDS_STATUS.STOPPED);
+        pollStackStatus();
+      } else {
+        setStatus({
+          type: 'error',
+          message: result.error || 'Docker stop failed.',
+        });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: err.message || 'Docker stop failed.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDdsStart = async () => {
     setBusy(true);
     setStatus({ type: '', message: '' });
     try {
       const result = await startDdsLocal(settings);
       if (result.ok) {
         setStatus({ type: '', message: '' });
-        setReach(DDS_STATUS.RUNNING);
-        setTimeout(pollStatus, 1500);
+        setDdsReach(DDS_STATUS.RUNNING);
+        setTimeout(pollStackStatus, 1500);
       } else {
         setStatus({
           type: 'error',
-          message: result.error || 'Start failed.',
+          message: result.error || 'DDS start failed.',
         });
       }
     } catch (err) {
-      setStatus({ type: 'error', message: err.message || 'Start failed.' });
+      setStatus({ type: 'error', message: err.message || 'DDS start failed.' });
     } finally {
       setBusy(false);
     }
   };
 
-  const handleStop = async () => {
+  const handleDdsStop = async () => {
     setBusy(true);
     setStatus({ type: '', message: '' });
     try {
       const result = await stopDdsLocal(settings);
       if (result.ok) {
         setStatus({ type: '', message: '' });
-        setReach(DDS_STATUS.STOPPED);
-        pollStatus();
+        setDdsReach(DDS_STATUS.STOPPED);
+        pollStackStatus();
       } else {
         setStatus({
           type: 'error',
-          message: result.error || 'Stop failed.',
+          message: result.error || 'DDS stop failed.',
         });
       }
     } catch (err) {
-      setStatus({ type: 'error', message: err.message || 'Stop failed.' });
+      setStatus({ type: 'error', message: err.message || 'DDS stop failed.' });
     } finally {
       setBusy(false);
     }
   };
 
-  const startDisabledReason =
-    !bridgeAvailable
-      ? DDS_STATUS_LABELS[DDS_STATUS.UNSUPPORTED]
-      : !pathValidated
-        ? 'Check path in Settings first'
-        : reach === DDS_STATUS.RUNNING
-          ? 'DDS already running — use Stop'
-          : '';
-
   return (
-    <section className="dds-local" aria-label="Local DDS">
+    <section className="dds-local" aria-label="Local Stack">
       <div className="dds-local__head">
-        <span className="dds-local__title-row">
+        <span className="dds-local__panel-title">Local Stack</span>
+        <button
+          type="button"
+          className="dds-local__btn dds-local__btn--settings"
+          onClick={() => setSettingsOpen((o) => !o)}
+          aria-expanded={settingsOpen}
+          title="Platform folder path and WSL options"
+        >
+          {settingsOpen ? '▴' : '▾'}
+        </button>
+      </div>
+
+      <div className="dds-local__stack-row">
+        <span className="dds-local__row-label">
           <span
-            className={`dds-local__reach dds-local__reach--${reach}`}
-            title={DDS_STATUS_LABELS[reach]}
-            aria-label={DDS_STATUS_LABELS[reach]}
+            className={`dds-local__reach dds-local__reach--${dockerReach}`}
+            title={DDS_STATUS_LABELS[dockerReach]}
+            aria-label={`Docker: ${DDS_STATUS_LABELS[dockerReach]}`}
           />
-          <span className="dds-local__title">Local DDS</span>
+          Docker
         </span>
-        <div className="dds-local__actions">
-          <button
-            type="button"
-            className={`dds-local__btn dds-local__btn--start${
-              canStart ? ' dds-local__btn--start-ready' : ''
-            }`}
-            onClick={handleStart}
-            disabled={!canStart}
-            title={canStart ? 'Start local DDS' : startDisabledReason}
-          >
-            {busy ? '…' : 'Start'}
-          </button>
-          <button
-            type="button"
-            className="dds-local__btn dds-local__btn--stop"
-            onClick={handleStop}
-            disabled={!canStop}
-            title={canStop ? 'Stop local DDS' : 'DDS not running'}
-          >
-            Stop
-          </button>
-          <button
-            type="button"
-            className="dds-local__btn dds-local__btn--settings"
-            onClick={() => setSettingsOpen((o) => !o)}
-            aria-expanded={settingsOpen}
-            title="dds folder path and WSL options"
-          >
-            {settingsOpen ? '▴' : '▾'}
-          </button>
+        <div className="dds-local__row-actions">
+          <StackRowActions
+            reach={dockerReach}
+            pathValidated={pathValidated}
+            bridgeAvailable={bridgeAvailable}
+            busy={busy}
+            onStart={handleDockerStart}
+            onStop={handleDockerStop}
+            startTitle="Start Docker Compose"
+            stopTitle="Stop Docker Compose"
+          />
+        </div>
+      </div>
+
+      <div className="dds-local__stack-row">
+        <span className="dds-local__row-label">
+          <span
+            className={`dds-local__reach dds-local__reach--${ddsReach}`}
+            title={DDS_STATUS_LABELS[ddsReach]}
+            aria-label={`DDS: ${DDS_STATUS_LABELS[ddsReach]}`}
+          />
+          DDS
+        </span>
+        <div className="dds-local__row-actions">
+          <StackRowActions
+            reach={ddsReach}
+            pathValidated={pathValidated}
+            bridgeAvailable={bridgeAvailable}
+            busy={busy}
+            onStart={handleDdsStart}
+            onStop={handleDdsStop}
+            startTitle="Start local DDS"
+            stopTitle="Stop local DDS"
+          />
         </div>
       </div>
 
@@ -290,12 +422,12 @@ const DdsLocalControl = () => {
             id="dds-local-dir"
             type="text"
             className="dds-local__input"
-            placeholder="Path to dds folder"
-            value={ddsDir}
-            onChange={(e) => setDdsDir(e.target.value)}
+            placeholder="Path to dds_robot_platform"
+            value={platformDir}
+            onChange={(e) => setPlatformDir(e.target.value)}
             disabled={busy}
             autoComplete="off"
-            aria-label="dds folder path"
+            aria-label="dds_robot_platform folder path"
           />
           {showWslDistro && (
             <input
@@ -314,7 +446,7 @@ const DdsLocalControl = () => {
             type="button"
             className="dds-local__btn dds-local__btn--check"
             onClick={handleValidate}
-            disabled={busy || !settings.ddsDir}
+            disabled={busy || !settings.platformDir}
           >
             Check
           </button>

@@ -979,27 +979,45 @@
 .dds-local__head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
   min-width: 0;
+  margin-bottom: 6px;
 }
 
-.dds-local__title-row {
+.dds-local__panel-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #444;
+}
+
+.dds-local__stack-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 4px;
+}
+
+.dds-local__row-label {
   flex: 1;
   min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
 }
 
-.dds-local__title {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: #444;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+.dds-local__row-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  min-width: 3.25rem;
+  justify-content: flex-end;
 }
 
 .dds-local__reach {
@@ -1040,12 +1058,6 @@
   }
 }
 
-.dds-local__actions {
-  display: flex;
-  flex-shrink: 0;
-  gap: 4px;
-}
-
 .dds-local__btn {
   padding: 3px 8px;
   border: 1px solid #ccc;
@@ -1074,6 +1086,13 @@
 
 .dds-local__btn--check:hover:not(:disabled) {
   background: #e9ecef;
+}
+
+.dds-local__btn--start:not(.dds-local__btn--start-ready):disabled {
+  background: #f0f0f0;
+  border-color: #ccc;
+  color: #999;
+  opacity: 1;
 }
 
 .dds-local__btn--start-ready {

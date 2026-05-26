@@ -15,17 +15,18 @@ export const DDS_STATUS_LABELS = {
   [DDS_STATUS.UNSUPPORTED]: 'Use Electron or npm start',
 };
 
-export const DDS_POLL_INTERVAL_MS = 3000;
+/** Background poll while path is verified (WSL/docker checks are expensive). */
+export const DDS_POLL_INTERVAL_MS = 8000;
 
 /**
  * @param {{ running?: boolean, configured?: boolean, error?: string }} payload
- * @param {{ hasBridge: boolean, ddsDir: string }} context
+ * @param {{ hasBridge: boolean, platformDir: string }} context
  */
 export function parseDdsStatusPayload(payload, context) {
   if (!context.hasBridge) {
     return DDS_STATUS.UNSUPPORTED;
   }
-  if (!context.ddsDir) {
+  if (!context.platformDir) {
     return DDS_STATUS.UNCONFIGURED;
   }
   if (payload?.configured === false) {

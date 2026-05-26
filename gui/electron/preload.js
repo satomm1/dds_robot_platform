@@ -13,3 +13,13 @@ contextBridge.exposeInMainWorld('ddsLocal', {
   start: (settings) => ipcRenderer.invoke('dds-local-start', settings),
   stop: (settings) => ipcRenderer.invoke('dds-local-stop', settings),
 });
+
+contextBridge.exposeInMainWorld('dockerCompose', {
+  status: (settings) => ipcRenderer.invoke('docker-compose-status', settings),
+  up: (settings) => ipcRenderer.invoke('docker-compose-up', settings),
+  down: (settings) => ipcRenderer.invoke('docker-compose-down', settings),
+});
+
+contextBridge.exposeInMainWorld('localStack', {
+  status: (settings) => ipcRenderer.invoke('local-stack-status', settings),
+});
