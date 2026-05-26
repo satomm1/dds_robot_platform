@@ -59,6 +59,11 @@ function AppContent() {
   });
 
   const [helpOpen, setHelpOpen] = useState(false);
+  const [launcherContext, setLauncherContext] = useState({
+    host: '',
+    label: '',
+    reach: 'offline',
+  });
   const [selectedRobotId, setSelectedRobotId] = useState(null);
   const [robotMarkerRadius, setRobotMarkerRadius] = useState(readStoredRobotMarkerRadius);
 
@@ -430,11 +435,14 @@ function AppContent() {
               dismissPathForRobot={dismissPathForRobot}
             />
           </div>
-          <RobotStartup />
+          <RobotStartup onLauncherContextChange={setLauncherContext} />
           <ShutDownAllButton
             robotPositions={robotPositions}
             positionsLoading={positionsLoading}
             dismissPathForRobot={dismissPathForRobot}
+            launcherHost={launcherContext.host}
+            launcherLabel={launcherContext.label}
+            launcherReach={launcherContext.reach}
           />
         </aside>
       </div>

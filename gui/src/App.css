@@ -468,15 +468,44 @@
   margin-top: auto;
 }
 
+.shutdown-all__row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 6px;
+}
+
 .shutdown-all__btn {
-  width: 100%;
-  padding: 9px 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
   font-size: 13px;
 }
 
-.shutdown-all__btn:disabled {
+.shutdown-all__btn--poweroff {
+  flex: 0 0 auto;
+  padding: 9px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  border-color: #b71c1c;
+  color: #b71c1c;
+  background: #fff;
+}
+
+.shutdown-all__btn--poweroff:hover:not(:disabled) {
+  background: #ffebee;
+}
+
+.shutdown-all__btn:disabled,
+.shutdown-all__btn--poweroff:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.shutdown-all__btn--poweroff:disabled {
+  color: #999;
+  border-color: #ccc;
+  background: #f5f5f5;
 }
 
 .map-container {
@@ -1440,6 +1469,82 @@
 
 .robot-startup__btn--start:disabled {
   opacity: 0.55;
+}
+
+.robot-poweroff-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.robot-poweroff-modal__dialog {
+  max-width: 420px;
+  width: 100%;
+  padding: 20px 22px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.robot-poweroff-modal__title {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #b71c1c;
+}
+
+.robot-poweroff-modal__body {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #333;
+}
+
+.robot-poweroff-modal__note {
+  margin: 0 0 16px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #666;
+}
+
+.robot-poweroff-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.robot-poweroff-modal__btn {
+  padding: 8px 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #fff;
+}
+
+.robot-poweroff-modal__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.robot-poweroff-modal__btn--cancel:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.robot-poweroff-modal__btn--confirm {
+  border-color: #b71c1c;
+  background: #c62828;
+  color: #fff;
+}
+
+.robot-poweroff-modal__btn--confirm:hover:not(:disabled) {
+  background: #b71c1c;
 }
 
 .robot-startup__status {

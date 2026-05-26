@@ -77,11 +77,14 @@ const HelpModal = ({ onClose }) => {
             <HelpChip className="robot-startup__btn robot-startup__btn--start robot-startup__btn--start-ready">
               Start
             </HelpChip>
-            . When the robot is reachable, <strong>Start</strong> appears green. To shut down
-            the robot, select it in the <strong>Select Robot</strong> list, then click{' '}
-            <HelpChip className="control-button shutdown">Shut Down</HelpChip> in the{' '}
-            <strong>right sidebar</strong> (the panel that shows the selected robot&apos;s name,
-            position, and heading).
+            . When the robot is reachable, <strong>Start</strong> appears green. At the bottom of
+            the right sidebar, <HelpChip className="control-button shutdown">Shut Down All</HelpChip>{' '}
+            sends a software shut down to every online robot;{' '}
+            <HelpChip className="shutdown-all__btn shutdown-all__btn--poweroff">Power Off</HelpChip>{' '}
+            (with confirmation) uses the <strong>Robot Startup</strong> IP to stop ROS, stop the
+            Docker container, and power off that computer. For a single robot over DDS, use{' '}
+            <HelpChip className="control-button shutdown">Shut Down</HelpChip> above the startup
+            panel.
           </p>
         </section>
 

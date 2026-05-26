@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchRobotLauncherStatus, requestRobotLauncher } from '../utils/robotLauncherApi';
+import {
+  fetchRobotLauncherStatus,
+  requestRobotLauncher,
+} from '../utils/robotLauncherApi';
 import {
   createHostId,
   loadSavedHosts,
@@ -104,7 +107,7 @@ function SavedHostPicker({ hosts, hostStatus, selectedId, disabled, onSelect }) 
   );
 }
 
-const RobotStartup = () => {
+const RobotStartup = ({ onLauncherContextChange }) => {
   const [saved, setSaved] = useState(() => loadSavedHosts());
   const [selectedId, setSelectedId] = useState(saved.lastSelectedId || '');
   const [label, setLabel] = useState('');
@@ -116,6 +119,22 @@ const RobotStartup = () => {
   const [hostStatus, setHostStatus] = useState({});
 
   const activeHost = useMemo(() => normalizeHostInput(hostInput), [hostInput]);
+
+  const activeReach = useMemo(
+    () =>
+      activeHost
+        ? hostStatus[activeHost] || HOST_STATUS.OFFLINE
+        : HOST_STATUS.OFFLINE,
+    [activeHost, hostStatus],
+  );
+
+  useEffect(() => {
+    onLauncherContextChange?.({
+      host: activeHost,
+      label: (label || '').trim(),
+      reach: activeReach,
+    });
+  }, [activeHost, activeReach, label, onLauncherContextChange]);
 
   const pollHosts = useMemo(() => {
     const hosts = new Set(saved.hosts.map((h) => h.host));
@@ -206,10 +225,6 @@ const RobotStartup = () => {
       setSelectedId(entry.id);
     }
   }, []);
-
-  const activeReach = activeHost
-    ? hostStatus[activeHost] || HOST_STATUS.OFFLINE
-    : HOST_STATUS.OFFLINE;
 
   const canStart =
     Boolean(activeHost) &&

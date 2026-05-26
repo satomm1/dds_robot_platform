@@ -3,10 +3,32 @@
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
+import os
 import subprocess
 from urllib.parse import parse_qs, urlparse
 
 launch_process = None
+
+CONTAINER_NAME = os.environ.get("ROBOT_CONTAINER_NAME", "ros_noetic")
+POWEROFF_TOKEN = os.environ.get("ROBOT_POWEROFF_TOKEN", "")
+
+HOST_POWEROFF_CMD = (
+    f"/usr/bin/docker stop -t 30 {CONTAINER_NAME} && "
+    "/usr/sbin/shutdown -h now"
+)
+
+NSENTER_POWEROFF = [
+    "nsenter",
+    "-t",
+    "1",
+    "-m",
+    "-u",
+    "-i",
+    "-n",
+    "bash",
+    "-lc",
+    HOST_POWEROFF_CMD,
+]
 
 # Single-robot vs multi-robot bringup (same car/social args on each).
 LAUNCH_FILES = {
@@ -24,6 +46,34 @@ def _parse_bool_query(query_string, param_name):
     values = parse_qs(query_string).get(param_name, ["false"])
     token = (values[0] if values else "false").strip().lower()
     return token in ("true", "1", "yes")
+
+
+def _token_ok(query_string):
+    if not POWEROFF_TOKEN:
+        return True
+    values = parse_qs(query_string).get("token", [""])
+    return (values[0] if values else "").strip() == POWEROFF_TOKEN
+
+
+def _stop_ros_launch():
+    global launch_process
+    if launch_process and launch_process.poll() is None:
+        launch_process.terminate()
+        try:
+            launch_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            launch_process.kill()
+    launch_process = None
+
+
+def _schedule_host_poweroff():
+    subprocess.Popen(
+        NSENTER_POWEROFF,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 class LaunchServer(BaseHTTPRequestHandler):
@@ -108,15 +158,33 @@ class LaunchServer(BaseHTTPRequestHandler):
 
         elif pathname == "/stop":
             if launch_process and launch_process.poll() is None:
-                launch_process.terminate()
-                launch_process = None
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"ROS Launch stopped cleanly.")
+                _stop_ros_launch()
+                msg = b"ROS Launch stopped cleanly."
             else:
-                self.send_response(200)
+                msg = b"Nothing is currently running."
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(msg)
+            return
+
+        elif pathname == "/host-poweroff":
+            if not _token_ok(parsed.query):
+                self.send_response(403)
                 self.end_headers()
-                self.wfile.write(b"Nothing is currently running.")
+                self.wfile.write(b"Forbidden.")
+                return
+
+            _stop_ros_launch()
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(
+                b"ROS stopped; container stop and host shutdown scheduled."
+            )
+            self.wfile.flush()
+
+            _schedule_host_poweroff()
             return
 
         else:
@@ -128,5 +196,8 @@ class LaunchServer(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", 8080), LaunchServer)
-    print("Web launcher listening on port 8080 (GET /status, /start, /stop)...")
+    print(
+        "Web launcher listening on port 8080 "
+        "(GET /status, /start, /stop, /host-poweroff)..."
+    )
     server.serve_forever()

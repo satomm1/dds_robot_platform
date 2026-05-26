@@ -107,6 +107,29 @@ export async function requestRobotLauncher(host, path, options = {}) {
   return requestRobotLauncherRaw(host, route, REQUEST_TIMEOUT_MS);
 }
 
+/**
+ * Build path for GET /host-poweroff (optional token query).
+ * @param {string} [token]
+ */
+export function buildHostPowerOffPath(token = '') {
+  const trimmed = (token || '').trim();
+  if (!trimmed) {
+    return '/host-poweroff';
+  }
+  const params = new URLSearchParams();
+  params.set('token', trimmed);
+  return `/host-poweroff?${params.toString()}`;
+}
+
+/**
+ * Stop ROS, stop the robot container, and power off the host (launch_server /host-poweroff).
+ * @param {string} host
+ * @param {string} [token]
+ */
+export async function requestRobotHostPowerOff(host, token = '') {
+  return requestRobotLauncherRaw(host, buildHostPowerOffPath(token), REQUEST_TIMEOUT_MS);
+}
+
 /** GET /status — short timeout, no throw on unreachable host (returns { ok: false }). */
 export async function fetchRobotLauncherStatus(host) {
   const cleanHost = normalizeHostInput(host);
