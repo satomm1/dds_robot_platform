@@ -9,12 +9,12 @@ from urllib.parse import parse_qs, urlparse
 
 launch_process = None
 
-CONTAINER_NAME = os.environ.get("ROBOT_CONTAINER_NAME", "ros_noetic")
 POWEROFF_TOKEN = os.environ.get("ROBOT_POWEROFF_TOKEN", "")
 
+# Host shutdown only (no docker stop). Use nohup so the HTTP handler can return
+# before the machine halts; Docker stops when the host shuts down.
 HOST_POWEROFF_CMD = (
-    f"/usr/bin/docker stop -t 30 {CONTAINER_NAME} && "
-    "/usr/sbin/shutdown -h now"
+    "nohup bash -c '/usr/sbin/shutdown -h now' </dev/null >/dev/null 2>&1 &"
 )
 
 NSENTER_POWEROFF = [
@@ -179,9 +179,7 @@ class LaunchServer(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
-            self.wfile.write(
-                b"ROS stopped; container stop and host shutdown scheduled."
-            )
+            self.wfile.write(b"ROS stopped; host shutdown scheduled.")
             self.wfile.flush()
 
             _schedule_host_poweroff()
