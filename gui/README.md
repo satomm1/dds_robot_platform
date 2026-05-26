@@ -16,6 +16,8 @@ End users can install a **desktop build** without Node.js or the command line. I
    - **Linux:** `gui-installer-ubuntu-latest` — unzip the **`.AppImage`**, run `chmod +x` on it if needed, then execute it. Install **FUSE** / **libfuse2** for AppImage support if your distro requires it.
 4. **Backend:** This package is only the UI. The GraphQL server must be running separately. The app uses **`http://localhost:8000/graphql`** by default (see [`src/apolloClient.js`](src/apolloClient.js)) unless the maintainer built it with another URL.
 
+**Local DDS:** The **Local DDS** panel (left sidebar) can start/stop `dds/start_scripts.sh` and `dds/stop_scripts.sh`. Configure `dds/dds_env.sh` (from `dds_env.sh.example`) for `AGENT_ID`, `INFLUXDB_TOKEN`, etc. The app validates your `dds` folder path on startup. Works in **Electron** and **`npm start`** (not a static browser-only build). On Windows, scripts run via WSL.
+
 **Maintainers:** See the root [`README.md`](../README.md) for the same end-user steps in the main project docs.
 
 **Custom GraphQL URL:** Set `REACT_APP_GRAPHQL_HTTP_URL` when creating the production bundle, then build again (CRA bakes this into the JS at build time):

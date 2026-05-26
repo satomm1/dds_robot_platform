@@ -28,6 +28,8 @@ You will also need a conda interpreter. I recommend [miniconda](https://www.anac
     conda env create -f environment.yml
     ```
 
+    Copy [`dds/dds_env.sh.example`](dds/dds_env.sh.example) to `dds/dds_env.sh` and set **`AGENT_ID`**, **`INFLUXDB_TOKEN`**, and any other operator variables (`start_scripts.sh` and the GUI read this file).
+
 3) Open 3 Terminals:
     - Terminal 1: Start docker and the relevant containers (from the main `dds_robot_platform` directory):
         ```

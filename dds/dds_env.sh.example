@@ -1,0 +1,10 @@
+# Copy to dds_env.sh in this directory (gitignored):
+#   cp dds_env.sh.example dds_env.sh
+#
+# Required by start_scripts.sh and the GUI Local DDS launcher.
+
+export AGENT_ID=1
+export INFLUXDB_TOKEN=your-influx-token-here
+
+# Optional:
+# export GRAPHQL_HTTP_URL=http://localhost:8000/graphql
