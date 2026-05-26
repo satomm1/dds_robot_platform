@@ -42,8 +42,11 @@ const HelpModal = ({ onClose }) => {
             Local Stack (this computer)
           </h3>
           <p className="help-modal__body">
-            The <strong>Local Stack</strong> panel in the <strong>left sidebar</strong> (below{' '}
-            <strong>Robot size on map</strong>) controls Docker and DDS on your operator PC.{' '}
+            The <strong>Local Stack</strong> panel at the <strong>bottom of the right sidebar</strong>{' '}
+            (with GraphQL / DDS status pills) controls Docker and DDS on your operator PC. Hide the
+            whole right column with the <strong>›</strong> button just left of the resize grip; use the narrow{' '}
+            <strong>Startup Panel</strong> tab on the map edge to show it again (width and hidden state are
+            remembered).{' '}
             <strong>Docker</strong> runs <code>docker compose up -d</code> /{' '}
             <code>docker compose down</code> in the repo root (where <code>compose.yaml</code>{' '}
             lives). <strong>DDS</strong> runs <code>start_scripts.sh</code> /{' '}
@@ -63,7 +66,7 @@ const HelpModal = ({ onClose }) => {
             Starting and stopping the robot
           </h3>
           <p className="help-modal__body">
-            In the <strong>Robot Startup</strong> panel, enter a{' '}
+            In the <strong>Robot Startup</strong> panel at the <strong>top of the right sidebar</strong>, enter a{' '}
             <HelpChip className="robot-startup__label">Label</HelpChip> and{' '}
             <HelpChip className="robot-startup__label">Robot IP</HelpChip>, or choose a
             previously saved robot from the{' '}
@@ -77,13 +80,13 @@ const HelpModal = ({ onClose }) => {
             <HelpChip className="robot-startup__btn robot-startup__btn--start robot-startup__btn--start-ready">
               Start
             </HelpChip>
-            . When the robot is reachable, <strong>Start</strong> appears green. At the bottom of
-            the right sidebar, <HelpChip className="control-button shutdown">Shut Down All</HelpChip>{' '}
-            sends a software shut down to every online robot;{' '}
-            <HelpChip className="shutdown-all__btn shutdown-all__btn--poweroff">Power Off</HelpChip>{' '}
-            (with confirmation) uses the <strong>Robot Startup</strong> IP to stop ROS, stop the
-            Docker container, and power off that computer. For a single robot over DDS, use{' '}
-            <HelpChip className="control-button shutdown">Shut Down</HelpChip> above the startup
+            . When the robot is reachable, <strong>Start</strong> appears green.{' '}
+            <HelpChip className="robot-startup__btn robot-startup__btn--poweroff">Power Off</HelpChip>{' '}
+            (with confirmation) uses the startup IP to halt that PC. At the bottom of the{' '}
+            <strong>left sidebar</strong>,{' '}
+            <HelpChip className="control-button shutdown">Shut Down All</HelpChip> sends a software
+            shut down to every online robot. For one robot over DDS, select it on the left and use{' '}
+            <HelpChip className="control-button shutdown">Shut Down</HelpChip> in the robot details
             panel.
           </p>
         </section>
@@ -94,7 +97,9 @@ const HelpModal = ({ onClose }) => {
           </h3>
           <p className="help-modal__body">
             The center panel shows the occupancy grid, robot positions, goals, and paths. Use the
-            draggable map controls overlay (grab its handle to move it) for goal and path options.
+            draggable map controls overlay (grab its handle to move it) for goal and object actions.
+            Open <strong>Map Settings</strong> for robot size, path visibility and width, and cursor
+            coordinates.
           </p>
           <ul className="help-modal__list">
             <li>
@@ -107,8 +112,9 @@ const HelpModal = ({ onClose }) => {
               <strong>+</strong> and <strong>−</strong> buttons on the map controls panel.
             </li>
             <li>
-              <strong>Robot size:</strong> Use the <strong>Robot size on map</strong> slider at the
-              bottom of the left sidebar to make robot markers larger or smaller.
+              <strong>Map Settings</strong> (header, next to <strong>Help</strong>): robot marker size,{' '}
+              <strong>Show selected robot only</strong>, <strong>Show paths</strong>,{' '}
+              <strong>Path width</strong>, and <strong>Show cursor coordinates</strong>.
             </li>
           </ul>
         </section>
@@ -136,7 +142,8 @@ const HelpModal = ({ onClose }) => {
             goal, click{' '}
             <HelpChip className="btn-goal-init-active btn-goal-narrow">Set Robot Goal</HelpChip>
             , then use the same click-drag gesture on the map. To stop robot motion, click{' '}
-            <HelpChip className="control-button stop">Stop</HelpChip> in the right sidebar.
+            <HelpChip className="control-button stop">Stop</HelpChip> in the left sidebar robot
+            details panel.
           </p>
         </section>
 
@@ -147,7 +154,8 @@ const HelpModal = ({ onClose }) => {
           <p className="help-modal__body">
             Click{' '}
             <HelpChip className="btn-goal-init-active btn-goal-narrow">Multi-robot plan</HelpChip> in
-            the left sidebar. In the planner panel that appears below, check at least two robots
+            the left sidebar. In the planner panel below the robot position / stop / shut down
+            section, check at least two robots
             under <strong>Fleet</strong>, for example{' '}
             <HelpChip className="help-modal__fleet-check">
               <span className="help-modal__checkbox" aria-hidden="true" />

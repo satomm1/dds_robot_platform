@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import RobotPowerOffModal from './RobotPowerOffModal';
 import {
   fetchRobotLauncherStatus,
+  requestRobotHostPowerOff,
   requestRobotLauncher,
 } from '../utils/robotLauncherApi';
 import {
@@ -107,7 +109,7 @@ function SavedHostPicker({ hosts, hostStatus, selectedId, disabled, onSelect }) 
   );
 }
 
-const RobotStartup = ({ onLauncherContextChange }) => {
+const RobotStartup = () => {
   const [saved, setSaved] = useState(() => loadSavedHosts());
   const [selectedId, setSelectedId] = useState(saved.lastSelectedId || '');
   const [label, setLabel] = useState('');
@@ -117,6 +119,7 @@ const RobotStartup = ({ onLauncherContextChange }) => {
   const [useSocialPlanner, setUseSocialPlanner] = useState(false);
   const [useMultiRobotPlanner, setUseMultiRobotPlanner] = useState(false);
   const [hostStatus, setHostStatus] = useState({});
+  const [powerOffOpen, setPowerOffOpen] = useState(false);
 
   const activeHost = useMemo(() => normalizeHostInput(hostInput), [hostInput]);
 
@@ -127,14 +130,6 @@ const RobotStartup = ({ onLauncherContextChange }) => {
         : HOST_STATUS.OFFLINE,
     [activeHost, hostStatus],
   );
-
-  useEffect(() => {
-    onLauncherContextChange?.({
-      host: activeHost,
-      label: (label || '').trim(),
-      reach: activeReach,
-    });
-  }, [activeHost, activeReach, label, onLauncherContextChange]);
 
   const pollHosts = useMemo(() => {
     const hosts = new Set(saved.hosts.map((h) => h.host));
@@ -241,6 +236,55 @@ const RobotStartup = ({ onLauncherContextChange }) => {
           : activeReach === HOST_STATUS.OFFLINE
             ? 'Robot launcher not reachable (is the robot on?)'
             : '';
+
+  const launcherReachable =
+    activeReach === HOST_STATUS.AVAILABLE || activeReach === HOST_STATUS.RUNNING;
+  const canPowerOff = Boolean(activeHost) && launcherReachable && !busy;
+
+  const powerOffDisabledReason = !activeHost
+    ? 'Enter a robot IP'
+    : activeReach === HOST_STATUS.CHECKING
+      ? 'Checking robot…'
+      : !launcherReachable
+        ? 'Robot launcher not reachable (is the robot on?)'
+        : '';
+
+  const handlePowerOffConfirm = async () => {
+    const host = normalizeHostInput(hostInput);
+    if (!host) {
+      setStatus({ type: 'error', message: 'Enter a robot IP.' });
+      return;
+    }
+    setBusy(true);
+    setStatus({ type: '', message: '' });
+    try {
+      const result = await requestRobotHostPowerOff(host, '');
+      if (result.ok) {
+        setPowerOffOpen(false);
+        setStatus({
+          type: 'success',
+          message:
+            result.body?.trim() ||
+            'Power off scheduled. The robot PC should halt shortly.',
+        });
+        setHostStatus((prev) => ({ ...prev, [host]: HOST_STATUS.OFFLINE }));
+      } else {
+        setStatus({
+          type: 'error',
+          message: result.body
+            ? `Power off failed: ${result.body}`
+            : `Power off failed (HTTP ${result.status}).`,
+        });
+      }
+    } catch (err) {
+      setStatus({
+        type: 'error',
+        message: err.message || 'Power off request failed.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleSelectSaved = (id) => {
     setSelectedId(id);
@@ -447,7 +491,7 @@ const RobotStartup = ({ onLauncherContextChange }) => {
         </div>
       </div>
 
-      <div className="robot-startup__start-wrap">
+      <div className="robot-startup__actions">
         <button
           type="button"
           className={`robot-startup__btn robot-startup__btn--start${
@@ -457,9 +501,35 @@ const RobotStartup = ({ onLauncherContextChange }) => {
           disabled={!canStart}
           title={canStart ? 'Start ROS launch on this robot' : startDisabledReason}
         >
-          {busy ? '…' : 'Start'}
+          {busy && !powerOffOpen ? '…' : 'Start'}
+        </button>
+        <button
+          type="button"
+          className="robot-startup__btn robot-startup__btn--poweroff"
+          onClick={() => setPowerOffOpen(true)}
+          disabled={!canPowerOff}
+          title={
+            canPowerOff
+              ? 'Stop ROS and power off the robot PC'
+              : powerOffDisabledReason
+          }
+        >
+          Power Off
         </button>
       </div>
+
+      <RobotPowerOffModal
+        open={powerOffOpen}
+        host={activeHost}
+        label={label}
+        busy={busy}
+        onCancel={() => {
+          if (!busy) {
+            setPowerOffOpen(false);
+          }
+        }}
+        onConfirm={handlePowerOffConfirm}
+      />
 
       {status.message && (
         <p

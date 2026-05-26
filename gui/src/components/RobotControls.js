@@ -11,6 +11,7 @@ const RobotControls = ({
   positionsLoading,
   positionsError,
   dismissPathForRobot,
+  onCenterOnRobot,
 }) => {
   const [notice, setNotice] = useState(null);
   const noticeTimerRef = useRef(null);
@@ -22,6 +23,8 @@ const RobotControls = ({
   const selectedRobot = robotPositions.find((r) => r.id === selectedRobotId);
   const canStop =
     selectedRobotId != null && Boolean(selectedRobot) && !stopLoading && !positionsLoading;
+  const canCenterOnRobot =
+    selectedRobotId != null && Boolean(selectedRobot) && typeof onCenterOnRobot === 'function';
 
   const showNotice = useCallback((message, type = 'success') => {
     setNotice({ message, type });
@@ -155,9 +158,27 @@ const RobotControls = ({
       <div className="control-buttons">
         <button
           type="button"
+          onClick={() => onCenterOnRobot(selectedRobotId)}
+          disabled={!canCenterOnRobot}
+          className="control-button center-map"
+          title={
+            canCenterOnRobot
+              ? 'Pan and zoom the map to this robot'
+              : 'Select a robot to center the map'
+          }
+        >
+          Center
+        </button>
+        <button
+          type="button"
           onClick={handleStop}
           disabled={!canStop}
           className="control-button stop"
+          title={
+            canStop
+              ? 'Stops all robot motion and moves the robot to an idle state'
+              : 'Select an online robot to send stop'
+          }
         >
           Stop
         </button>
@@ -166,6 +187,7 @@ const RobotControls = ({
           onClick={handleShutdown}
           disabled={shutdownLoading}
           className="control-button shutdown"
+          title="Stops all ROS code on this robot"
         >
           Shut Down
         </button>

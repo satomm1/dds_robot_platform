@@ -12,11 +12,22 @@ import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
 import HelpModal from './components/HelpModal';
+import MapSettingsModal from './components/MapSettingsModal';
 import SystemHealthBar from './components/SystemHealthBar';
-import RobotMarkerSizeSlider, {
+import {
   readStoredRobotMarkerRadius,
   ROBOT_MARKER_RADIUS_KEY,
 } from './components/RobotMarkerSizeSlider';
+import {
+  MAP_PATH_WIDTH_KEY,
+  MAP_SHOW_CURSOR_COORDS_KEY,
+  MAP_SHOW_PATHS_KEY,
+  MAP_SHOW_SELECTED_ROBOT_ONLY_KEY,
+  readStoredMapPathWidth,
+  readStoredMapShowCursorCoords,
+  readStoredMapShowPaths,
+  readStoredMapShowSelectedRobotOnly,
+} from './utils/mapDisplaySettings';
 import { RobotColorProvider } from './hooks/useRobotColors';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
 import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS } from './queries';
@@ -24,6 +35,15 @@ import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS } from './queries';
 const ROBOT_POSITIONS_POLL_MS = 2000;
 const SIDEBAR_LEFT_WIDTH_KEY = 'dds_gui_sidebar_left_width';
 const SIDEBAR_RIGHT_WIDTH_KEY = 'dds_gui_sidebar_right_width';
+const SIDEBAR_RIGHT_COLLAPSED_KEY = 'dds_gui_sidebar_right_collapsed';
+
+function readStoredRightSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_RIGHT_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 const devLog = (...args) => {
   if (process.env.NODE_ENV === 'development') {
@@ -59,17 +79,57 @@ function AppContent() {
   });
 
   const [helpOpen, setHelpOpen] = useState(false);
-  const [launcherContext, setLauncherContext] = useState({
-    host: '',
-    label: '',
-    reach: 'offline',
-  });
+  const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(
+    readStoredRightSidebarCollapsed,
+  );
   const [selectedRobotId, setSelectedRobotId] = useState(null);
+  const mapRef = useRef(null);
+
+  const handleCenterOnRobot = useCallback((robotId) => {
+    mapRef.current?.zoomToRobot(robotId);
+  }, []);
+
+  const setRightSidebarCollapsedPersisted = useCallback((collapsed) => {
+    setRightSidebarCollapsed(collapsed);
+    try {
+      localStorage.setItem(SIDEBAR_RIGHT_COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, []);
   const [robotMarkerRadius, setRobotMarkerRadius] = useState(readStoredRobotMarkerRadius);
+  const [mapShowPaths, setMapShowPaths] = useState(readStoredMapShowPaths);
+  const [mapPathWidth, setMapPathWidth] = useState(readStoredMapPathWidth);
+  const [mapShowCursorCoords, setMapShowCursorCoords] = useState(
+    readStoredMapShowCursorCoords,
+  );
+  const [mapShowSelectedRobotOnly, setMapShowSelectedRobotOnly] = useState(
+    readStoredMapShowSelectedRobotOnly,
+  );
 
   useEffect(() => {
     localStorage.setItem(ROBOT_MARKER_RADIUS_KEY, String(robotMarkerRadius));
   }, [robotMarkerRadius]);
+
+  useEffect(() => {
+    localStorage.setItem(MAP_SHOW_PATHS_KEY, mapShowPaths ? '1' : '0');
+  }, [mapShowPaths]);
+
+  useEffect(() => {
+    localStorage.setItem(MAP_PATH_WIDTH_KEY, String(mapPathWidth));
+  }, [mapPathWidth]);
+
+  useEffect(() => {
+    localStorage.setItem(MAP_SHOW_CURSOR_COORDS_KEY, mapShowCursorCoords ? '1' : '0');
+  }, [mapShowCursorCoords]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      MAP_SHOW_SELECTED_ROBOT_ONLY_KEY,
+      mapShowSelectedRobotOnly ? '1' : '0',
+    );
+  }, [mapShowSelectedRobotOnly]);
 
   const { data: positionsData, loading: positionsLoading, error: positionsError } = useQuery(
     GET_ROBOT_POSITIONS,
@@ -296,13 +356,22 @@ function AppContent() {
   return (
     <div className="App">
       <header className="App-header">
-        <button
-          type="button"
-          className="App-header__help-btn"
-          onClick={() => setHelpOpen(true)}
-        >
-          Help
-        </button>
+        <div className="App-header__left-actions">
+          <button
+            type="button"
+            className="App-header__toolbar-btn"
+            onClick={() => setHelpOpen(true)}
+          >
+            Help
+          </button>
+          <button
+            type="button"
+            className="App-header__toolbar-btn"
+            onClick={() => setMapSettingsOpen(true)}
+          >
+            Map Settings
+          </button>
+        </div>
         <h1 className="App-header__title">
           <a
             className="App-header__title-link"
@@ -336,6 +405,21 @@ function AppContent() {
         </div>
       </header>
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {mapSettingsOpen && (
+        <MapSettingsModal
+          onClose={() => setMapSettingsOpen(false)}
+          robotMarkerRadius={robotMarkerRadius}
+          onRobotMarkerRadiusChange={setRobotMarkerRadius}
+          showPaths={mapShowPaths}
+          onShowPathsChange={setMapShowPaths}
+          pathWidth={mapPathWidth}
+          onPathWidthChange={setMapPathWidth}
+          showCursorCoords={mapShowCursorCoords}
+          onShowCursorCoordsChange={setMapShowCursorCoords}
+          showSelectedRobotOnly={mapShowSelectedRobotOnly}
+          onShowSelectedRobotOnlyChange={setMapShowSelectedRobotOnly}
+        />
+      )}
       <div className="control-container">
         <div className="sidebar" style={{ width: leftSidebarWidth }}>
           <div className="sidebar__main">
@@ -369,6 +453,14 @@ function AppContent() {
               Multi-robot plan
             </button>
           </div>
+            <RobotControls
+              selectedRobotId={selectedRobotId}
+              robotPositions={robotPositions}
+              positionsLoading={positionsLoading}
+              positionsError={positionsError}
+              dismissPathForRobot={dismissPathForRobot}
+              onCenterOnRobot={handleCenterOnRobot}
+            />
           {positionMode === 'multiPlan' && (
             <MultiRobotGoalPlanner
               robotPositions={robotPositions}
@@ -386,21 +478,27 @@ function AppContent() {
             />
           )}
           </div>
-          <RobotMarkerSizeSlider
-            value={robotMarkerRadius}
-            onChange={setRobotMarkerRadius}
-          />
-          <DdsLocalControl />
-          <SystemHealthBar />
+          <div className="sidebar__left-footer">
+            <ShutDownAllButton
+              robotPositions={robotPositions}
+              positionsLoading={positionsLoading}
+              dismissPathForRobot={dismissPathForRobot}
+            />
+          </div>
         </div>
         <ColumnResizeHandle
           onMouseDown={beginLeftResize}
           label="Resize left panel"
         />
         <div className="map-container">
-          <RobotMap 
+          <RobotMap
+            ref={mapRef}
             selectedRobotId={selectedRobotId}
             robotMarkerRadius={robotMarkerRadius}
+            showPaths={mapShowPaths}
+            pathStrokeWidth={mapPathWidth}
+            showCursorCoordinates={mapShowCursorCoords}
+            showSelectedRobotOnly={mapShowSelectedRobotOnly}
             robotPositions={robotPositions}
             positionsLoading={positionsLoading}
             positionsError={positionsError}
@@ -417,34 +515,52 @@ function AppContent() {
             clearPathDismissalForRobot={clearPathDismissalForRobot}
           />
         </div>
-        <ColumnResizeHandle
-          onMouseDown={beginRightResize}
-          label="Resize right panel"
-        />
-        <aside
-          className="sidebar-right"
-          aria-label="Selected robot"
-          style={{ width: rightSidebarWidth }}
-        >
-          <div className="sidebar-right-main">
-            <RobotControls 
-              selectedRobotId={selectedRobotId}
-              robotPositions={robotPositions}
-              positionsLoading={positionsLoading}
-              positionsError={positionsError}
-              dismissPathForRobot={dismissPathForRobot}
-            />
-          </div>
-          <RobotStartup onLauncherContextChange={setLauncherContext} />
-          <ShutDownAllButton
-            robotPositions={robotPositions}
-            positionsLoading={positionsLoading}
-            dismissPathForRobot={dismissPathForRobot}
-            launcherHost={launcherContext.host}
-            launcherLabel={launcherContext.label}
-            launcherReach={launcherContext.reach}
-          />
-        </aside>
+        {rightSidebarCollapsed ? (
+          <button
+            type="button"
+            className="sidebar-right-expand"
+            onClick={() => setRightSidebarCollapsedPersisted(false)}
+            aria-label="Show right panel"
+            aria-expanded={false}
+            title="Show Robot Startup and Local Stack"
+          >
+            <span className="sidebar-right-expand__chevron" aria-hidden="true">
+              ‹
+            </span>
+            <span className="sidebar-right-expand__label">Startup Panel</span>
+          </button>
+        ) : (
+          <>
+            <div className="sidebar-right-rail">
+              <button
+                type="button"
+                className="sidebar-right-rail__collapse"
+                onClick={() => setRightSidebarCollapsedPersisted(true)}
+                aria-label="Hide right panel"
+                title="Hide panel"
+              >
+                <span aria-hidden="true">›</span>
+              </button>
+              <ColumnResizeHandle
+                onMouseDown={beginRightResize}
+                label="Resize right panel"
+              />
+            </div>
+            <aside
+              className="sidebar-right"
+              aria-label="Robot startup and local stack"
+              style={{ width: rightSidebarWidth }}
+            >
+              <div className="sidebar-right__top">
+                <RobotStartup />
+              </div>
+              <div className="sidebar-right__footer">
+                <DdsLocalControl />
+                <SystemHealthBar />
+              </div>
+            </aside>
+          </>
+        )}
       </div>
     </div>
   );

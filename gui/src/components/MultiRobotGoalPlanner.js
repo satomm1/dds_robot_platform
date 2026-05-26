@@ -29,11 +29,9 @@ const MultiRobotGoalPlanner = ({
 
   return (
     <div className="multi-robot-planner">
-      <p className="multi-robot-planner__hint">
-        Check all robots to include in plan, set goals in the map, and submit the plan.
-      </p>
+      <p className="multi-robot-planner__hint">Check fleet, stage goals on map, send plan.</p>
+
       <div className="multi-robot-planner__fleet">
-        <span className="multi-robot-planner__label">Fleet</span>
         {robotPositions.length === 0 ? (
           <span className="multi-robot-planner__muted">No robots online</span>
         ) : (
@@ -50,50 +48,63 @@ const MultiRobotGoalPlanner = ({
                     className="multi-robot-planner__dot"
                     style={{ backgroundColor: getRobotColor(r.id) }}
                   />
-                  Robot {r.id}
-                  {stagedMultiGoals[r.id] ? ' (staged)' : ''}
+                  <span className="multi-robot-planner__robot-name">
+                    R{r.id}
+                    {stagedMultiGoals[r.id] ? ' ✓' : ''}
+                  </span>
                 </label>
               </li>
             ))}
           </ul>
         )}
       </div>
-      <label className="multi-robot-planner__field">
-        Plan ID
-        <input
-          type="text"
-          value={planId}
-          onChange={(e) => onPlanIdChange(e.target.value)}
-          spellCheck={false}
-        />
-      </label>
-      <label className="multi-robot-planner__field multi-robot-planner__field--row">
-        <input
-          type="checkbox"
-          checked={coordinated}
-          onChange={(e) => onCoordinatedChange(e.target.checked)}
-        />
-        Coordinated (multi-robot timing)
-      </label>
+
+      <div className="multi-robot-planner__meta">
+        <label className="multi-robot-planner__plan-id">
+          <span>Plan</span>
+          <input
+            type="text"
+            value={planId}
+            onChange={(e) => onPlanIdChange(e.target.value)}
+            spellCheck={false}
+          />
+        </label>
+        <label className="multi-robot-planner__coord">
+          <input
+            type="checkbox"
+            checked={coordinated}
+            onChange={(e) => onCoordinatedChange(e.target.checked)}
+          />
+          Coordinated
+        </label>
+      </div>
+
       <div className="multi-robot-planner__actions">
-        <button type="button" onClick={onClearStaged} disabled={stagedIds.length === 0}>
-          Clear staged goals
+        <button
+          type="button"
+          className="multi-robot-planner__btn"
+          onClick={onClearStaged}
+          disabled={stagedIds.length === 0}
+        >
+          Clear
         </button>
-        <button type="button" onClick={onSubmit} disabled={!canSubmit}>
-          {submitting ? 'Sending…' : 'Send multi-robot plan'}
+        <button
+          type="button"
+          className="multi-robot-planner__btn multi-robot-planner__btn--primary"
+          onClick={onSubmit}
+          disabled={!canSubmit}
+        >
+          {submitting ? '…' : 'Send plan'}
         </button>
       </div>
+
       {fleetIds.length > 0 && missing.length > 0 && (
-        <p className="multi-robot-planner__warn">
-          Stage a map goal for: {missing.join(', ')}
-        </p>
+        <p className="multi-robot-planner__warn">Stage goals for: {missing.join(', ')}</p>
       )}
       {fleetIds.length < 2 && fleetIds.length > 0 && (
-        <p className="multi-robot-planner__warn">Select at least two robots for a fleet plan.</p>
+        <p className="multi-robot-planner__warn">Pick at least two robots.</p>
       )}
-      {submitError && (
-        <p className="multi-robot-planner__error">{submitError}</p>
-      )}
+      {submitError && <p className="multi-robot-planner__error">{submitError}</p>}
     </div>
   );
 };

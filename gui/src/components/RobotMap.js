@@ -1,4 +1,11 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, {
+  forwardRef,
+  useRef,
+  useEffect,
+  useState,
+  useCallback,
+  useImperativeHandle,
+} from 'react';
 import { Stage, Layer, Rect, Circle, Line, Arrow, Text, Label, Tag } from 'react-konva';
 import { Image as KonvaImage } from 'react-konva'; // Add this line
 import { useQuery, useMutation } from '@apollo/client';
@@ -16,6 +23,14 @@ const devWarn = (...args) => {
 };
 
 const MIN_DRAG_PX = 8;
+const ZOOM_TO_ROBOT_SCALE = 1;
+
+function robotToMapPixels(robot, occGridWidth, occGridResolution, gridCellSize) {
+  return {
+    x: ((occGridWidth * occGridResolution - robot.x) * gridCellSize) / occGridResolution,
+    y: (robot.y * gridCellSize) / occGridResolution,
+  };
+}
 
 function pointerToWorld(stage, pointerPosition) {
   const transform = stage.getAbsoluteTransform().copy().invert();
@@ -43,9 +58,13 @@ function resolveInvalidGoalOverlayPosition(stage, info) {
   return null;
 }
 
-const RobotMap = ({
+const RobotMap = forwardRef(({
   selectedRobotId,
   robotMarkerRadius = 12,
+  showPaths = true,
+  pathStrokeWidth = 2,
+  showCursorCoordinates = true,
+  showSelectedRobotOnly = false,
   robotPositions = [],
   positionsLoading,
   positionsError,
@@ -58,7 +77,7 @@ const RobotMap = ({
   pathDisplayDismissed = {},
   dismissPathForRobot = () => {},
   clearPathDismissalForRobot = () => {},
-}) => {
+}, ref) => {
   const { getRobotColor } = useRobotColors();
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   // Replace single goalMarker with a map of robot IDs to goal markers
@@ -746,13 +765,58 @@ const RobotMap = ({
     clearAllObjects();
   };
 
-  // Toggle path visibility
-  const [showPaths, setShowPaths] = useState(true);
   const [mapControlsDragging, setMapControlsDragging] = useState(false);
 
-  const togglePaths = () => {
-    setShowPaths(!showPaths);
-  };
+  const isRobotVisibleOnMap = useCallback(
+    (robotId) => {
+      if (!showSelectedRobotOnly) return true;
+      if (selectedRobotId == null) return false;
+      return Number(robotId) === Number(selectedRobotId);
+    },
+    [showSelectedRobotOnly, selectedRobotId],
+  );
+
+  const zoomToRobot = useCallback(
+    (robotId) => {
+      if (!hasMap || occGridWidth <= 0 || !stageRef.current) return;
+      const robot = robots.find((r) => r.id === robotId);
+      if (!robot || mapSize.width <= 0 || mapSize.height <= 0) return;
+
+      const { x: cx, y: cy } = robotToMapPixels(
+        robot,
+        occGridWidth,
+        occGridResolution,
+        gridCellSize,
+      );
+      const targetScale = Math.min(
+        maxScale,
+        Math.max(minScale, ZOOM_TO_ROBOT_SCALE),
+      );
+      const stage = stageRef.current;
+      const newPos = {
+        x: mapSize.width / 2 - cx * targetScale,
+        y: mapSize.height / 2 - cy * targetScale,
+      };
+
+      setScale(targetScale);
+      stage.scale({ x: targetScale, y: targetScale });
+      stage.position(newPos);
+      stage.batchDraw();
+    },
+    [
+      robots,
+      hasMap,
+      occGridWidth,
+      occGridResolution,
+      gridCellSize,
+      mapSize.width,
+      mapSize.height,
+      minScale,
+      maxScale,
+    ],
+  );
+
+  useImperativeHandle(ref, () => ({ zoomToRobot }), [zoomToRobot]);
 
   const mapSlotStyle = {
     width: '100%',
@@ -890,6 +954,9 @@ const RobotMap = ({
         <Layer ref={pathLayerRef} visible={showPaths}>
           {Object.entries(robotPaths).map(([robotId, path]) => {
             const rid = Number(robotId);
+            if (!isRobotVisibleOnMap(rid)) {
+              return null;
+            }
             if (pathDisplayDismissed[rid]) {
               return null;
             }
@@ -916,7 +983,7 @@ const RobotMap = ({
                 key={`path-${robotId}`}
                 points={path.points}
                 stroke={getRobotColor(robotId)}
-                strokeWidth={2}
+                strokeWidth={pathStrokeWidth}
                 opacity={0.7}
               />
             );
@@ -926,6 +993,9 @@ const RobotMap = ({
         {/* Separate layer for robots - updates with robot positions */}
         <Layer ref={robotsLayerRef}>
           {robots.map((robot) => {
+            if (!isRobotVisibleOnMap(robot.id)) {
+              return null;
+            }
             const cx =
               ((occGridWidth * occGridResolution - robot.x) * gridCellSize) /
               occGridResolution;
@@ -999,6 +1069,9 @@ const RobotMap = ({
           )}
           {Object.entries(goalMarkers).map(([robotId, marker]) => {
             const rid = Number(robotId);
+            if (!isRobotVisibleOnMap(rid)) {
+              return null;
+            }
             if (pathDisplayDismissed[rid]) {
               return null;
             }
@@ -1030,6 +1103,9 @@ const RobotMap = ({
           })}
           {Object.entries(stagedMultiGoals).map(([robotIdStr, pos]) => {
             const robotId = Number(robotIdStr);
+            if (!isRobotVisibleOnMap(robotId)) {
+              return null;
+            }
             if (!pos || typeof pos.mapX !== 'number') return null;
             const robot = robots.find((r) => r.id === robotId);
             const px = (occGridWidth - pos.mapX / occGridResolution) * gridCellSize;
@@ -1108,7 +1184,7 @@ const RobotMap = ({
       )}
 
       {/* Tooltip layer outside the main stage - not affected by transforms */}
-      {mousePosition && (
+      {showCursorCoordinates && mousePosition && (
         <div
           className="robot-map__cursor-coords"
           style={{
@@ -1145,6 +1221,9 @@ const RobotMap = ({
 
       {/* Render tooltips for invalid goals */}
       {Object.entries(invalidGoalMessages).map(([robotId, info]) => {
+        if (!isRobotVisibleOnMap(robotId)) {
+          return null;
+        }
         const overlayPos = resolveInvalidGoalOverlayPosition(
           stageRef.current,
           info,
@@ -1188,9 +1267,6 @@ const RobotMap = ({
           </button>
           <button type="button" onClick={handleClearAllObjects}>
             Clear All Objects
-          </button>
-          <button type="button" onClick={togglePaths}>
-            {showPaths ? 'Hide Paths' : 'Show Paths'}
           </button>
         </div>
         <div className="map-controls__zoom">
@@ -1240,5 +1316,8 @@ const RobotMap = ({
       
     </div>
   );
-}
+});
+
+RobotMap.displayName = 'RobotMap';
+
 export default RobotMap;
