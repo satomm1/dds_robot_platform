@@ -17,6 +17,8 @@ const MapSettingsModal = ({
   onShowCursorCoordsChange,
   showSelectedRobotOnly,
   onShowSelectedRobotOnlyChange,
+  showAirQualityOnHover,
+  onShowAirQualityOnHoverChange,
 }) => {
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -59,6 +61,14 @@ const MapSettingsModal = ({
               onChange={(e) => onShowSelectedRobotOnlyChange(e.target.checked)}
             />
             Show selected robot only
+          </label>
+          <label className="map-settings-modal__check">
+            <input
+              type="checkbox"
+              checked={showAirQualityOnHover}
+              onChange={(e) => onShowAirQualityOnHoverChange(e.target.checked)}
+            />
+            Show air quality on robot hover
           </label>
         </section>
 

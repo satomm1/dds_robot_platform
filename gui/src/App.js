@@ -22,8 +22,10 @@ import {
   MAP_PATH_WIDTH_KEY,
   MAP_SHOW_CURSOR_COORDS_KEY,
   MAP_SHOW_PATHS_KEY,
+  MAP_SHOW_AIR_QUALITY_HOVER_KEY,
   MAP_SHOW_SELECTED_ROBOT_ONLY_KEY,
   readStoredMapPathWidth,
+  readStoredMapShowAirQualityHover,
   readStoredMapShowCursorCoords,
   readStoredMapShowPaths,
   readStoredMapShowSelectedRobotOnly,
@@ -33,6 +35,7 @@ import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, 
 import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS, GET_AIR_QUALITIES } from './queries';
 
 const ROBOT_POSITIONS_POLL_MS = 2000;
+const POSITION_STALE_SEC = 31;
 const SIDEBAR_LEFT_WIDTH_KEY = 'dds_gui_sidebar_left_width';
 const SIDEBAR_RIGHT_WIDTH_KEY = 'dds_gui_sidebar_right_width';
 const SIDEBAR_RIGHT_COLLAPSED_KEY = 'dds_gui_sidebar_right_collapsed';
@@ -107,6 +110,9 @@ function AppContent() {
   const [mapShowSelectedRobotOnly, setMapShowSelectedRobotOnly] = useState(
     readStoredMapShowSelectedRobotOnly,
   );
+  const [mapShowAirQualityOnHover, setMapShowAirQualityOnHover] = useState(
+    readStoredMapShowAirQualityHover,
+  );
 
   useEffect(() => {
     localStorage.setItem(ROBOT_MARKER_RADIUS_KEY, String(robotMarkerRadius));
@@ -131,6 +137,13 @@ function AppContent() {
     );
   }, [mapShowSelectedRobotOnly]);
 
+  useEffect(() => {
+    localStorage.setItem(
+      MAP_SHOW_AIR_QUALITY_HOVER_KEY,
+      mapShowAirQualityOnHover ? '1' : '0',
+    );
+  }, [mapShowAirQualityOnHover]);
+
   const { data: positionsData, loading: positionsLoading, error: positionsError } = useQuery(
     GET_ROBOT_POSITIONS,
     {
@@ -146,6 +159,7 @@ function AppContent() {
   const { data: airQualitiesData } = useQuery(GET_AIR_QUALITIES, {
     pollInterval: ROBOT_POSITIONS_POLL_MS,
     fetchPolicy: 'cache-and-network',
+    skip: !mapShowAirQualityOnHover,
   });
   const airQualities = useMemo(
     () => airQualitiesData?.airQualities ?? [],
@@ -427,6 +441,8 @@ function AppContent() {
           onShowCursorCoordsChange={setMapShowCursorCoords}
           showSelectedRobotOnly={mapShowSelectedRobotOnly}
           onShowSelectedRobotOnlyChange={setMapShowSelectedRobotOnly}
+          showAirQualityOnHover={mapShowAirQualityOnHover}
+          onShowAirQualityOnHoverChange={setMapShowAirQualityOnHover}
         />
       )}
       <div className="control-container">
@@ -438,6 +454,7 @@ function AppContent() {
               robotPositions={robotPositions}
               positionsLoading={positionsLoading}
               positionsError={positionsError}
+              showAirQualityOnHover={mapShowAirQualityOnHover}
               airQualities={airQualities}
             />
           <div className="mode-toggle">
@@ -509,6 +526,9 @@ function AppContent() {
             pathStrokeWidth={mapPathWidth}
             showCursorCoordinates={mapShowCursorCoords}
             showSelectedRobotOnly={mapShowSelectedRobotOnly}
+            showAirQualityOnHover={mapShowAirQualityOnHover}
+            airQualities={airQualities}
+            positionStaleSec={POSITION_STALE_SEC}
             robotPositions={robotPositions}
             positionsLoading={positionsLoading}
             positionsError={positionsError}

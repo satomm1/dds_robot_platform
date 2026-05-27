@@ -7,6 +7,7 @@ const RobotSelector = ({
   robotPositions = [],
   positionsLoading,
   positionsError,
+  showAirQualityOnHover = false,
   airQualities = [],
 }) => {
   const { getRobotColor, setRobotColor } = useRobotColors();
@@ -83,7 +84,7 @@ const RobotSelector = ({
           ))}
         </ul>
       )}
-      {selectedAirQuality && (
+      {showAirQualityOnHover && selectedAirQuality && (
         <div className="robot-selector__air-quality" aria-label="Air quality for selected robot">
           <h4>Air quality</h4>
           <dl>

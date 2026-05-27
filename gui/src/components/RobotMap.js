@@ -65,6 +65,9 @@ const RobotMap = forwardRef(({
   pathStrokeWidth = 2,
   showCursorCoordinates = true,
   showSelectedRobotOnly = false,
+  showAirQualityOnHover = false,
+  airQualities = [],
+  positionStaleSec = 31,
   robotPositions = [],
   positionsLoading,
   positionsError,
@@ -98,6 +101,8 @@ const RobotMap = forwardRef(({
   const tooltipLayerRef = useRef(null);
   const [confirmationMessage, setConfirmationMessage] = useState('');
   const [invalidGoalMessages, setInvalidGoalMessages] = useState({});
+  const [hoveredRobotId, setHoveredRobotId] = useState(null);
+  const [airQualityHoverPointer, setAirQualityHoverPointer] = useState(null);
   const [poseDrag, setPoseDrag] = useState(null);
   const [spacePanActive, setSpacePanActive] = useState(false);
   const [shiftPanActive, setShiftPanActive] = useState(false);
@@ -1004,6 +1009,13 @@ const RobotMap = forwardRef(({
             const labelSize = Math.max(8, Math.round(robotMarkerRadius * 0.95));
             const labelOffset = robotMarkerRadius * 0.28;
             const isSelected = robot.id === selectedRobotId;
+            const handleAirQualityPointer = (e) => {
+              if (!showAirQualityOnHover) return;
+              const pointer = e.target.getStage()?.getPointerPosition();
+              if (pointer) {
+                setAirQualityHoverPointer({ x: pointer.x, y: pointer.y });
+              }
+            };
             return (
               <React.Fragment key={robot.id}>
                 <Circle
@@ -1013,6 +1025,19 @@ const RobotMap = forwardRef(({
                   fill={getRobotColor(robot.id)}
                   stroke="#000"
                   strokeWidth={isSelected ? Math.max(2, robotMarkerRadius / 3) : 2}
+                  onMouseEnter={(e) => {
+                    if (!showAirQualityOnHover) return;
+                    setHoveredRobotId(robot.id);
+                    handleAirQualityPointer(e);
+                  }}
+                  onMouseLeave={() => {
+                    setHoveredRobotId(null);
+                    setAirQualityHoverPointer(null);
+                  }}
+                  onMouseMove={(e) => {
+                    if (!showAirQualityOnHover || hoveredRobotId !== robot.id) return;
+                    handleAirQualityPointer(e);
+                  }}
                 />
                 <Arrow
                   points={[
@@ -1218,6 +1243,48 @@ const RobotMap = forwardRef(({
           {confirmationMessage}
         </div>
       )}
+
+      {showAirQualityOnHover &&
+        hoveredRobotId != null &&
+        airQualityHoverPointer &&
+        (() => {
+          const aq = airQualities.find(
+            (row) => Number(row.robot_id) === Number(hoveredRobotId),
+          );
+          if (!aq) return null;
+          const robot = robots.find((r) => Number(r.id) === Number(hoveredRobotId));
+          const nowSec = Date.now() / 1000;
+          const readingAgeSec = Math.max(0, Math.round(nowSec - Number(aq.timestamp)));
+          const posTs = robot?.position_timestamp;
+          const poseStale =
+            posTs == null ||
+            Number(posTs) <= 0 ||
+            nowSec - Number(posTs) > positionStaleSec;
+          return (
+            <div
+              className="robot-map__air-quality-tooltip"
+              style={{
+                left: `${airQualityHoverPointer.x + 14}px`,
+                top: `${airQualityHoverPointer.y}px`,
+              }}
+              role="status"
+            >
+              <div className="robot-map__air-quality-tooltip-title">
+                Robot {hoveredRobotId} air quality
+              </div>
+              <div>Temp: {Number(aq.temperature).toFixed(1)} °F</div>
+              <div>Humidity: {Number(aq.relative_humidity).toFixed(1)} %</div>
+              <div>VOC: {Number(aq.voc_index).toFixed(0)}</div>
+              <div>NOx: {Number(aq.nox_index).toFixed(0)}</div>
+              <div className="robot-map__air-quality-tooltip-meta">
+                Reading {readingAgeSec}s ago
+              </div>
+              {poseStale && (
+                <div className="robot-map__air-quality-tooltip-warn">Pose outdated</div>
+              )}
+            </div>
+          );
+        })()}
 
       {/* Render tooltips for invalid goals */}
       {Object.entries(invalidGoalMessages).map(([robotId, info]) => {

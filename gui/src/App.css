@@ -974,6 +974,38 @@
   z-index: 1000;
 }
 
+.robot-map__air-quality-tooltip {
+  position: absolute;
+  transform: translate(0, calc(-100% - 8px));
+  background-color: rgba(33, 37, 41, 0.92);
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  z-index: 1000;
+  min-width: 140px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.robot-map__air-quality-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.robot-map__air-quality-tooltip-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #ced4da;
+}
+
+.robot-map__air-quality-tooltip-warn {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #ffc107;
+}
+
 /* Map controls (overlay on map; drag handle to place anywhere) */
 .map-controls {
   position: absolute;

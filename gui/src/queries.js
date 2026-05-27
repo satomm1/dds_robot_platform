@@ -26,6 +26,7 @@ export const GET_ROBOT_POSITIONS = gql`
       x
       y
       theta
+      position_timestamp
     }
   }
 `;
