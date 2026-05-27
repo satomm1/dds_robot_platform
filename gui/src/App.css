@@ -892,6 +892,12 @@
   font-weight: 600;
 }
 
+.robot-selector__air-quality-meta {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
 /* Robot controls styling */
 .robot-controls {
   flex: 1;

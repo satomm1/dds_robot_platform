@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRobotColors } from '../hooks/useRobotColors';
 
 const RobotSelector = ({
@@ -42,6 +42,26 @@ const RobotSelector = ({
     }
   }, [selectedRobotId, robotPositions, onSelectRobot]);
 
+  const selectedAirQuality =
+    selectedRobotId != null
+      ? airQualities.find((aq) => aq.robot_id === selectedRobotId)
+      : null;
+
+  const [, setReadingAgeTick] = useState(0);
+  useEffect(() => {
+    if (!showAirQualityOnHover || !selectedAirQuality) return undefined;
+    const id = setInterval(() => setReadingAgeTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [showAirQualityOnHover, selectedAirQuality, selectedRobotId]);
+
+  const readingAgeSec =
+    selectedAirQuality != null
+      ? Math.max(
+          0,
+          Math.round(Date.now() / 1000 - Number(selectedAirQuality.timestamp)),
+        )
+      : null;
+
   if (positionsLoading && robotPositions.length === 0) {
     return <div className="robot-selector">Loading robots...</div>;
   }
@@ -52,10 +72,6 @@ const RobotSelector = ({
   }
 
   const robots = robotPositions;
-  const selectedAirQuality =
-    selectedRobotId != null
-      ? airQualities.find((aq) => aq.robot_id === selectedRobotId)
-      : null;
 
   return (
     <div className="robot-selector">
@@ -85,8 +101,8 @@ const RobotSelector = ({
         </ul>
       )}
       {showAirQualityOnHover && selectedAirQuality && (
-        <div className="robot-selector__air-quality" aria-label="Air quality for selected robot">
-          <h4>Air quality</h4>
+        <div className="robot-selector__air-quality" aria-label="Air Quality for selected robot">
+          <h4>Air Quality</h4>
           <dl>
             <div>
               <dt>Temp</dt>
@@ -105,6 +121,11 @@ const RobotSelector = ({
               <dd>{selectedAirQuality.nox_index.toFixed(0)}</dd>
             </div>
           </dl>
+          {readingAgeSec != null && (
+            <p className="robot-selector__air-quality-meta">
+              Reading {readingAgeSec}s ago
+            </p>
+          )}
         </div>
       )}
     </div>

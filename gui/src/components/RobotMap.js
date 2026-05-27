@@ -1296,7 +1296,7 @@ const RobotMap = forwardRef(({
               role="status"
             >
               <div className="robot-map__air-quality-tooltip-title">
-                Robot {hoveredRobotId} air quality
+                Robot {hoveredRobotId} Air Quality
               </div>
               <div>Temp: {Number(aq.temperature).toFixed(1)} °F</div>
               <div>Humidity: {Number(aq.relative_humidity).toFixed(1)} %</div>
