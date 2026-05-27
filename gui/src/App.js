@@ -369,6 +369,8 @@ function AppContent() {
       `Setting initial position for robot ${robotId} to (${x}, ${y}, ${((thetaRad * 180) / Math.PI).toFixed(1)}°)`,
     );
 
+    selectGoalMode();
+
     const timestamp = new Date().getTime() / 1000;
     setRobotInitialPosition({
       variables: {
