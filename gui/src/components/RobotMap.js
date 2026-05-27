@@ -66,6 +66,7 @@ const RobotMap = forwardRef(({
   showCursorCoordinates = true,
   showSelectedRobotOnly = false,
   showAirQualityOnHover = false,
+  showMapControls = true,
   airQualities = [],
   positionStaleSec = 31,
   robotPositions = [],
@@ -507,6 +508,15 @@ const RobotMap = forwardRef(({
     ],
   );
 
+  const cancelPoseDrag = useCallback(() => {
+    if (!poseDragRef.current) return;
+    poseDragRef.current = null;
+    setPoseDrag(null);
+    if (stageRef.current) {
+      stageRef.current.draggable(true);
+    }
+  }, []);
+
   const finishPoseDrag = useCallback(() => {
     const drag = poseDragRef.current;
     if (!drag) return;
@@ -531,9 +541,19 @@ const RobotMap = forwardRef(({
   useEffect(() => {
     if (!poseDrag) return undefined;
     const onWindowMouseUp = () => finishPoseDrag();
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      cancelPoseDrag();
+    };
     window.addEventListener('mouseup', onWindowMouseUp);
-    return () => window.removeEventListener('mouseup', onWindowMouseUp);
-  }, [poseDrag, finishPoseDrag]);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('mouseup', onWindowMouseUp);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [poseDrag, finishPoseDrag, cancelPoseDrag]);
 
   useEffect(() => {
     const isTypingTarget = (el) =>
@@ -771,6 +791,12 @@ const RobotMap = forwardRef(({
   };
 
   const [mapControlsDragging, setMapControlsDragging] = useState(false);
+
+  useEffect(() => {
+    if (!showMapControls) {
+      setMapControlsDragging(false);
+    }
+  }, [showMapControls]);
 
   const isRobotVisibleOnMap = useCallback(
     (robotId) => {
@@ -1320,66 +1346,67 @@ const RobotMap = forwardRef(({
         );
       })}
       
-      {/* Controls for zoom and goal management (drag handle → snap to corner) */}
-      <MapControlsPanel
-        containerRef={containerRef}
-        onDraggingChange={setMapControlsDragging}
-      >
-        <div className="map-controls__group">
-          <button type="button" onClick={clearGoal} disabled={!selectedRobotId}>
-            Clear Selected Goal
-          </button>
-          <button type="button" onClick={clearAllGoals}>
-            Clear All Goals
-          </button>
-          <button type="button" onClick={handleClearAllObjects}>
-            Clear All Objects
-          </button>
-        </div>
-        <div className="map-controls__zoom">
-          <button
-            type="button"
-            onClick={() => {
-              if (stageRef.current) {
-                const stage = stageRef.current;
-                const oldScale = stage.scaleX();
-                const newScale = Math.min(maxScale, oldScale * 1.2);
-                stage.scale({ x: newScale, y: newScale });
-                stage.batchDraw();
-              }
-            }}
-          >
-            +
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (stageRef.current) {
-                const stage = stageRef.current;
-                const oldScale = stage.scaleX();
-                const newScale = Math.max(minScale, oldScale / 1.2);
-                stage.scale({ x: newScale, y: newScale });
-                stage.batchDraw();
-              }
-            }}
-          >
-            -
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (stageRef.current) {
-                const stage = stageRef.current;
-                stage.scale({ x: minScale, y: minScale });
-                stage.position({ x: 0, y: 0 });
-                stage.batchDraw();
-              }
-            }}
-          >
-            Reset
-          </button>
-        </div>
-      </MapControlsPanel>
+      {showMapControls && (
+        <MapControlsPanel
+          containerRef={containerRef}
+          onDraggingChange={setMapControlsDragging}
+        >
+          <div className="map-controls__group">
+            <button type="button" onClick={clearGoal} disabled={!selectedRobotId}>
+              Clear Selected Goal
+            </button>
+            <button type="button" onClick={clearAllGoals}>
+              Clear All Goals
+            </button>
+            <button type="button" onClick={handleClearAllObjects}>
+              Clear All Objects
+            </button>
+          </div>
+          <div className="map-controls__zoom">
+            <button
+              type="button"
+              onClick={() => {
+                if (stageRef.current) {
+                  const stage = stageRef.current;
+                  const oldScale = stage.scaleX();
+                  const newScale = Math.min(maxScale, oldScale * 1.2);
+                  stage.scale({ x: newScale, y: newScale });
+                  stage.batchDraw();
+                }
+              }}
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (stageRef.current) {
+                  const stage = stageRef.current;
+                  const oldScale = stage.scaleX();
+                  const newScale = Math.max(minScale, oldScale / 1.2);
+                  stage.scale({ x: newScale, y: newScale });
+                  stage.batchDraw();
+                }
+              }}
+            >
+              -
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (stageRef.current) {
+                  const stage = stageRef.current;
+                  stage.scale({ x: minScale, y: minScale });
+                  stage.position({ x: 0, y: 0 });
+                  stage.batchDraw();
+                }
+              }}
+            >
+              Reset
+            </button>
+          </div>
+        </MapControlsPanel>
+      )}
       
     </div>
   );

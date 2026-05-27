@@ -23,10 +23,12 @@ import {
   MAP_SHOW_CURSOR_COORDS_KEY,
   MAP_SHOW_PATHS_KEY,
   MAP_SHOW_AIR_QUALITY_HOVER_KEY,
+  MAP_SHOW_MAP_CONTROLS_KEY,
   MAP_SHOW_SELECTED_ROBOT_ONLY_KEY,
   readStoredMapPathWidth,
   readStoredMapShowAirQualityHover,
   readStoredMapShowCursorCoords,
+  readStoredMapShowMapControls,
   readStoredMapShowPaths,
   readStoredMapShowSelectedRobotOnly,
 } from './utils/mapDisplaySettings';
@@ -38,16 +40,6 @@ const ROBOT_POSITIONS_POLL_MS = 2000;
 const POSITION_STALE_SEC = 31;
 const SIDEBAR_LEFT_WIDTH_KEY = 'dds_gui_sidebar_left_width';
 const SIDEBAR_RIGHT_WIDTH_KEY = 'dds_gui_sidebar_right_width';
-const SIDEBAR_RIGHT_COLLAPSED_KEY = 'dds_gui_sidebar_right_collapsed';
-
-function readStoredRightSidebarCollapsed() {
-  try {
-    return localStorage.getItem(SIDEBAR_RIGHT_COLLAPSED_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
 const devLog = (...args) => {
   if (process.env.NODE_ENV === 'development') {
     console.log(...args);
@@ -83,9 +75,7 @@ function AppContent() {
 
   const [helpOpen, setHelpOpen] = useState(false);
   const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
-  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(
-    readStoredRightSidebarCollapsed,
-  );
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const [selectedRobotId, setSelectedRobotId] = useState(null);
   const mapRef = useRef(null);
 
@@ -95,11 +85,6 @@ function AppContent() {
 
   const setRightSidebarCollapsedPersisted = useCallback((collapsed) => {
     setRightSidebarCollapsed(collapsed);
-    try {
-      localStorage.setItem(SIDEBAR_RIGHT_COLLAPSED_KEY, collapsed ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
   }, []);
   const [robotMarkerRadius, setRobotMarkerRadius] = useState(readStoredRobotMarkerRadius);
   const [mapShowPaths, setMapShowPaths] = useState(readStoredMapShowPaths);
@@ -113,6 +98,7 @@ function AppContent() {
   const [mapShowAirQualityOnHover, setMapShowAirQualityOnHover] = useState(
     readStoredMapShowAirQualityHover,
   );
+  const [mapShowMapControls, setMapShowMapControls] = useState(readStoredMapShowMapControls);
 
   useEffect(() => {
     localStorage.setItem(ROBOT_MARKER_RADIUS_KEY, String(robotMarkerRadius));
@@ -143,6 +129,10 @@ function AppContent() {
       mapShowAirQualityOnHover ? '1' : '0',
     );
   }, [mapShowAirQualityOnHover]);
+
+  useEffect(() => {
+    localStorage.setItem(MAP_SHOW_MAP_CONTROLS_KEY, mapShowMapControls ? '1' : '0');
+  }, [mapShowMapControls]);
 
   const { data: positionsData, loading: positionsLoading, error: positionsError } = useQuery(
     GET_ROBOT_POSITIONS,
@@ -241,6 +231,11 @@ function AppContent() {
     setMultiSubmitError('');
   }, []);
 
+  const selectMultiPlanMode = useCallback(() => {
+    setPositionMode('multiPlan');
+    setMultiSubmitError('');
+  }, []);
+
   useEffect(() => {
     const isTypingTarget = (el) =>
       el &&
@@ -250,20 +245,32 @@ function AppContent() {
         el.isContentEditable);
 
     const onKeyDown = (e) => {
-      if (helpOpen || isTypingTarget(e.target) || e.repeat) return;
+      if (isTypingTarget(e.target) || e.repeat) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        setHelpOpen((open) => !open);
+        return;
+      }
+
+      if (helpOpen) return;
+
       if (e.key === 'g' || e.key === 'G') {
         e.preventDefault();
         selectGoalMode();
       } else if (e.key === 'i' || e.key === 'I') {
         e.preventDefault();
         selectInitialMode();
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        selectMultiPlanMode();
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [helpOpen, selectGoalMode, selectInitialMode]);
+  }, [helpOpen, selectGoalMode, selectInitialMode, selectMultiPlanMode]);
 
   // Mutation for setting the robot's initial position
   const [setRobotInitialPosition] = useMutation(SET_ROBOT_INITIAL_POSITION);
@@ -443,6 +450,8 @@ function AppContent() {
           onShowSelectedRobotOnlyChange={setMapShowSelectedRobotOnly}
           showAirQualityOnHover={mapShowAirQualityOnHover}
           onShowAirQualityOnHoverChange={setMapShowAirQualityOnHover}
+          showMapControls={mapShowMapControls}
+          onShowMapControlsChange={setMapShowMapControls}
         />
       )}
       <div className="control-container">
@@ -472,12 +481,9 @@ function AppContent() {
             </button>
             <button 
               className={positionMode === 'multiPlan' ? 'btn-goal-init-active btn-goal-narrow' : 'btn-goal-init-inactive btn-goal-narrow'}
-              onClick={() => {
-                setPositionMode('multiPlan');
-                setMultiSubmitError('');
-              }}
+              onClick={selectMultiPlanMode}
             >
-              Multi-robot plan
+              Multi-Robot Plan
             </button>
           </div>
             <RobotControls
@@ -527,6 +533,7 @@ function AppContent() {
             showCursorCoordinates={mapShowCursorCoords}
             showSelectedRobotOnly={mapShowSelectedRobotOnly}
             showAirQualityOnHover={mapShowAirQualityOnHover}
+            showMapControls={mapShowMapControls}
             airQualities={airQualities}
             positionStaleSec={POSITION_STALE_SEC}
             robotPositions={robotPositions}

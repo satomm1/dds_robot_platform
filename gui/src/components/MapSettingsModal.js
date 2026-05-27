@@ -19,6 +19,8 @@ const MapSettingsModal = ({
   onShowSelectedRobotOnlyChange,
   showAirQualityOnHover,
   onShowAirQualityOnHoverChange,
+  showMapControls,
+  onShowMapControlsChange,
 }) => {
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -68,7 +70,7 @@ const MapSettingsModal = ({
               checked={showAirQualityOnHover}
               onChange={(e) => onShowAirQualityOnHoverChange(e.target.checked)}
             />
-            Show air quality on robot hover
+            Show air quality
           </label>
         </section>
 
@@ -102,7 +104,15 @@ const MapSettingsModal = ({
           </label>
         </section>
 
-        <section className="map-settings-modal__section" aria-label="Cursor">
+        <section className="map-settings-modal__section" aria-label="Map display">
+          <label className="map-settings-modal__check">
+            <input
+              type="checkbox"
+              checked={showMapControls}
+              onChange={(e) => onShowMapControlsChange(e.target.checked)}
+            />
+            Show map controls
+          </label>
           <label className="map-settings-modal__check">
             <input
               type="checkbox"

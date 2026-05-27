@@ -7,6 +7,49 @@ const HelpChip = ({ className = '', children }) => (
   </span>
 );
 
+const HelpSection = ({ title, defaultOpen = false, children }) => (
+  <details className="help-modal__section" open={defaultOpen || undefined}>
+    <summary className="help-modal__section-title">{title}</summary>
+    <div className="help-modal__section-content">{children}</div>
+  </details>
+);
+
+const KEYBOARD_SHORTCUTS = [
+  { keys: 'G', action: 'Switch to Set Robot Goal mode' },
+  { keys: 'I', action: 'Switch to Set Initial Position mode' },
+  { keys: 'M', action: 'Switch to Multi-Robot Plan mode' },
+  { keys: 'S', action: 'Stop the selected robot' },
+  { keys: 'H', action: 'Open or close this Help dialog' },
+  {
+    keys: 'Esc',
+    action:
+      'Cancel an in-progress goal or initial-pose drag (before mouse release); close Help or Map Settings when open',
+  },
+  { keys: 'Space (hold)', action: 'Pan the map (with left-button drag)' },
+  { keys: 'Shift (hold)', action: 'Pan the map (with left-button drag)' },
+];
+
+const HelpShortcutsTable = () => (
+  <table className="help-modal__shortcut-table">
+    <thead>
+      <tr>
+        <th scope="col">Key</th>
+        <th scope="col">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {KEYBOARD_SHORTCUTS.map(({ keys, action }) => (
+        <tr key={keys}>
+          <th scope="row">
+            <kbd>{keys}</kbd>
+          </th>
+          <td>{action}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
+
 const HelpModal = ({ onClose }) => {
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -37,16 +80,13 @@ const HelpModal = ({ onClose }) => {
           Help
         </h2>
 
-        <section className="help-modal__section" aria-labelledby="help-local-dds-heading">
-          <h3 id="help-local-dds-heading" className="help-modal__section-title">
-            Local Stack (this computer)
-          </h3>
+        <HelpSection title="Local Stack (this computer)">
           <p className="help-modal__body">
             The <strong>Local Stack</strong> panel at the <strong>bottom of the right sidebar</strong>{' '}
             (with GraphQL / DDS status pills) controls Docker and DDS on your operator PC. Hide the
             whole right column with the <strong>›</strong> button just left of the resize grip; use the narrow{' '}
-            <strong>Startup Panel</strong> tab on the map edge to show it again (width and hidden state are
-            remembered).{' '}
+            <strong>Startup Panel</strong> tab on the map edge to show it again (panel width is remembered;
+            the sidebar opens expanded each time you load the app).{' '}
             <strong>Docker</strong> runs <code>docker compose up -d</code> /{' '}
             <code>docker compose down</code> in the repo root (where <code>compose.yaml</code>{' '}
             lives). <strong>DDS</strong> runs <code>start_scripts.sh</code> /{' '}
@@ -59,12 +99,18 @@ const HelpModal = ({ onClose }) => {
             <strong>Check</strong> after changing the path. On Windows, both run in WSL; conda env{' '}
             <strong>dds</strong> is required for DDS. Use the Electron app or <code>npm start</code>.
           </p>
-        </section>
+        </HelpSection>
 
-        <section className="help-modal__section" aria-labelledby="help-start-stop-heading">
-          <h3 id="help-start-stop-heading" className="help-modal__section-title">
-            Starting and stopping the robot
-          </h3>
+        <HelpSection title="Keyboard shortcuts">
+          <p className="help-modal__body help-modal__body--tight">
+            Shortcuts are ignored while the cursor is in a text field, menu, or other input.{' '}
+            <strong>G</strong>, <strong>I</strong>, and <strong>M</strong> do not apply while Help is
+            open.
+          </p>
+          <HelpShortcutsTable />
+        </HelpSection>
+
+        <HelpSection title="Starting and stopping the robot">
           <p className="help-modal__body">
             In the <strong>Robot Startup</strong> panel at the <strong>top of the right sidebar</strong>, enter a{' '}
             <HelpChip className="robot-startup__label">Label</HelpChip> and{' '}
@@ -89,12 +135,9 @@ const HelpModal = ({ onClose }) => {
             <HelpChip className="control-button shutdown">Shut Down</HelpChip> in the robot details
             panel.
           </p>
-        </section>
+        </HelpSection>
 
-        <section className="help-modal__section" aria-labelledby="help-map-heading">
-          <h3 id="help-map-heading" className="help-modal__section-title">
-            Navigating the map
-          </h3>
+        <HelpSection title="Navigating the map">
           <p className="help-modal__body">
             The center panel shows the occupancy grid, robot positions, goals, and paths. Use the
             draggable map controls overlay (grab its handle to move it) for goal and object actions.
@@ -113,16 +156,14 @@ const HelpModal = ({ onClose }) => {
             </li>
             <li>
               <strong>Map Settings</strong> (header, next to <strong>Help</strong>): robot marker size,{' '}
-              <strong>Show selected robot only</strong>, <strong>Show paths</strong>,{' '}
+              <strong>Show selected robot only</strong>, <strong>Show air quality</strong>,{' '}
+              <strong>Show paths</strong>,{' '}
               <strong>Path width</strong>, and <strong>Show cursor coordinates</strong>.
             </li>
           </ul>
-        </section>
+        </HelpSection>
 
-        <section className="help-modal__section" aria-labelledby="help-operate-heading">
-          <h3 id="help-operate-heading" className="help-modal__section-title">
-            Operating the robot
-          </h3>
+        <HelpSection title="Operating the robot">
           <p className="help-modal__body">
             Select a robot on the left by clicking its name in the{' '}
             <strong>Select Robot</strong> list, for example{' '}
@@ -138,22 +179,20 @@ const HelpModal = ({ onClose }) => {
               Set Initial Position
             </HelpChip>
             , then on the map <strong>click and drag</strong> from the pose location: drag to set
-            heading, then release. A short click without dragging does nothing. To send a navigation
+            heading, then release. Press <strong>Esc</strong> while dragging to cancel before you
+            release the mouse. A short click without dragging does nothing. To send a navigation
             goal, click{' '}
             <HelpChip className="btn-goal-init-active btn-goal-narrow">Set Robot Goal</HelpChip>
             , then use the same click-drag gesture on the map. To stop robot motion, click{' '}
             <HelpChip className="control-button stop">Stop</HelpChip> in the left sidebar robot
-            details panel.
+            details panel. See <strong>Keyboard shortcuts</strong> for key bindings.
           </p>
-        </section>
+        </HelpSection>
 
-        <section className="help-modal__section" aria-labelledby="help-multi-plan-heading">
-          <h3 id="help-multi-plan-heading" className="help-modal__section-title">
-            Setting a multi-robot plan
-          </h3>
+        <HelpSection title="Setting a multi-robot plan">
           <p className="help-modal__body">
             Click{' '}
-            <HelpChip className="btn-goal-init-active btn-goal-narrow">Multi-robot plan</HelpChip> in
+            <HelpChip className="btn-goal-init-active btn-goal-narrow">Multi-Robot Plan</HelpChip> in
             the left sidebar. In the planner panel below the robot position / stop / shut down
             section, check at least two robots
             under <strong>Fleet</strong>, for example{' '}
@@ -163,7 +202,8 @@ const HelpModal = ({ onClose }) => {
               Robot 1 (staged)
             </HelpChip>
             . For each fleet robot, select it in <strong>Select Robot</strong>, then click-drag on
-            the map to stage its goal and heading (a short click without dragging does nothing).
+            the map to stage its goal and heading (<strong>Esc</strong> cancels mid-drag; a short
+            click without dragging does nothing).
             See <strong>Navigating the map</strong> for pan and zoom. Edit the{' '}
             <HelpChip className="multi-robot-planner__label">Plan ID</HelpChip>{' '}
             if needed, and use the{' '}
@@ -179,7 +219,7 @@ const HelpModal = ({ onClose }) => {
             </HelpChip>
             .
           </p>
-        </section>
+        </HelpSection>
       </div>
     </div>
   );

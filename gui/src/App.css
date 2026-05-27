@@ -306,23 +306,114 @@
 
 .help-modal__section {
   margin: 0;
+  border-top: 1px solid #e9ecef;
 }
 
-.help-modal__section + .help-modal__section {
-  margin-top: 20px;
+.help-modal__section:first-of-type {
+  border-top: none;
 }
 
 .help-modal__section-title {
-  margin: 0 0 10px;
+  position: relative;
+  margin: 0;
+  padding: 10px 1.5rem 10px 0;
   font-size: 1rem;
   font-weight: 600;
   color: #222;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.help-modal__section-title::-webkit-details-marker {
+  display: none;
+}
+
+.help-modal__section-title::after {
+  content: '▸';
+  position: absolute;
+  right: 0;
+  color: #6c757d;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.help-modal__section[open] .help-modal__section-title::after {
+  content: '▾';
+}
+
+.help-modal__section-title:focus-visible {
+  outline: 2px solid #0066cc;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.help-modal__section-content {
+  padding-bottom: 12px;
+}
+
+.help-modal__section:not([open]) .help-modal__section-title {
+  padding-bottom: 10px;
 }
 
 .help-modal__body {
   margin: 0;
   font-size: 14px;
   line-height: 1.6;
+}
+
+.help-modal__body--tight {
+  margin-bottom: 10px;
+}
+
+.help-modal__shortcut-table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.help-modal__shortcut-table th,
+.help-modal__shortcut-table td {
+  padding: 6px 8px;
+  vertical-align: top;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+}
+
+.help-modal__shortcut-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6c757d;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.help-modal__shortcut-table tbody th {
+  width: 7rem;
+  font-weight: 600;
+  color: #222;
+}
+
+.help-modal__shortcut-table tbody tr:last-child th,
+.help-modal__shortcut-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.help-modal__shortcut-table kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #333;
+  background: #f1f3f5;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  box-shadow: 0 1px 0 #dee2e6;
 }
 
 .help-modal__list {
@@ -632,7 +723,7 @@
 }
 
 .sidebar-right-expand__label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   writing-mode: vertical-rl;
@@ -1761,11 +1852,11 @@
   background: #f5f5f5;
 }
 
-.robot-startup__btn--start-ready {
+.robot-startup__actions .robot-startup__btn--start.robot-startup__btn--start-ready {
   background-color: #28a745;
 }
 
-.robot-startup__btn--start-ready:hover:not(:disabled) {
+.robot-startup__actions .robot-startup__btn--start.robot-startup__btn--start-ready:hover:not(:disabled) {
   background-color: #218838;
 }
 
