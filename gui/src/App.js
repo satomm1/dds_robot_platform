@@ -30,7 +30,7 @@ import {
 } from './utils/mapDisplaySettings';
 import { RobotColorProvider } from './hooks/useRobotColors';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
-import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS } from './queries';
+import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS, GET_AIR_QUALITIES } from './queries';
 
 const ROBOT_POSITIONS_POLL_MS = 2000;
 const SIDEBAR_LEFT_WIDTH_KEY = 'dds_gui_sidebar_left_width';
@@ -141,6 +141,15 @@ function AppContent() {
   const robotPositions = useMemo(
     () => positionsData?.robotPositions ?? [],
     [positionsData]
+  );
+
+  const { data: airQualitiesData } = useQuery(GET_AIR_QUALITIES, {
+    pollInterval: ROBOT_POSITIONS_POLL_MS,
+    fetchPolicy: 'cache-and-network',
+  });
+  const airQualities = useMemo(
+    () => airQualitiesData?.airQualities ?? [],
+    [airQualitiesData]
   );
 
   // Now this hook is inside the ApolloProvider context
@@ -429,6 +438,7 @@ function AppContent() {
               robotPositions={robotPositions}
               positionsLoading={positionsLoading}
               positionsError={positionsError}
+              airQualities={airQualities}
             />
           <div className="mode-toggle">
             <button 

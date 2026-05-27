@@ -7,6 +7,7 @@ const RobotSelector = ({
   robotPositions = [],
   positionsLoading,
   positionsError,
+  airQualities = [],
 }) => {
   const { getRobotColor, setRobotColor } = useRobotColors();
 
@@ -50,6 +51,10 @@ const RobotSelector = ({
   }
 
   const robots = robotPositions;
+  const selectedAirQuality =
+    selectedRobotId != null
+      ? airQualities.find((aq) => aq.robot_id === selectedRobotId)
+      : null;
 
   return (
     <div className="robot-selector">
@@ -77,6 +82,29 @@ const RobotSelector = ({
             </li>
           ))}
         </ul>
+      )}
+      {selectedAirQuality && (
+        <div className="robot-selector__air-quality" aria-label="Air quality for selected robot">
+          <h4>Air quality</h4>
+          <dl>
+            <div>
+              <dt>Temp</dt>
+              <dd>{selectedAirQuality.temperature.toFixed(1)} °F</dd>
+            </div>
+            <div>
+              <dt>Humidity</dt>
+              <dd>{selectedAirQuality.relative_humidity.toFixed(1)} %</dd>
+            </div>
+            <div>
+              <dt>VOC</dt>
+              <dd>{selectedAirQuality.voc_index.toFixed(0)}</dd>
+            </div>
+            <div>
+              <dt>NOx</dt>
+              <dd>{selectedAirQuality.nox_index.toFixed(0)}</dd>
+            </div>
+          </dl>
+        </div>
       )}
     </div>
   );

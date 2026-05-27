@@ -73,6 +73,15 @@ type Agents {
     id: [Int]
 }
 
+type AirQuality {
+    robot_id: Int!
+    temperature: Float!
+    relative_humidity: Float!
+    voc_index: Float!
+    nox_index: Float!
+    timestamp: Float!
+}
+
 type PendingRobotStop {
     id: Int
     requested_at: Float
@@ -128,6 +137,8 @@ type Query {
     subscribed_agents: Agents
     exitedAgents: Agents
     subscribedAndExitedAgents: [Agents]
+    airQuality(robot_id: Int!): AirQuality
+    airQualities: [AirQuality!]!
 }
 
 type Mutation {
@@ -154,6 +165,7 @@ type Mutation {
     setObjects(agent_id: Int, x: Float, y: Float, class_name: String, object_num: Int): Boolean
     clearObject(agent_id: Int, object_num: Int): Boolean
     clearAllObjects: Boolean
+    setAirQuality(robot_id: Int!, temperature: Float!, relative_humidity: Float!, voc_index: Float!, nox_index: Float!, timestamp: Float!): Boolean
 }
 
 type Subscription {

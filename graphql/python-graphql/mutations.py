@@ -14,6 +14,7 @@ STOP_REQUEST_CACHE = "robot_stop_request"
 SHUTDOWN_REQUEST_CACHE = "robot_shutdown_request"
 MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
 MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
+AIR_QUALITY_CACHE = "robot_air_quality"
 
 
 @mutation.field("requestRobotStop")
@@ -232,11 +233,43 @@ def resolve_clear_robot(_, info, robot_id):
             shutdown_cache.remove_key(robot_id)
         except Exception:
             pass
+        air_quality_cache = ignite_client.get_or_create_cache(AIR_QUALITY_CACHE)
+        try:
+            air_quality_cache.remove_key(robot_id)
+        except Exception:
+            pass
         return True
     except Exception as exc:
         logger.exception("clearRobot failed for robot_id=%s: %s", robot_id, exc)
         return False
-    
+
+
+@mutation.field("setAirQuality")
+def resolve_set_air_quality(
+    _,
+    info,
+    robot_id,
+    temperature,
+    relative_humidity,
+    voc_index,
+    nox_index,
+    timestamp,
+):
+    air_quality_cache = ignite_client.get_or_create_cache(AIR_QUALITY_CACHE)
+    payload = {
+        "temperature": float(temperature),
+        "relative_humidity": float(relative_humidity),
+        "voc_index": float(voc_index),
+        "nox_index": float(nox_index),
+        "timestamp": float(timestamp),
+    }
+    try:
+        air_quality_cache.put(robot_id, json.dumps(payload))
+        return True
+    except Exception as exc:
+        logger.exception("setAirQuality failed for robot_id=%s: %s", robot_id, exc)
+        return False
+
 @mutation.field("setAgentList")
 def resolve_set_agent_list(_, info, agent_list):
     agent_list_cache = ignite_client.get_or_create_cache('subscribed_agents')

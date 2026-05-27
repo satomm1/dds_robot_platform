@@ -63,3 +63,16 @@ export const GET_OBJECT_POSITIONS = gql`
     }
   }
 `;
+
+export const GET_AIR_QUALITIES = gql`
+  query {
+    airQualities {
+      robot_id
+      temperature
+      relative_humidity
+      voc_index
+      nox_index
+      timestamp
+    }
+  }
+`;

@@ -15,6 +15,21 @@ STOP_REQUEST_CACHE = "robot_stop_request"
 SHUTDOWN_REQUEST_CACHE = "robot_shutdown_request"
 MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
 MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
+AIR_QUALITY_CACHE = "robot_air_quality"
+
+
+def _air_quality_from_cache_row(robot_id, raw):
+    if raw is None:
+        return None
+    doc = json.loads(raw)
+    return {
+        "robot_id": robot_id,
+        "temperature": doc["temperature"],
+        "relative_humidity": doc["relative_humidity"],
+        "voc_index": doc["voc_index"],
+        "nox_index": doc["nox_index"],
+        "timestamp": doc["timestamp"],
+    }
 
 
 @query.field("map")
@@ -469,3 +484,22 @@ def resolve_data(*_):
     return [
         {"id": agents},   {"id": exited_agents}
         ]
+
+
+@query.field("airQuality")
+def resolve_air_quality(*_, robot_id: int):
+    air_quality_cache = ignite_client.get_or_create_cache(AIR_QUALITY_CACHE)
+    raw = air_quality_cache.get(robot_id)
+    return _air_quality_from_cache_row(robot_id, raw)
+
+
+@query.field("airQualities")
+def resolve_air_qualities(*_):
+    air_quality_cache = ignite_client.get_or_create_cache(AIR_QUALITY_CACHE)
+    rows = air_quality_cache.scan()
+    result = []
+    for robot_id, raw in rows:
+        entry = _air_quality_from_cache_row(robot_id, raw)
+        if entry is not None:
+            result.append(entry)
+    return result

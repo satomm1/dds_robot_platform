@@ -28,7 +28,8 @@ from dds_utils import (
     require_agent_id_int,
     transform_se2,
 )
-from dds_utils.config import INFLUX_ORG, INFLUX_URL, resolve_graphql_http_url
+from dds_utils.config import INFLUX_BUCKET, INFLUX_ORG, INFLUX_URL, resolve_graphql_http_url
+from dds_utils.message_types import MSG_AIR_QUALITY
 from dds_utils.topics import data_topic_name
 
 ROBOT_GOAL_MUTATION =   """
@@ -54,6 +55,26 @@ CLEAR_OBJECT_MUTATION =     """
                                     clearObject(agent_id: $agent_id, object_num: $object_num)
                                 }
                             """
+
+SET_AIR_QUALITY_MUTATION = """
+    mutation(
+        $robot_id: Int!,
+        $temperature: Float!,
+        $relative_humidity: Float!,
+        $voc_index: Float!,
+        $nox_index: Float!,
+        $timestamp: Float!
+    ) {
+        setAirQuality(
+            robot_id: $robot_id,
+            temperature: $temperature,
+            relative_humidity: $relative_humidity,
+            voc_index: $voc_index,
+            nox_index: $nox_index,
+            timestamp: $timestamp
+        )
+    }
+"""
 
 class DataListener(Listener):
 
@@ -154,7 +175,58 @@ class DataListener(Listener):
                     .field("x", x) \
                     .field("y", y) \
                     .time(timestamp, WritePrecision.S)
-                    self.influx_write_api.write("first_bucket", org="eig", record=point)
+                    self.influx_write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point)
+
+            elif message_type == MSG_AIR_QUALITY:
+                required = (
+                    "temperature",
+                    "relative_humidity",
+                    "voc_index",
+                    "nox_index",
+                )
+                if not all(k in data for k in required):
+                    dds_log(
+                        "data_sub",
+                        f"air_quality missing fields (agent {self.topic_id}): {data}",
+                    )
+                    continue
+
+                temperature = float(data["temperature"])
+                relative_humidity = float(data["relative_humidity"])
+                voc_index = float(data["voc_index"])
+                nox_index = float(data["nox_index"])
+
+                requests.post(
+                    self.graphql_server,
+                    json={
+                        "query": SET_AIR_QUALITY_MUTATION,
+                        "variables": {
+                            "robot_id": int(self.topic_id),
+                            "temperature": temperature,
+                            "relative_humidity": relative_humidity,
+                            "voc_index": voc_index,
+                            "nox_index": nox_index,
+                            "timestamp": float(timestamp),
+                        },
+                    },
+                    timeout=1,
+                )
+
+                if self.influx_write_api is not None:
+                    point = (
+                        Point("air_quality")
+                        .tag("robot_id", str(self.topic_id))
+                        .field("temperature", temperature)
+                        .field("relative_humidity", relative_humidity)
+                        .field("voc_index", voc_index)
+                        .field("nox_index", nox_index)
+                        .time(timestamp, WritePrecision.S)
+                    )
+                    self.influx_write_api.write(
+                        bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point
+                    )
+
+                dds_log("data_sub", f"air_quality (agent {self.topic_id})")
 
             elif message_type == "sensor_detected_objects":
                 x = data['x']
