@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useRobotColors } from '../hooks/useRobotColors';
 
 const RobotSelector = ({
@@ -7,8 +7,6 @@ const RobotSelector = ({
   robotPositions = [],
   positionsLoading,
   positionsError,
-  showAirQualityOnHover = false,
-  airQualities = [],
 }) => {
   const { getRobotColor, setRobotColor } = useRobotColors();
 
@@ -41,26 +39,6 @@ const RobotSelector = ({
       onSelectRobot(firstId);
     }
   }, [selectedRobotId, robotPositions, onSelectRobot]);
-
-  const selectedAirQuality =
-    selectedRobotId != null
-      ? airQualities.find((aq) => aq.robot_id === selectedRobotId)
-      : null;
-
-  const [, setReadingAgeTick] = useState(0);
-  useEffect(() => {
-    if (!showAirQualityOnHover || !selectedAirQuality) return undefined;
-    const id = setInterval(() => setReadingAgeTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, [showAirQualityOnHover, selectedAirQuality, selectedRobotId]);
-
-  const readingAgeSec =
-    selectedAirQuality != null
-      ? Math.max(
-          0,
-          Math.round(Date.now() / 1000 - Number(selectedAirQuality.timestamp)),
-        )
-      : null;
 
   if (positionsLoading && robotPositions.length === 0) {
     return <div className="robot-selector">Loading robots...</div>;
@@ -99,34 +77,6 @@ const RobotSelector = ({
             </li>
           ))}
         </ul>
-      )}
-      {showAirQualityOnHover && selectedAirQuality && (
-        <div className="robot-selector__air-quality" aria-label="Air Quality for selected robot">
-          <h4>Air Quality</h4>
-          <dl>
-            <div>
-              <dt>Temp</dt>
-              <dd>{selectedAirQuality.temperature.toFixed(1)} °F</dd>
-            </div>
-            <div>
-              <dt>Humidity</dt>
-              <dd>{selectedAirQuality.relative_humidity.toFixed(1)} %</dd>
-            </div>
-            <div>
-              <dt>VOC</dt>
-              <dd>{selectedAirQuality.voc_index.toFixed(0)}</dd>
-            </div>
-            <div>
-              <dt>NOx</dt>
-              <dd>{selectedAirQuality.nox_index.toFixed(0)}</dd>
-            </div>
-          </dl>
-          {readingAgeSec != null && (
-            <p className="robot-selector__air-quality-meta">
-              Reading {readingAgeSec}s ago
-            </p>
-          )}
-        </div>
       )}
     </div>
   );

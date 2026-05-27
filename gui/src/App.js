@@ -8,6 +8,7 @@ import RobotControls from './components/RobotControls';
 import ShutDownAllButton from './components/ShutDownAllButton';
 import DdsLocalControl from './components/DdsLocalControl';
 import RobotStartup from './components/RobotStartup';
+import AirQualityPanel from './components/AirQualityPanel';
 import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
@@ -78,6 +79,7 @@ function AppContent() {
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const [selectedRobotId, setSelectedRobotId] = useState(null);
   const mapRef = useRef(null);
+  const mainWorkspaceRef = useRef(null);
 
   const handleCenterOnRobot = useCallback((robotId) => {
     mapRef.current?.zoomToRobot(robotId);
@@ -456,7 +458,7 @@ function AppContent() {
           onShowMapControlsChange={setMapShowMapControls}
         />
       )}
-      <div className="control-container">
+      <div className="control-container" ref={mainWorkspaceRef}>
         <div className="sidebar" style={{ width: leftSidebarWidth }}>
           <div className="sidebar__main">
             <RobotSelector 
@@ -465,8 +467,6 @@ function AppContent() {
               robotPositions={robotPositions}
               positionsLoading={positionsLoading}
               positionsError={positionsError}
-              showAirQualityOnHover={mapShowAirQualityOnHover}
-              airQualities={airQualities}
             />
           <div className="mode-toggle">
             <button 
@@ -599,6 +599,14 @@ function AppContent() {
               </div>
             </aside>
           </>
+        )}
+        {mapShowAirQualityOnHover && (
+          <AirQualityPanel
+            containerRef={mainWorkspaceRef}
+            selectedRobotId={selectedRobotId}
+            robotPositions={robotPositions}
+            airQualities={airQualities}
+          />
         )}
       </div>
     </div>

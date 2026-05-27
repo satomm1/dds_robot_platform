@@ -562,6 +562,7 @@
 }
 
 .control-container {
+  position: relative;
   display: flex;
   flex: 1;
   overflow: hidden;
@@ -854,45 +855,91 @@
   border-radius: 50%;
 }
 
-.robot-selector__air-quality {
-  margin-top: 12px;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+/* Draggable Air Quality panel (workspace overlay) */
+.air-quality-panel {
+  position: absolute;
+  z-index: 30;
+  pointer-events: auto;
+  box-sizing: border-box;
+  min-width: 200px;
   background: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  text-align: left;
+}
+
+.air-quality-panel--dragging {
+  cursor: grabbing;
+  opacity: 0.95;
+}
+
+.air-quality-panel__handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  background: #eef0f2;
+  border-radius: 5px 5px 0 0;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  border-bottom: 1px solid #ddd;
+}
+
+.air-quality-panel__handle:active {
+  cursor: grabbing;
+}
+
+.air-quality-panel__grip {
+  width: 14px;
+  height: 3px;
+  border-top: 2px dotted #888;
+  border-bottom: 2px dotted #888;
+}
+
+.air-quality-panel__body {
+  padding: 10px;
   font-size: 0.85rem;
 }
 
-.robot-selector__air-quality h4 {
+.air-quality-panel__title {
   margin: 0 0 8px;
   font-size: 0.9rem;
+  font-weight: 600;
+  color: #222;
 }
 
-.robot-selector__air-quality dl {
+.air-quality-panel__readings {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px 12px;
   margin: 0;
 }
 
-.robot-selector__air-quality dl > div {
+.air-quality-panel__readings > div {
   display: flex;
   justify-content: space-between;
   gap: 8px;
 }
 
-.robot-selector__air-quality dt {
+.air-quality-panel__readings dt {
   margin: 0;
   color: #555;
   font-weight: 500;
 }
 
-.robot-selector__air-quality dd {
+.air-quality-panel__readings dd {
   margin: 0;
   font-weight: 600;
 }
 
-.robot-selector__air-quality-meta {
+.air-quality-panel__meta {
   margin: 8px 0 0;
   font-size: 0.8rem;
   color: #6c757d;
