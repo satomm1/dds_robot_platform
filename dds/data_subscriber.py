@@ -28,9 +28,51 @@ from dds_utils import (
     require_agent_id_int,
     transform_se2,
 )
-from dds_utils.config import INFLUX_BUCKET, INFLUX_ORG, INFLUX_URL, resolve_graphql_http_url
+from dds_utils.config import (
+    INFLUX_BUCKET,
+    INFLUX_ORG,
+    INFLUX_URL,
+    POSITION_STALE_SEC,
+    resolve_graphql_http_url,
+)
+from dds_utils.gql_queries import ROBOT_POSITION_QUERY
 from dds_utils.message_types import MSG_AIR_QUALITY
 from dds_utils.topics import data_topic_name
+
+
+def fetch_fresh_robot_position(graphql_server, robot_id):
+    """
+    Return (x, y, theta) if Ignite pose has a recent position_timestamp, else None.
+    """
+    try:
+        response = requests.post(
+            graphql_server,
+            json={
+                "query": ROBOT_POSITION_QUERY,
+                "variables": {"robot_id": int(robot_id)},
+            },
+            timeout=1,
+        )
+        if response.status_code != 200:
+            return None
+        body = response.json()
+        if body.get("errors"):
+            return None
+        pos = (body.get("data") or {}).get("robotPosition")
+        if not pos:
+            return None
+        ts = pos.get("position_timestamp")
+        if ts is None or float(ts) <= 0:
+            return None
+        age = time.time() - float(ts)
+        if age > POSITION_STALE_SEC:
+            return None
+        x, y, theta = pos.get("x"), pos.get("y"), pos.get("theta")
+        if x is None or y is None or theta is None:
+            return None
+        return float(x), float(y), float(theta)
+    except Exception:
+        return None
 
 ROBOT_GOAL_MUTATION =   """
                             mutation($robot_id: Int!, $x_goal: Float!, $y_goal: Float!, $theta_goal: Float!, $goal_timestamp: Float!, $from_bot: Boolean, $goal_valid: Boolean) {
@@ -212,19 +254,32 @@ class DataListener(Listener):
                     timeout=1,
                 )
 
+                pose = fetch_fresh_robot_position(
+                    self.graphql_server, int(self.topic_id)
+                )
                 if self.influx_write_api is not None:
-                    point = (
-                        Point("air_quality")
-                        .tag("robot_id", str(self.topic_id))
-                        .field("temperature", temperature)
-                        .field("relative_humidity", relative_humidity)
-                        .field("voc_index", voc_index)
-                        .field("nox_index", nox_index)
-                        .time(timestamp, WritePrecision.S)
-                    )
-                    self.influx_write_api.write(
-                        bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point
-                    )
+                    if pose is not None:
+                        x, y, theta = pose
+                        point = (
+                            Point("air_quality")
+                            .tag("robot_id", str(self.topic_id))
+                            .field("temperature", temperature)
+                            .field("relative_humidity", relative_humidity)
+                            .field("voc_index", voc_index)
+                            .field("nox_index", nox_index)
+                            .field("x", x)
+                            .field("y", y)
+                            .field("theta", theta)
+                            .time(timestamp, WritePrecision.S)
+                        )
+                        self.influx_write_api.write(
+                            bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point
+                        )
+                    else:
+                        dds_log(
+                            "data_sub",
+                            f"air_quality skipped Influx: stale position (agent {self.topic_id})",
+                        )
 
                 dds_log("data_sub", f"air_quality (agent {self.topic_id})")
 

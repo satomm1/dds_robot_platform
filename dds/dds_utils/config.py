@@ -2,6 +2,9 @@ import os
 
 HEARTBEAT_PERIOD = 10  # seconds
 HEARTBEAT_TIMEOUT = 31  # seconds
+
+# Max age (seconds) for robot pose to be included on air_quality Influx points.
+POSITION_STALE_SEC = float(os.environ.get("POSITION_STALE_SEC", HEARTBEAT_TIMEOUT))
 AGENT_TYPE = "human"
 
 PARTICIPANT_LEASE_DURATION_MS = 30000

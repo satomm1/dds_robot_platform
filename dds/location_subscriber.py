@@ -36,8 +36,8 @@ LOCATION_GRAPHQL_TIMEOUT_SEC = float(os.environ.get("LOCATION_GRAPHQL_TIMEOUT_SE
 LOCATION_GRAPHQL_RETRIES = int(os.environ.get("LOCATION_GRAPHQL_RETRIES", "3"))
 
 ROBOT_POSITION_MUTATION =   """
-                                mutation($robot_id: Int!, $x: Float!, $y: Float!, $theta: Float!) {
-                                    setRobotPosition(robot_id: $robot_id, x: $x, y: $y, theta: $theta)
+                                mutation($robot_id: Int!, $x: Float!, $y: Float!, $theta: Float!, $position_timestamp: Float!) {
+                                    setRobotPosition(robot_id: $robot_id, x: $x, y: $y, theta: $theta, position_timestamp: $position_timestamp)
                                 }
                             """
 
@@ -135,6 +135,7 @@ class LocationListener(Listener):
                         "x": x,
                         "y": y,
                         "theta": theta,
+                        "position_timestamp": float(sample.timestamp),
                     },
                 }
                 try:

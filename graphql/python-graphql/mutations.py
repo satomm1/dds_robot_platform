@@ -174,13 +174,15 @@ def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_t
         return False
     
 @mutation.field("setRobotPosition")
-def resolve_set_robot_position(_, info, robot_id, x, y, theta):
+def resolve_set_robot_position(_, info, robot_id, x, y, theta, position_timestamp=None):
     position_cache = ignite_client.get_or_create_cache('robot_position')
     position = {
         "x": x,
         "y": y,
-        "theta": theta
+        "theta": theta,
     }
+    if position_timestamp is not None:
+        position["position_timestamp"] = float(position_timestamp)
     try:
         position_cache.put(robot_id, json.dumps(position))
         return True

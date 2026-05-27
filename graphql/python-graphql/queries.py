@@ -68,22 +68,30 @@ def resolve_data(*_):
         "origin_orientation_w": md["origin.orientation.w"]
     }
 
+def _robot_position_from_cache(robot_id, raw):
+    if raw is None:
+        return {
+            "x": None,
+            "y": None,
+            "theta": None,
+            "position_timestamp": None,
+        }
+    robot = json.loads(raw)
+    ts = robot.get("position_timestamp")
+    return {
+        "x": robot["x"],
+        "y": robot["y"],
+        "theta": robot["theta"],
+        "position_timestamp": float(ts) if ts is not None else None,
+    }
+
+
 @query.field("robotPosition")
 def resolve_data(*_, robot_id: int):
     position_cache = ignite_client.get_or_create_cache('robot_position')
     robot = position_cache.get(robot_id)
-    if robot is None:
-        return {
-            "x": None,
-            "y": None,
-            "theta": None
-        }
-    robot = json.loads(robot)
-    return {
-        "x": robot["x"],
-        "y": robot["y"],
-        "theta": robot["theta"]
-    }
+    return _robot_position_from_cache(robot_id, robot)
+
 
 @query.field("robotPositions")
 def resolve_data(*_):
@@ -92,12 +100,13 @@ def resolve_data(*_):
     all_robots = []
     for robot in robots:
         robot_id = robot[0]
-        robot = json.loads(robot[1])
+        pos = _robot_position_from_cache(robot_id, robot[1])
         all_robots.append({
             "id": robot_id,
-            "x": robot["x"],
-            "y": robot["y"],
-            "theta": robot["theta"]
+            "x": pos["x"],
+            "y": pos["y"],
+            "theta": pos["theta"],
+            "position_timestamp": pos["position_timestamp"],
         })
     return all_robots
 
