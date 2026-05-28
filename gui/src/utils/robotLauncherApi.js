@@ -1,6 +1,7 @@
 import { DEFAULT_PORT, normalizeHostInput } from './robotLauncherStorage';
 
 const REQUEST_TIMEOUT_MS = 20000;
+const SOFTWARE_UPDATE_TIMEOUT_MS = 660000;
 const STATUS_REQUEST_TIMEOUT_MS = 5000;
 
 function launchUrl(host, port, path) {
@@ -128,6 +129,66 @@ export function buildHostPowerOffPath(token = '') {
  */
 export async function requestRobotHostPowerOff(host, token = '') {
   return requestRobotLauncherRaw(host, buildHostPowerOffPath(token), REQUEST_TIMEOUT_MS);
+}
+
+/**
+ * Build path for GET /software-update (optional stop/build query).
+ * @param {{ stopRos?: boolean, build?: boolean }} [options]
+ */
+export function buildSoftwareUpdatePath(options = {}) {
+  const params = new URLSearchParams();
+  if (Boolean(options.stopRos)) {
+    params.set('stop', 'true');
+  }
+  if (Boolean(options.build)) {
+    params.set('build', 'true');
+  }
+  const qs = params.toString();
+  return qs ? `/software-update?${qs}` : '/software-update';
+}
+
+/**
+ * Run git pull on configured repos via launch_server GET /software-update.
+ * @param {string} host
+ * @param {{ stopRos?: boolean, build?: boolean }} [options]
+ */
+export async function requestRobotSoftwareUpdate(host, options = {}) {
+  return requestRobotLauncherRaw(
+    host,
+    buildSoftwareUpdatePath(options),
+    SOFTWARE_UPDATE_TIMEOUT_MS,
+  );
+}
+
+/** Parse /software-update JSON body into a short user-facing summary. */
+export function summarizeSoftwareUpdateBody(body) {
+  if (!body) return 'Software update finished.';
+  try {
+    const data = JSON.parse(body);
+    const repos = Array.isArray(data.repos) ? data.repos : [];
+    const succeeded = repos.filter((r) => r.ok).length;
+    const total = repos.length;
+    if (total === 0) {
+      return data.message || 'No repositories configured on the robot.';
+    }
+    const base = data.ok
+      ? `Software update succeeded (${succeeded}/${total} repos).`
+      : `Software update finished with errors (${succeeded}/${total} repos succeeded).`;
+    const catkin = data.catkin_make;
+    let catkinNote = '';
+    if (catkin && typeof catkin === 'object') {
+      catkinNote = catkin.ok
+        ? ' catkin_make OK.'
+        : ' catkin_make failed.';
+    }
+    const failed = repos.filter((r) => !r.ok).map((r) => r.path);
+    if (failed.length > 0 && failed.length <= 3) {
+      return `${base}${catkinNote} Failed: ${failed.join(', ')}`;
+    }
+    return `${base}${catkinNote}`;
+  } catch {
+    return body.trim() || 'Software update finished.';
+  }
 }
 
 /** GET /status — short timeout, no throw on unreachable host (returns { ok: false }). */

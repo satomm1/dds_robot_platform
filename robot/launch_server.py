@@ -11,6 +11,28 @@ launch_process = None
 
 POWEROFF_TOKEN = os.environ.get("ROBOT_POWEROFF_TOKEN", "")
 
+# --- Software update (git pull) template -----------------------------------
+# Edit GIT_REPO_PATHS for your robot: each entry is an absolute path to a git
+# checkout on the robot (typically under /workspace/catkin_ws/src/...).
+# Optional: set ROBOT_UPDATE_REPOS_FILE to a JSON file listing paths, e.g.
+#   ["/workspace/catkin_ws/src/mattbot_bringup", "/workspace/catkin_ws/src/other_pkg"]
+GIT_REPO_PATHS = [
+    "/workspace/catkin_ws/src/mattbot_bringup",
+    "/workspace/catkin_ws/src/mattbot_dds",
+    "/workspace/catkin_ws/src/mattbot_record",
+    "/workspace/catkin_ws/src/mattbot_image_detection",
+    "/workspace/catkin_ws/src/mattbot_mcl",
+    "/workspace/catkin_ws/src/mattbot_navigation",
+    "/workspace/catkin_ws/src/mattbot_teleop",
+    "/workspace/catkin_ws/src/mattbot_database",
+    "/workspace/catkin_ws/src/twist_mux",
+    "/workspace/catkin_ws/src/path_planning"
+]
+UPDATE_REPOS_FILE = os.environ.get("ROBOT_UPDATE_REPOS_FILE", "")
+GIT_PULL_TIMEOUT_SEC = int(os.environ.get("ROBOT_GIT_PULL_TIMEOUT_SEC", "120"))
+CATKIN_WS_DIR = "/workspace/catkin_ws"
+CATKIN_MAKE_TIMEOUT_SEC = int(os.environ.get("ROBOT_CATKIN_MAKE_TIMEOUT_SEC", "600"))
+
 # Host shutdown only (no docker stop). Use nohup so the HTTP handler can return
 # before the machine halts; Docker stops when the host shuts down.
 HOST_POWEROFF_CMD = (
@@ -48,11 +70,154 @@ def _parse_bool_query(query_string, param_name):
     return token in ("true", "1", "yes")
 
 
-def _token_ok(query_string):
+def _poweroff_token_ok(query_string):
     if not POWEROFF_TOKEN:
         return True
     values = parse_qs(query_string).get("token", [""])
     return (values[0] if values else "").strip() == POWEROFF_TOKEN
+
+
+def _load_git_repo_paths():
+    if UPDATE_REPOS_FILE:
+        try:
+            with open(UPDATE_REPOS_FILE, encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, list):
+                return [str(p).strip() for p in data if str(p).strip()]
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+    return list(GIT_REPO_PATHS)
+
+
+def _git_pull_repo(repo_path):
+    """Run git pull --ff-only in repo_path. Returns a result dict for JSON."""
+    git_dir = os.path.join(repo_path, ".git")
+    if not os.path.isdir(git_dir):
+        return {
+            "path": repo_path,
+            "ok": False,
+            "stdout": "",
+            "stderr": f"Not a git repository: {repo_path}",
+        }
+    try:
+        proc = subprocess.run(
+            ["git", "-C", repo_path, "pull", "--ff-only"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_PULL_TIMEOUT_SEC,
+        )
+        return {
+            "path": repo_path,
+            "ok": proc.returncode == 0,
+            "stdout": (proc.stdout or "").strip(),
+            "stderr": (proc.stderr or "").strip(),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "path": repo_path,
+            "ok": False,
+            "stdout": "",
+            "stderr": f"git pull timed out after {GIT_PULL_TIMEOUT_SEC}s",
+        }
+    except OSError as exc:
+        return {
+            "path": repo_path,
+            "ok": False,
+            "stdout": "",
+            "stderr": str(exc),
+        }
+
+
+def _run_catkin_make(workspace_dir):
+    """Run catkin_make in workspace_dir after sourcing ROS. Returns a result dict."""
+    if not os.path.isdir(workspace_dir):
+        return {
+            "path": workspace_dir,
+            "ok": False,
+            "stdout": "",
+            "stderr": f"Catkin workspace not found: {workspace_dir}",
+        }
+    cmd = (
+        "source /opt/ros/noetic/setup.bash && "
+        f"cd {workspace_dir} && catkin_make"
+    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            shell=True,
+            executable="/bin/bash",
+            capture_output=True,
+            text=True,
+            timeout=CATKIN_MAKE_TIMEOUT_SEC,
+        )
+        return {
+            "path": workspace_dir,
+            "ok": proc.returncode == 0,
+            "stdout": (proc.stdout or "").strip(),
+            "stderr": (proc.stderr or "").strip(),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "path": workspace_dir,
+            "ok": False,
+            "stdout": "",
+            "stderr": f"catkin_make timed out after {CATKIN_MAKE_TIMEOUT_SEC}s",
+        }
+    except OSError as exc:
+        return {
+            "path": workspace_dir,
+            "ok": False,
+            "stdout": "",
+            "stderr": str(exc),
+        }
+
+
+def _run_software_update(stop_ros=False, run_catkin_make=False):
+    """
+    Template entry point for /software-update.
+    Pulls git repos, then optionally runs catkin_make in CATKIN_WS_DIR.
+    """
+    if stop_ros:
+        _stop_ros_launch()
+
+    repos = _load_git_repo_paths()
+    if not repos:
+        return {
+            "ok": False,
+            "message": "No git repo paths configured (edit GIT_REPO_PATHS or ROBOT_UPDATE_REPOS_FILE).",
+            "repos": [],
+            "catkin_make": None,
+        }
+
+    results = [_git_pull_repo(path) for path in repos]
+    pulls_ok = all(entry["ok"] for entry in results)
+
+    catkin_result = None
+    if run_catkin_make:
+        if pulls_ok:
+            catkin_result = _run_catkin_make(CATKIN_WS_DIR)
+        else:
+            catkin_result = {
+                "path": CATKIN_WS_DIR,
+                "ok": False,
+                "stdout": "",
+                "stderr": "Skipped catkin_make because one or more git pulls failed.",
+            }
+
+    all_ok = pulls_ok and (catkin_result is None or catkin_result["ok"])
+    if catkin_result and not catkin_result["ok"]:
+        message = "Git pulls succeeded but catkin_make failed."
+    elif not pulls_ok:
+        message = "One or more git pulls failed."
+    else:
+        message = "Software update finished."
+
+    return {
+        "ok": all_ok,
+        "message": message,
+        "repos": results,
+        "catkin_make": catkin_result,
+    }
 
 
 def _stop_ros_launch():
@@ -168,7 +333,7 @@ class LaunchServer(BaseHTTPRequestHandler):
             return
 
         elif pathname == "/host-poweroff":
-            if not _token_ok(parsed.query):
+            if not _poweroff_token_ok(parsed.query):
                 self.send_response(403)
                 self.end_headers()
                 self.wfile.write(b"Forbidden.")
@@ -185,6 +350,19 @@ class LaunchServer(BaseHTTPRequestHandler):
             _schedule_host_poweroff()
             return
 
+        elif pathname == "/software-update":
+            stop_ros = _parse_bool_query(parsed.query, "stop")
+            run_build = _parse_bool_query(parsed.query, "build")
+            payload = _run_software_update(stop_ros=stop_ros, run_catkin_make=run_build)
+            body = json.dumps(payload, indent=2).encode("utf-8")
+            status = 200 if payload.get("ok") else 500
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -196,6 +374,6 @@ if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", 8080), LaunchServer)
     print(
         "Web launcher listening on port 8080 "
-        "(GET /status, /start, /stop, /host-poweroff)..."
+        "(GET /status, /start, /stop, /host-poweroff, /software-update)..."
     )
     server.serve_forever()

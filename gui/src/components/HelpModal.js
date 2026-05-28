@@ -126,9 +126,11 @@ const HelpModal = ({ onClose }) => {
             <HelpChip className="robot-startup__btn robot-startup__btn--start robot-startup__btn--start-ready">
               Start
             </HelpChip>
-            . When the robot is reachable, <strong>Start</strong> appears green.{' '}
-            <HelpChip className="robot-startup__btn robot-startup__btn--poweroff">Power Off</HelpChip>{' '}
-            (with confirmation) uses the startup IP to halt that PC. At the bottom of the{' '}
+            . When the robot is reachable, <strong>Start</strong> appears green. Open{' '}
+            <strong>More</strong> for{' '}
+            <strong>Power Off</strong> (with confirmation) or{' '}
+            <strong>Software Update</strong> (<code>git pull</code> and <code>catkin_make</code> on repos
+            and workspace configured in that robot&apos;s <code>launch_server.py</code>). At the bottom of the{' '}
             <strong>left sidebar</strong>,{' '}
             <HelpChip className="control-button shutdown">Shut Down All</HelpChip> sends a software
             shut down to every online robot. For one robot over DDS, select it on the left and use{' '}

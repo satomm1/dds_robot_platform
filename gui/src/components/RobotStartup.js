@@ -4,6 +4,8 @@ import {
   fetchRobotLauncherStatus,
   requestRobotHostPowerOff,
   requestRobotLauncher,
+  requestRobotSoftwareUpdate,
+  summarizeSoftwareUpdateBody,
 } from '../utils/robotLauncherApi';
 import {
   createHostId,
@@ -103,6 +105,76 @@ function SavedHostPicker({ hosts, hostStatus, selectedId, disabled, onSelect }) 
               </li>
             );
           })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function RobotActionsMenu({
+  disabled,
+  disabledReason,
+  busy,
+  onPowerOff,
+  onSoftwareUpdate,
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDocMouseDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [open]);
+
+  return (
+    <div className="robot-startup__actions-menu" ref={rootRef}>
+      <button
+        type="button"
+        className="robot-startup__btn robot-startup__actions-menu-trigger"
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={disabled ? disabledReason : 'Power off or update robot software'}
+      >
+        More <span aria-hidden>▾</span>
+      </button>
+      {open && !disabled && (
+        <ul className="robot-startup__actions-menu-list" role="menu">
+          <li role="none">
+            <button
+              type="button"
+              className="robot-startup__actions-menu-item robot-startup__actions-menu-item--poweroff"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                onPowerOff();
+              }}
+            >
+              Power Off
+            </button>
+          </li>
+          <li role="none">
+            <button
+              type="button"
+              className="robot-startup__actions-menu-item robot-startup__actions-menu-item--update"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                onSoftwareUpdate();
+              }}
+            >
+              Software Update
+            </button>
+          </li>
         </ul>
       )}
     </div>
@@ -239,9 +311,9 @@ const RobotStartup = () => {
 
   const launcherReachable =
     activeReach === HOST_STATUS.AVAILABLE || activeReach === HOST_STATUS.RUNNING;
-  const canPowerOff = Boolean(activeHost) && launcherReachable && !busy;
+  const canRobotActions = Boolean(activeHost) && launcherReachable && !busy;
 
-  const powerOffDisabledReason = !activeHost
+  const robotActionsDisabledReason = !activeHost
     ? 'Enter a robot IP'
     : activeReach === HOST_STATUS.CHECKING
       ? 'Checking robot…'
@@ -280,6 +352,46 @@ const RobotStartup = () => {
       setStatus({
         type: 'error',
         message: err.message || 'Power off request failed.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSoftwareUpdate = async () => {
+    const host = normalizeHostInput(hostInput);
+    if (!host) {
+      setStatus({ type: 'error', message: 'Enter a robot IP.' });
+      return;
+    }
+    setBusy(true);
+    setStatus({ type: '', message: '' });
+    try {
+      const result = await requestRobotSoftwareUpdate(host, {
+        stopRos: true,
+        build: true,
+      });
+      const summary = summarizeSoftwareUpdateBody(result.body);
+      if (result.ok) {
+        setStatus({ type: 'success', message: summary });
+        fetchRobotLauncherStatus(host).then((r) => {
+          if (r.ok) {
+            setHostStatus((prev) => ({
+              ...prev,
+              [host]: parseLauncherStatusBody(r.body),
+            }));
+          }
+        });
+      } else {
+        setStatus({
+          type: 'error',
+          message: summary || `Software update failed (HTTP ${result.status}).`,
+        });
+      }
+    } catch (err) {
+      setStatus({
+        type: 'error',
+        message: err.message || 'Software update request failed.',
       });
     } finally {
       setBusy(false);
@@ -503,19 +615,13 @@ const RobotStartup = () => {
         >
           {busy && !powerOffOpen ? '…' : 'Start'}
         </button>
-        <button
-          type="button"
-          className="robot-startup__btn robot-startup__btn--poweroff"
-          onClick={() => setPowerOffOpen(true)}
-          disabled={!canPowerOff}
-          title={
-            canPowerOff
-              ? 'Stop ROS and power off the robot PC'
-              : powerOffDisabledReason
-          }
-        >
-          Power Off
-        </button>
+        <RobotActionsMenu
+          disabled={!canRobotActions}
+          disabledReason={robotActionsDisabledReason}
+          busy={busy}
+          onPowerOff={() => setPowerOffOpen(true)}
+          onSoftwareUpdate={handleSoftwareUpdate}
+        />
       </div>
 
       <RobotPowerOffModal

@@ -1893,6 +1893,84 @@
   background: #fff;
 }
 
+.robot-startup__actions-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.robot-startup__actions-menu-trigger {
+  padding: 10px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  border: 1px solid #6c757d;
+  color: #495057;
+  background: #fff;
+}
+
+.robot-startup__actions-menu-trigger:hover:not(:disabled) {
+  background: #f1f3f5;
+}
+
+.robot-startup__actions-menu-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  color: #999;
+  border-color: #ccc;
+  background: #f5f5f5;
+}
+
+.robot-startup__actions-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 120;
+  min-width: 10.5rem;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.robot-startup__actions-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.robot-startup__actions-menu-item:hover:not(:disabled) {
+  background: #f1f3f5;
+}
+
+.robot-startup__actions-menu-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.robot-startup__actions-menu-item--poweroff {
+  color: #b71c1c;
+}
+
+.robot-startup__actions-menu-item--poweroff:hover:not(:disabled) {
+  background: #ffebee;
+}
+
+.robot-startup__actions-menu-item--update {
+  color: #1565c0;
+}
+
+.robot-startup__actions-menu-item--update:hover:not(:disabled) {
+  background: #e3f2fd;
+}
+
 .robot-startup__btn--poweroff:hover:not(:disabled) {
   background: #ffebee;
 }
