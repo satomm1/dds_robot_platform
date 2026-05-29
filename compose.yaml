@@ -1,17 +1,21 @@
-# This is the docker-compose file for the Kafka cluster. This includes 
-# a zookeeper, broker, kafkacat, and python container. The python
-# container is used to run the python kafka client scripts.
-
+# Local orchestrator stack: InfluxDB, Ignite, GraphQL API, and DDS scripts.
+# Requires matt_python:latest (load manually, e.g. docker load), dds/dds_env.sh,
+# and compose env vars for Influx (INFLUXDB_USERNAME, INFLUXDB_PASSWORD, INFLUXDB_TOKEN).
 services:
-  
-  python2:
+
+  dds:
     image: matt_python:latest
-    container_name: python2
-    volumes:
-      - ./graphql:/home/graphql
+    container_name: dds
     network_mode: host
-    stdin_open: true  # docker run -i
-    tty: true         # docker run -t
+    volumes:
+      - ./dds:/dds
+    working_dir: /dds
+    depends_on:
+      - graphql_endpoint_dds
+      - influx
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
     
   ignite_dds:
     image: apacheignite/ignite:latest
@@ -47,9 +51,9 @@ services:
       - "8086:8086"  # InfluxDB API port
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
-      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME}
-      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD}
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN}
+      DOCKER_INFLUXDB_INIT_USERNAME: satomm
+      DOCKER_INFLUXDB_INIT_PASSWORD: mattmatt
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: Wcm_AM_NDb1bII_XFt8FTD6tL3VLG8AJyK_FOhHffGYXCdMgZsd1ZRA0EOfEic4xWbCTwudPzumI4ycyopkulA==
       DOCKER_INFLUXDB_INIT_ORG: eig
       DOCKER_INFLUXDB_INIT_BUCKET: home
     volumes:
