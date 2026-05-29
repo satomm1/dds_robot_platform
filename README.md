@@ -18,31 +18,31 @@ Copy [`dds/dds_env.sh.example`](dds/dds_env.sh.example) to `dds/dds_env.sh` and 
 
 ## DDS (Docker)
 
-The local stack runs entirely in Docker. The `dds` service uses the `matt_python:latest` image and mounts `./dds` into the container; DDS scripts are started and stopped on demand (they do not auto-run when the container is created).
+The local stack runs entirely in Docker. The `dds` and GraphQL services use the **`ghcr.io/satomm1/matt_python`** image (published on [GitHub Container Registry](https://github.com/users/satomm1/packages)). The `./dds` directory is mounted into the container; DDS scripts are started and stopped on demand (they do not auto-run when the container is created).
 
-1) Download the Docker Python environment from: https://drive.google.com/drive/folders/1emeEoJrZxV4Nn6ktKUAyXbSTj0LjnlfB?usp=drive_link
-
-    Load the image:
+1) Pull images and start the stack (from the repo root):
     ```
-    docker load < matt_python_latest.tar.gz
-    ```
-
-2) Start the stack (from the repo root):
-    ```
+    docker compose pull
     docker compose up -d
     ```
-    This starts InfluxDB, Ignite, the GraphQL API, and the idle `dds` container.
+    `docker compose up -d` alone also pulls missing images. This starts InfluxDB, Ignite, the GraphQL API, and the idle `dds` container.
 
     **Alternatively**, use the GUI **Local Stack** panel (right sidebar): **Docker** → **Start** (runs `docker compose up -d` via WSL on Windows). Requires `compose.yaml` and `dds/dds_env.sh`.
 
-3) Start the DDS scripts (after Docker is up):
+    If the GHCR package is **private**, log in first:
+    ```
+    echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+    ```
+    Use a token with `read:packages`. Public packages do not require login.
+
+2) Start the DDS scripts (after Docker is up):
     ```
     docker exec -d dds ./start_scripts.sh
     ```
 
     **Alternatively**, in the GUI **Local Stack** panel: set the path to the `dds_robot_platform` repo root (auto-checked on startup), start **Docker**, then **DDS** → **Start**. The DDS Start button stays disabled until Docker is running.
 
-4) When finished, stop the DDS scripts:
+3) When finished, stop the DDS scripts:
     ```
     docker exec dds ./stop_scripts.sh
     ```
@@ -81,10 +81,23 @@ If you prefer not to use the `dds` container (for example, local development wit
 
     `start_scripts.sh` activates the `dds` conda env automatically when `cyclonedds` is not already on `PATH`.
 
-For a throwaway container shell (same image as compose, useful for debugging imports):
+For a throwaway container shell (same GHCR image as compose, useful for debugging imports):
 ```
 ./dds/run_dev_container.sh
 ```
+
+### Maintainers: publish a new image version
+
+When you rebuild `matt_python`, tag and push to GHCR, then bump the version in `compose.yaml` (`x-matt-python-image`):
+
+```
+docker tag matt_python:latest ghcr.io/satomm1/matt_python:1.1.0
+docker tag matt_python:latest ghcr.io/satomm1/matt_python:latest
+docker push ghcr.io/satomm1/matt_python:1.1.0
+docker push ghcr.io/satomm1/matt_python:latest
+```
+
+Users on the pinned tag run `docker compose pull` before `docker compose up -d` to get the update.
 
 ## GUI
 
