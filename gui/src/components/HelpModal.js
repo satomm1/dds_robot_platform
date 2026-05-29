@@ -111,7 +111,8 @@ const HelpModal = ({ onClose }) => {
           <ul className="help-modal__list">
             <li>
               <strong>Start</strong> / <strong>Stop</strong> runs <code>start_scripts.sh</code> /{' '}
-              <code>stop_scripts.sh</code> under <code>dds/</code>.
+              <code>stop_scripts.sh</code> inside the <code>dds</code> Docker container (start Docker
+              first).
             </li>
             <li>
               Configure <code>dds/dds_env.sh</code> (from <code>dds_env.sh.example</code>) for{' '}
@@ -130,8 +131,9 @@ const HelpModal = ({ onClose }) => {
             </li>
           </ul>
           <p className="help-modal__note">
-            On Windows, Docker and DDS run in WSL. Conda env <strong>dds</strong> is required for
-            DDS. Use the Electron app or <code>npm start</code> (not a static browser-only build).
+            On Windows, Docker and DDS run in WSL. DDS scripts run in the <code>dds</code>{' '}
+            container from <code>compose.yaml</code>. Use the Electron app or <code>npm start</code>{' '}
+            (not a static browser-only build).
           </p>
         </HelpSection>
 

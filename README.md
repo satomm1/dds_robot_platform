@@ -36,23 +36,15 @@ You will also need a conda interpreter. I recommend [miniconda](https://www.anac
         docker compose up -d
         ```
         **Alternatively**, use the GUI **Local Stack** panel (left sidebar): **Docker** → **Start** (runs `docker compose up -d` in the repo root via WSL on Windows). Requires `compose.yaml` and `dds/dds_env.sh`.
-    - Terminal 2: Navigate to `dds` directory:
+    - Terminal 2: Start the DDS scripts in the `dds` container (after Docker is up):
         ```
-        cd dds
+        docker exec -d dds ./start_scripts.sh
         ```
-        Run the DDS code:
-        ```
-        ./start_scripts.sh
-        ```
-        **Alternatively**, from the GUI desktop app or `npm start` in `gui`, use the **Local Stack** panel (left sidebar): set the path to the `dds_robot_platform` repo root (auto-checked on startup; DDS uses `./dds`), then **DDS** → **Start** / **Stop**. On Windows, the GUI runs via WSL; conda env `dds` and `dds/dds_env.sh` are required (see above).
+        **Alternatively**, from the GUI desktop app or `npm start` in `gui`, use the **Local Stack** panel (left sidebar): set the path to the `dds_robot_platform` repo root (auto-checked on startup), start **Docker**, then **DDS** → **Start** / **Stop**. On Windows, the GUI runs via WSL; `dds/dds_env.sh` is required (see above).
 
-    - Terminal 3: Navigate to `dds` directory:
+    - Terminal 3: After you are done using the GUI, stop the DDS scripts in the container:
         ```
-        cd dds
-        ```
-        After you are done using the GUI, terminate the DDS code:
-        ```
-        ./stop_scripts.sh
+        docker exec dds ./stop_scripts.sh
         ```
         Or click **Stop DDS** in the GUI **Local DDS** panel.
         

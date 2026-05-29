@@ -4,6 +4,7 @@ const {
   escapeBashSingleQuoted,
   normalizeDdsSettings,
   shellDdsDirFromPlatform,
+  shellPlatformRoot,
   DDS_SUBDIR,
 } = require('./ddsLocalPaths');
 const {
@@ -14,21 +15,21 @@ const {
   combineShellOutput,
 } = require('./shellRunner');
 const dockerComposeRunner = require('./dockerComposeRunner');
+const {
+  DDS_CONTAINER,
+  START_SCRIPT,
+  STOP_SCRIPT,
+  isDdsContainerRunningCheck,
+  ddsStatusCommand,
+  ddsScriptsRunningCheckViaExec,
+  startDdsScriptsCommand,
+  stopDdsScriptsCommand,
+  withPlatformCwd,
+} = require('./ddsContainerShell');
 
 const STOP_TIMEOUT_MS = 15000;
 const STATUS_TIMEOUT_MS = 8000;
-const START_SCRIPT = 'start_scripts.sh';
-const STOP_SCRIPT = 'stop_scripts.sh';
 const DDS_ENV_FILE = 'dds_env.sh';
-
-const DDS_SCRIPT_NAMES = [
-  'entry_exit.py',
-  'heartbeat_publisher.py',
-  'goal_publisher.py',
-  'location_subscriber.py',
-  'data_subscriber.py',
-  'image_subscriber.py',
-];
 
 function shellDdsDir(platformDir) {
   return shellDdsDirFromPlatform(platformDir, isWindows());
@@ -43,9 +44,7 @@ function scriptExists(platformDir, settings) {
   if (!shellDir) return false;
 
   if (isWindows()) {
-    const check = `test -f '${escapeBashSingleQuoted(
-      `${shellDir}/${START_SCRIPT}`,
-    )}'`;
+    const check = `test -f '${escapeBashSingleQuoted(`${shellDir}/${START_SCRIPT}`)}'`;
     const result = spawnShellCommand(check, settings, {
       sync: true,
       timeoutMs: STATUS_TIMEOUT_MS,
@@ -114,19 +113,6 @@ function validateSettings(settings) {
   return { valid: true, error: null };
 }
 
-function statusProbeCommand(shellDir) {
-  const dir = escapeBashSingleQuoted(shellDir);
-  const checks = DDS_SCRIPT_NAMES.map((name) => {
-    const safe = String(name || '').replace(/'/g, '');
-    const first = safe[0];
-    const rest = safe.slice(1);
-    const pattern = `[${first}]${rest}`;
-    return `pgrep -f '${pattern}' >/dev/null 2>&1`;
-  }).join(' || ');
-
-  return `cd '${dir}' && if ${checks}; then echo running; else echo stopped; fi`;
-}
-
 async function getDdsStatus(settings) {
   const platform = getPlatform();
   const { platformDir } = normalizeDdsSettings(settings);
@@ -145,8 +131,8 @@ async function getDdsStatus(settings) {
     };
   }
 
-  const shellDir = shellDdsDir(platformDir);
-  const result = spawnShellCommand(statusProbeCommand(shellDir), settings, {
+  const shellRoot = shellPlatformRoot(platformDir, isWindows());
+  const result = spawnShellCommand(withPlatformCwd(shellRoot, ddsStatusCommand()), settings, {
     sync: true,
     timeoutMs: STATUS_TIMEOUT_MS,
   });
@@ -165,27 +151,6 @@ async function getDdsStatus(settings) {
   return { running, platform, configured: true };
 }
 
-const BASH_INIT_CONDA =
-  'export PATH="$HOME/miniconda3/bin:${PATH:-}"; ' +
-  'if ! command -v conda >/dev/null 2>&1; then ' +
-  'for _conda_sh in "$HOME/miniconda3/etc/profile.d/conda.sh" ' +
-  '"$HOME/anaconda3/etc/profile.d/conda.sh" ' +
-  '"$HOME/mambaforge/etc/profile.d/conda.sh" ' +
-  '"$HOME/miniforge3/etc/profile.d/conda.sh" ' +
-  '"/opt/conda/etc/profile.d/conda.sh"; do ' +
-  'if [ -f "$_conda_sh" ]; then . "$_conda_sh"; break; fi; ' +
-  'done; fi';
-
-function quoteForBashC(command) {
-  return `'${String(command).replace(/'/g, `'\\''`)}'`;
-}
-
-function nohupStartScriptsCommand(shellDir) {
-  const dir = escapeBashSingleQuoted(shellDir);
-  const inner = `${BASH_INIT_CONDA} && cd '${dir}' && ./${START_SCRIPT}`;
-  return `nohup bash -c ${quoteForBashC(inner)}`;
-}
-
 async function startDds(settings) {
   const validation = validateSettings(settings);
   if (!validation.valid) {
@@ -197,37 +162,38 @@ async function startDds(settings) {
     return { ok: true, body: 'DDS is already running.' };
   }
 
-  const shellDir = shellDdsDir(normalizeDdsSettings(settings).platformDir);
+  const shellRoot = shellPlatformRoot(normalizeDdsSettings(settings).platformDir, isWindows());
 
-  const checks = DDS_SCRIPT_NAMES.map((name) => {
-    const safe = String(name || '').replace(/'/g, '');
-    const first = safe[0];
-    const rest = safe.slice(1);
-    const pattern = `[${first}]${rest}`;
-    return `pgrep -f '${pattern}' >/dev/null 2>&1`;
-  }).join(' || ');
+  const startAttempt = withPlatformCwd(
+    shellRoot,
+    `if ! ${isDdsContainerRunningCheck()}; then echo container_stopped; exit 0; fi && ` +
+      `${startDdsScriptsCommand()} && sleep 5 && ` +
+      `(if ${ddsScriptsRunningCheckViaExec()}; then echo running; ` +
+      `else echo failed; docker logs ${DDS_CONTAINER} --tail 120 2>&1 || true; fi)`,
+  );
 
-  const logPath = '/tmp/dds_local_start.log';
-
-  const attemptCommand =
-    `rm -f '${logPath}' && ` +
-    `(${nohupStartScriptsCommand(shellDir)} >> '${logPath}' 2>&1 &) && sleep 5 && ` +
-    `if ${checks}; then echo running; else echo failed; tail -n 120 '${logPath}' 2>/dev/null || true; fi`;
-
-  const result = spawnShellCommand(attemptCommand, settings, {
+  const result = spawnShellCommand(startAttempt, settings, {
     sync: true,
     timeoutMs: 30000,
   });
 
   const combined = combineShellOutput(result);
+  const stdout = (result.stdout || '').toLowerCase();
 
-  if ((result.stdout || '').toLowerCase().includes('running')) {
+  if (stdout.includes('container_stopped')) {
+    return {
+      ok: false,
+      error: 'DDS container is not running. Start Docker Compose first.',
+    };
+  }
+
+  if (stdout.includes('running')) {
     return { ok: true, body: 'DDS started.' };
   }
 
   return {
     ok: false,
-    error: combined || 'DDS failed to start (no matching processes found).',
+    error: combined || 'DDS failed to start (no matching processes found in container).',
   };
 }
 
@@ -237,9 +203,12 @@ async function stopDds(settings) {
     return { ok: false, error: validation.error };
   }
 
-  const shellDir = shellDdsDir(normalizeDdsSettings(settings).platformDir);
+  const shellRoot = shellPlatformRoot(normalizeDdsSettings(settings).platformDir, isWindows());
   const result = spawnShellCommand(
-    `cd '${escapeBashSingleQuoted(shellDir)}' && ./${STOP_SCRIPT}`,
+    withPlatformCwd(
+      shellRoot,
+      `if ! ${isDdsContainerRunningCheck()}; then echo 'DDS container is not running.'; exit 0; fi && ${stopDdsScriptsCommand()}`,
+    ),
     settings,
     {
       sync: true,

@@ -10,40 +10,20 @@ const {
   spawnShellCommandAsync,
   combineShellOutput,
 } = require('./shellRunner');
+const { ddsStatusCommand } = require('./ddsContainerShell');
 
 const DDS_ENV_FILE = 'dds_env.sh';
 const STATUS_TIMEOUT_MS = 12000;
 
-const DDS_SCRIPT_NAMES = [
-  'entry_exit.py',
-  'heartbeat_publisher.py',
-  'goal_publisher.py',
-  'location_subscriber.py',
-  'data_subscriber.py',
-  'image_subscriber.py',
-];
-
-function ddsProcessChecksFragment() {
-  return DDS_SCRIPT_NAMES.map((name) => {
-    const safe = String(name || '').replace(/'/g, '');
-    const first = safe[0];
-    const rest = safe.slice(1);
-    const pattern = `[${first}]${rest}`;
-    return `pgrep -f '${pattern}' >/dev/null 2>&1`;
-  }).join(' || ');
-}
-
 /** One WSL/bash invocation for Docker + DDS reachability (avoids serial spawnSync storms). */
 function combinedStackStatusCommand(shellRoot, shellDds) {
   const root = escapeBashSingleQuoted(shellRoot);
-  const dds = escapeBashSingleQuoted(shellDds);
   const envPath = escapeBashSingleQuoted(`${shellDds}/${DDS_ENV_FILE}`);
-  const checks = ddsProcessChecksFragment();
 
   return (
     `set -a && . '${envPath}' && set +a && ` +
     `cd '${root}' && (docker compose ps --status running -q 2>/dev/null | grep -q . && echo docker:running || echo docker:stopped) && ` +
-    `cd '${dds}' && (if ${checks}; then echo dds:running; else echo dds:stopped; fi)`
+    ddsStatusCommand('dds:running', 'dds:stopped')
   );
 }
 
