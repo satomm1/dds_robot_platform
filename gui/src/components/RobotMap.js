@@ -945,6 +945,14 @@ const RobotMap = forwardRef(({
         ? getRobotColor(selectedRobotId)
         : '#333';
 
+  const poseDragScreenDist = poseDrag
+    ? Math.hypot(
+        poseDrag.pointerScreen.x - poseDrag.anchorScreen.x,
+        poseDrag.pointerScreen.y - poseDrag.anchorScreen.y,
+      )
+    : 0;
+  const showPoseDragHint = poseDrag != null && poseDragScreenDist >= MIN_DRAG_PX;
+
   return (
     <div ref={containerRef} className={hostClass} title={mapHostTitle}>
       {mapSize.width > 0 && mapSize.height > 0 && (
@@ -1232,6 +1240,12 @@ const RobotMap = forwardRef(({
           })}
         </Layer>
       </Stage>
+      )}
+
+      {showPoseDragHint && (
+        <div className="robot-map__pose-drag-hint" role="status" aria-live="polite">
+          Press <kbd>Esc</kbd> to cancel
+        </div>
       )}
 
       {/* Tooltip layer outside the main stage - not affected by transforms */}

@@ -14,6 +14,10 @@ const HelpSection = ({ title, defaultOpen = false, children }) => (
   </details>
 );
 
+const HelpSubheading = ({ children }) => (
+  <h3 className="help-modal__subheading">{children}</h3>
+);
+
 const KEYBOARD_SHORTCUTS = [
   { keys: 'G', action: 'Switch to Set Robot Goal mode' },
   { keys: 'I', action: 'Switch to Set Initial Position mode' },
@@ -83,21 +87,51 @@ const HelpModal = ({ onClose }) => {
         <HelpSection title="Local Stack (this computer)">
           <p className="help-modal__body">
             The <strong>Local Stack</strong> panel at the <strong>bottom of the right sidebar</strong>{' '}
-            (with GraphQL / DDS status pills) controls Docker and DDS on your operator PC. Hide the
-            whole right column with the <strong>›</strong> button just left of the resize grip; use the narrow{' '}
-            <strong>Startup Panel</strong> tab on the map edge to show it again (panel width is remembered;
-            the sidebar opens expanded each time you load the app).{' '}
-            <strong>Docker</strong> runs <code>docker compose up -d</code> /{' '}
-            <code>docker compose down</code> in the repo root (where <code>compose.yaml</code>{' '}
-            lives). <strong>DDS</strong> runs <code>start_scripts.sh</code> /{' '}
-            <code>stop_scripts.sh</code> under <code>dds/</code>. Configure{' '}
-            <code>dds/dds_env.sh</code> (from <code>dds_env.sh.example</code>) for{' '}
-            <code>AGENT_ID</code>, <code>INFLUXDB_TOKEN</code>, and compose variables. Set the{' '}
-            <code>dds_robot_platform</code> repo path in settings (▾); the app uses{' '}
-            <code>./dds</code> for DDS and checks{' '}
-            <code>compose.yaml</code>, and <code>dds_env.sh</code> on startup. Use{' '}
-            <strong>Check</strong> after changing the path. On Windows, both run in WSL; conda env{' '}
-            <strong>dds</strong> is required for DDS. Use the Electron app or <code>npm start</code>.
+            (with GraphQL / DDS status pills) controls Docker and DDS on your operator PC.
+          </p>
+          <HelpSubheading>Panel visibility</HelpSubheading>
+          <ul className="help-modal__list">
+            <li>
+              Hide the right column with the <strong>›</strong> button left of the resize grip.
+            </li>
+            <li>
+              Reopen it with the narrow <strong>Startup Panel</strong> tab on the map edge. Panel
+              width is remembered; the sidebar opens expanded on each load.
+            </li>
+          </ul>
+          <HelpSubheading>Docker</HelpSubheading>
+          <ul className="help-modal__list">
+            <li>
+              <strong>Start</strong> / <strong>Stop</strong> runs{' '}
+              <code>docker compose up -d</code> / <code>docker compose down</code> in the repo root
+              (where <code>compose.yaml</code> lives).
+            </li>
+          </ul>
+          <HelpSubheading>DDS</HelpSubheading>
+          <ul className="help-modal__list">
+            <li>
+              <strong>Start</strong> / <strong>Stop</strong> runs <code>start_scripts.sh</code> /{' '}
+              <code>stop_scripts.sh</code> under <code>dds/</code>.
+            </li>
+            <li>
+              Configure <code>dds/dds_env.sh</code> (from <code>dds_env.sh.example</code>) for{' '}
+              <code>AGENT_ID</code>, <code>INFLUXDB_TOKEN</code>, and compose variables.
+            </li>
+          </ul>
+          <HelpSubheading>Repo path</HelpSubheading>
+          <ul className="help-modal__list">
+            <li>
+              Set the <code>dds_robot_platform</code> repo path in settings (▾). The app uses{' '}
+              <code>./dds</code> for DDS.
+            </li>
+            <li>
+              On startup, the app checks for <code>compose.yaml</code> and <code>dds_env.sh</code>.
+              Click <strong>Check</strong> after changing the path.
+            </li>
+          </ul>
+          <p className="help-modal__note">
+            On Windows, Docker and DDS run in WSL. Conda env <strong>dds</strong> is required for
+            DDS. Use the Electron app or <code>npm start</code> (not a static browser-only build).
           </p>
         </HelpSection>
 
@@ -112,31 +146,59 @@ const HelpModal = ({ onClose }) => {
 
         <HelpSection title="Starting and stopping the robot">
           <p className="help-modal__body">
-            In the <strong>Robot Startup</strong> panel at the <strong>top of the right sidebar</strong>, enter a{' '}
-            <HelpChip className="robot-startup__label">Label</HelpChip> and{' '}
-            <HelpChip className="robot-startup__label">Robot IP</HelpChip>, or choose a
-            previously saved robot from the{' '}
-            <HelpChip className="robot-startup__picker-trigger">
-              <span className="robot-startup__picker-label">Lab robot (192.168.1.10)</span>
-              <span className="robot-startup__picker-caret">▾</span>
-            </HelpChip>{' '}
-            menu, then under <strong>Planner Settings (beta)</strong> optionally check{' '}
-            <strong>social</strong> (regular A* when off; social planner when on) and/or{' '}
-            <strong>multi</strong> (multi-robot planning at launch), and click{' '}
-            <HelpChip className="robot-startup__btn robot-startup__btn--start robot-startup__btn--start-ready">
-              Start
-            </HelpChip>
-            . When the robot is reachable, <strong>Start</strong> appears green. Open{' '}
-            <strong>More</strong> for{' '}
-            <strong>Power Off</strong> (with confirmation) or{' '}
-            <strong>Software Update</strong> (<code>git pull</code> and <code>catkin_make</code> on repos
-            and workspace configured in that robot&apos;s <code>launch_server.py</code>). At the bottom of the{' '}
-            <strong>left sidebar</strong>,{' '}
-            <HelpChip className="control-button shutdown">Shut Down All</HelpChip> sends a software
-            shut down to every online robot. For one robot over DDS, select it on the left and use{' '}
-            <HelpChip className="control-button shutdown">Shut Down</HelpChip> in the robot details
-            panel.
+            Use the <strong>Robot Startup</strong> panel at the <strong>top of the right sidebar</strong>.
           </p>
+          <HelpSubheading>Start a robot</HelpSubheading>
+          <ol className="help-modal__steps">
+            <li>
+              Enter a <HelpChip className="robot-startup__label">Label</HelpChip> and{' '}
+              <HelpChip className="robot-startup__label">Robot IP</HelpChip>, or pick a saved robot
+              from the{' '}
+              <HelpChip className="robot-startup__picker-trigger">
+                <span className="robot-startup__picker-label">Lab robot (192.168.1.10)</span>
+                <span className="robot-startup__picker-caret">▾</span>
+              </HelpChip>{' '}
+              menu.
+            </li>
+            <li>
+              Under <strong>Planner Settings (beta)</strong>, optionally check{' '}
+              <strong>social</strong> (social planner when on; regular A* when off) and/or{' '}
+              <strong>multi</strong> (multi-robot planning at launch).
+            </li>
+            <li>
+              Click{' '}
+              <HelpChip className="robot-startup__btn robot-startup__btn--start robot-startup__btn--start-ready">
+                Start
+              </HelpChip>
+              . When the robot is reachable, <strong>Start</strong> turns green.
+            </li>
+          </ol>
+          <HelpSubheading>More actions</HelpSubheading>
+          <p className="help-modal__body help-modal__body--tight">
+            Open <strong>More</strong> in the Robot Startup panel:
+          </p>
+          <ul className="help-modal__list">
+            <li>
+              <strong>Power Off</strong> — shuts down the robot (confirmation required).
+            </li>
+            <li>
+              <strong>Software Update</strong> — runs <code>git pull</code> and{' '}
+              <code>catkin_make</code> on repos and workspace configured in that robot&apos;s{' '}
+              <code>launch_server.py</code>.
+            </li>
+          </ul>
+          <HelpSubheading>Shut down</HelpSubheading>
+          <ul className="help-modal__list">
+            <li>
+              <HelpChip className="control-button shutdown">Shut Down All</HelpChip> (bottom of the{' '}
+              <strong>left sidebar</strong>) — software shut down for every online robot.
+            </li>
+            <li>
+              Select one robot on the left, then{' '}
+              <HelpChip className="control-button shutdown">Shut Down</HelpChip> in its details panel
+              (DDS).
+            </li>
+          </ul>
         </HelpSection>
 
         <HelpSection title="Navigating the map">
@@ -167,8 +229,7 @@ const HelpModal = ({ onClose }) => {
 
         <HelpSection title="Operating the robot">
           <p className="help-modal__body">
-            Select a robot on the left by clicking its name in the{' '}
-            <strong>Select Robot</strong> list, for example{' '}
+            Select a robot in the <strong>Select Robot</strong> list on the left, for example{' '}
             <HelpChip className="help-modal__robot-item help-modal__robot-item--selected">
               Robot 1
               <span
@@ -176,18 +237,40 @@ const HelpModal = ({ onClose }) => {
                 style={{ backgroundColor: '#2196F3' }}
               />
             </HelpChip>
-            . To set the robot&apos;s initial pose, click{' '}
-            <HelpChip className="btn-goal-init-active btn-goal-narrow">
-              Set Initial Position
-            </HelpChip>
-            , then on the map <strong>click and drag</strong> from the pose location: drag to set
-            heading, then release. Press <strong>Esc</strong> while dragging to cancel before you
-            release the mouse. A short click without dragging does nothing. To send a navigation
-            goal, click{' '}
-            <HelpChip className="btn-goal-init-active btn-goal-narrow">Set Robot Goal</HelpChip>
-            , then use the same click-drag gesture on the map. To stop robot motion, click{' '}
-            <HelpChip className="control-button stop">Stop</HelpChip> in the left sidebar robot
-            details panel. See <strong>Keyboard shortcuts</strong> for key bindings.
+            .
+          </p>
+          <HelpSubheading>Set initial position</HelpSubheading>
+          <ol className="help-modal__steps">
+            <li>
+              Click{' '}
+              <HelpChip className="btn-goal-init-active btn-goal-narrow">
+                Set Initial Position
+              </HelpChip>
+              .
+            </li>
+            <li>
+              On the map, <strong>click and drag</strong> from the pose location to set heading, then
+              release.
+            </li>
+          </ol>
+          <HelpSubheading>Set navigation goal</HelpSubheading>
+          <ol className="help-modal__steps">
+            <li>
+              Click{' '}
+              <HelpChip className="btn-goal-init-active btn-goal-narrow">Set Robot Goal</HelpChip>.
+            </li>
+            <li>Use the same click-drag gesture on the map.</li>
+          </ol>
+          <HelpSubheading>Stop motion</HelpSubheading>
+          <ul className="help-modal__list">
+            <li>
+              Click <HelpChip className="control-button stop">Stop</HelpChip> in the robot details
+              panel, or use the shortcuts in <strong>Keyboard shortcuts</strong>.
+            </li>
+          </ul>
+          <p className="help-modal__note">
+            <strong>Esc</strong> cancels an in-progress pose drag before mouse release. A short click
+            without dragging does nothing.
           </p>
         </HelpSection>
 
@@ -195,31 +278,58 @@ const HelpModal = ({ onClose }) => {
           <p className="help-modal__body">
             Click{' '}
             <HelpChip className="btn-goal-init-active btn-goal-narrow">Multi-Robot Plan</HelpChip> in
-            the left sidebar. In the planner panel below the robot position / stop / shut down
-            section, check at least two robots
-            under <strong>Fleet</strong>, for example{' '}
-            <HelpChip className="help-modal__fleet-check">
-              <span className="help-modal__checkbox" aria-hidden="true" />
-              <span className="multi-robot-planner__dot" style={{ backgroundColor: '#2196F3' }} />
-              Robot 1 (staged)
-            </HelpChip>
-            . For each fleet robot, select it in <strong>Select Robot</strong>, then click-drag on
-            the map to stage its goal and heading (<strong>Esc</strong> cancels mid-drag; a short
-            click without dragging does nothing).
-            See <strong>Navigating the map</strong> for pan and zoom. Edit the{' '}
-            <HelpChip className="multi-robot-planner__label">Plan ID</HelpChip>{' '}
-            if needed, and use the{' '}
-            <HelpChip className="help-modal__coordinated-check">
-              <span className="help-modal__checkbox help-modal__checkbox--checked" aria-hidden="true" />
-              Coordinated (multi-robot timing)
-            </HelpChip>{' '}
-            option when the robots should use the multi-agent path planner. Click{' '}
-            <HelpChip className="help-modal__planner-btn">Clear staged goals</HelpChip> to reset
-            staged map goals. When every fleet robot has a staged goal, click{' '}
+            the left sidebar to open the planner panel below the robot controls.
+          </p>
+          <HelpSubheading>Choose fleet</HelpSubheading>
+          <ul className="help-modal__list">
+            <li>
+              Under <strong>Fleet</strong>, check at least two robots, for example{' '}
+              <HelpChip className="help-modal__fleet-check">
+                <span className="help-modal__checkbox" aria-hidden="true" />
+                <span className="multi-robot-planner__dot" style={{ backgroundColor: '#2196F3' }} />
+                Robot 1 (staged)
+              </HelpChip>
+              .
+            </li>
+          </ul>
+          <HelpSubheading>Stage each goal</HelpSubheading>
+          <ol className="help-modal__steps">
+            <li>Select a fleet robot in <strong>Select Robot</strong>.</li>
+            <li>Click-drag on the map to stage its goal and heading.</li>
+            <li>Repeat for every robot in the fleet.</li>
+          </ol>
+          <HelpSubheading>Plan options</HelpSubheading>
+          <ul className="help-modal__list">
+            <li>
+              Edit <HelpChip className="multi-robot-planner__label">Plan ID</HelpChip> if needed.
+            </li>
+            <li>
+              Enable{' '}
+              <HelpChip className="help-modal__coordinated-check">
+                <span
+                  className="help-modal__checkbox help-modal__checkbox--checked"
+                  aria-hidden="true"
+                />
+                Coordinated (multi-robot timing)
+              </HelpChip>{' '}
+              when robots should use the multi-agent path planner.
+            </li>
+            <li>
+              <HelpChip className="help-modal__planner-btn">Clear staged goals</HelpChip> resets all
+              staged map goals.
+            </li>
+          </ul>
+          <HelpSubheading>Submit</HelpSubheading>
+          <p className="help-modal__body">
+            When every fleet robot has a staged goal, click{' '}
             <HelpChip className="help-modal__planner-btn help-modal__planner-btn--primary">
               Send multi-robot plan
             </HelpChip>
             .
+          </p>
+          <p className="help-modal__note">
+            <strong>Esc</strong> cancels mid-drag; a short click without dragging does nothing. See{' '}
+            <strong>Navigating the map</strong> for pan and zoom.
           </p>
         </HelpSection>
       </div>
