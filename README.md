@@ -29,12 +29,6 @@ The local stack runs entirely in Docker. The `dds` and GraphQL services use the 
 
     **Alternatively**, use the GUI **Local Stack** panel (right sidebar): **Docker** → **Start** (runs `docker compose up -d` via WSL on Windows). Requires `compose.yaml` and `dds/dds_env.sh`.
 
-    If the GHCR package is **private**, log in first:
-    ```
-    echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
-    ```
-    Use a token with `read:packages`. Public packages do not require login.
-
 2) Start the DDS scripts (after Docker is up):
     ```
     docker exec -d dds ./start_scripts.sh
