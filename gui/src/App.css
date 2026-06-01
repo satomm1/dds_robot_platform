@@ -1702,7 +1702,12 @@
   margin-left: 6px;
   border-radius: 50%;
   vertical-align: middle;
-  background-color: #adb5bd;
+  background-color: #ced4da;
+}
+
+.robot-startup__reach--host_online {
+  background-color: #868e96;
+  box-shadow: 0 0 0 2px rgba(134, 142, 150, 0.28);
 }
 
 .robot-startup__reach--available {
@@ -1721,7 +1726,8 @@
 }
 
 .robot-startup__reach--offline {
-  background-color: #adb5bd;
+  background-color: #dc3545;
+  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.22);
 }
 
 @keyframes robot-startup-pulse {
@@ -2038,6 +2044,14 @@
 
 .robot-startup__actions-menu-item--update:hover:not(:disabled) {
   background: #e3f2fd;
+}
+
+.robot-startup__actions-menu-item--docker {
+  color: #2e7d32;
+}
+
+.robot-startup__actions-menu-item--docker:hover:not(:disabled) {
+  background: #e8f5e9;
 }
 
 .robot-startup__btn--poweroff:hover:not(:disabled) {

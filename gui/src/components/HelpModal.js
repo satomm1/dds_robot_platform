@@ -168,11 +168,15 @@ const HelpModal = ({ onClose }) => {
               <strong>multi</strong> (multi-robot planning at launch).
             </li>
             <li>
-              Click{' '}
+              When the host is on but Docker is not running, the main button is{' '}
               <HelpChip className="robot-startup__btn robot-startup__btn--start robot-startup__btn--start-ready">
-                Start
+                Docker Start
               </HelpChip>
-              . When the robot is reachable, <strong>Start</strong> turns green.
+              . After the container is up, it becomes{' '}
+              <HelpChip className="robot-startup__btn robot-startup__btn--start robot-startup__btn--start-ready">
+                Start ROS
+              </HelpChip>{' '}
+              (green when ROS can be launched).
             </li>
           </ol>
           <HelpSubheading>More actions</HelpSubheading>
@@ -181,12 +185,19 @@ const HelpModal = ({ onClose }) => {
           </p>
           <ul className="help-modal__list">
             <li>
-              <strong>Power Off</strong> — shuts down the robot (confirmation required).
+              <strong>Docker Stop</strong> — stops the ROS Docker container (shown in More when the
+              container is running).
+            </li>
+            <li>
+              <strong>Power Off</strong> — stops all running Docker containers on the robot, then
+              shuts down the Jetson host (confirmation required). Uses the host service on port{' '}
+              <code>8081</code>, not <code>startup_script.py</code>.
             </li>
             <li>
               <strong>Software Update</strong> — runs <code>git pull</code> and{' '}
               <code>catkin_make</code> on repos and workspace configured in that robot&apos;s{' '}
-              <code>launch_server.py</code>.
+              <code>startup_script.py</code> (requires the Docker container and launcher on port{' '}
+              <code>8080</code>).
             </li>
           </ul>
           <HelpSubheading>Shut down</HelpSubheading>

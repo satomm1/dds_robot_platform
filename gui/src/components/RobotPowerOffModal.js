@@ -50,7 +50,7 @@ const RobotPowerOffModal = ({
           Power off robot computer?
         </h2>
         <p id="robot-poweroff-desc" className="robot-poweroff-modal__body">
-          This will stop ROS, stop the Docker container, and shut down the physical machine for{' '}
+          This will stop all running Docker containers and shut down the physical machine for{' '}
           <strong>
             {displayName}
             {hostLine}

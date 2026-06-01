@@ -2,11 +2,23 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import RobotPowerOffModal from './RobotPowerOffModal';
 import {
   fetchRobotLauncherStatus,
-  requestRobotHostPowerOff,
   requestRobotLauncher,
   requestRobotSoftwareUpdate,
   summarizeSoftwareUpdateBody,
 } from '../utils/robotLauncherApi';
+import {
+  fetchRobotHostStatus,
+  requestRobotDockerStart,
+  requestRobotDockerStop,
+  requestRobotHostPowerOff,
+  summarizeHostPowerOffBody,
+} from '../utils/robotHostApi';
+import {
+  DOCKER_STATUS,
+  HOST_REACHABILITY,
+  dockerStatusFromHostBody,
+  hostReachabilityFromFetch,
+} from '../utils/robotHostStatus';
 import {
   createHostId,
   loadSavedHosts,
@@ -18,12 +30,16 @@ import {
   POLL_INTERVAL_MS,
   SELECTED_POLL_INTERVAL_MS,
   STATUS_LABELS,
+  combineRobotReach,
   parseLauncherStatusBody,
 } from '../utils/robotLauncherStatus';
 
 const STATUS_AUTO_DISMISS_MS = 5000;
+/** Failed polls before the status dot / actions show unreachable. */
+const HOST_OFFLINE_FAIL_THRESHOLD = 3;
+const LAUNCHER_OFFLINE_FAIL_THRESHOLD = 3;
 
-function SavedHostPicker({ hosts, hostStatus, selectedId, disabled, onSelect }) {
+function SavedHostPicker({ hosts, reachByHost, selectedId, disabled, onSelect }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
 
@@ -40,7 +56,7 @@ function SavedHostPicker({ hosts, hostStatus, selectedId, disabled, onSelect }) 
 
   const selected = hosts.find((h) => h.id === selectedId);
   const selectedReach = selected
-    ? hostStatus[selected.host] || HOST_STATUS.OFFLINE
+    ? reachByHost[selected.host] || HOST_STATUS.OFFLINE
     : null;
   const displayText = selected
     ? `${selected.label} (${selected.host})`
@@ -84,7 +100,7 @@ function SavedHostPicker({ hosts, hostStatus, selectedId, disabled, onSelect }) 
             </button>
           </li>
           {hosts.map((h) => {
-            const reach = hostStatus[h.host] || HOST_STATUS.OFFLINE;
+            const reach = reachByHost[h.host] || HOST_STATUS.OFFLINE;
             return (
               <li key={h.id} role="option" aria-selected={h.id === selectedId}>
                 <button
@@ -115,8 +131,14 @@ function RobotActionsMenu({
   disabled,
   disabledReason,
   busy,
+  showDockerInMenu,
+  canPowerOff,
+  canSoftwareUpdate,
+  powerOffDisabledReason,
+  softwareUpdateDisabledReason,
   onPowerOff,
   onSoftwareUpdate,
+  onDockerStop,
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -141,18 +163,36 @@ function RobotActionsMenu({
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={disabled ? disabledReason : 'Power off or update robot software'}
+        title={disabled ? disabledReason : 'Docker, power off, or update robot software'}
       >
         More <span aria-hidden>▾</span>
       </button>
       {open && !disabled && (
         <ul className="robot-startup__actions-menu-list" role="menu">
+          {showDockerInMenu && (
+            <li role="none">
+              <button
+                type="button"
+                className="robot-startup__actions-menu-item robot-startup__actions-menu-item--docker"
+                role="menuitem"
+                disabled={busy}
+                title="Stop the ROS Docker container"
+                onClick={() => {
+                  setOpen(false);
+                  onDockerStop();
+                }}
+              >
+                Docker Stop
+              </button>
+            </li>
+          )}
           <li role="none">
             <button
               type="button"
               className="robot-startup__actions-menu-item robot-startup__actions-menu-item--poweroff"
               role="menuitem"
-              disabled={busy}
+              disabled={busy || !canPowerOff}
+              title={!canPowerOff && powerOffDisabledReason ? powerOffDisabledReason : undefined}
               onClick={() => {
                 setOpen(false);
                 onPowerOff();
@@ -166,7 +206,12 @@ function RobotActionsMenu({
               type="button"
               className="robot-startup__actions-menu-item robot-startup__actions-menu-item--update"
               role="menuitem"
-              disabled={busy}
+              disabled={busy || !canSoftwareUpdate}
+              title={
+                !canSoftwareUpdate && softwareUpdateDisabledReason
+                  ? softwareUpdateDisabledReason
+                  : undefined
+              }
               onClick={() => {
                 setOpen(false);
                 onSoftwareUpdate();
@@ -190,18 +235,14 @@ const RobotStartup = () => {
   const [busy, setBusy] = useState(false);
   const [useSocialPlanner, setUseSocialPlanner] = useState(false);
   const [useMultiRobotPlanner, setUseMultiRobotPlanner] = useState(false);
-  const [hostStatus, setHostStatus] = useState({});
+  const [launcherStatus, setLauncherStatus] = useState({});
+  const [hostReachability, setHostReachability] = useState({});
+  const [dockerStatus, setDockerStatus] = useState({});
   const [powerOffOpen, setPowerOffOpen] = useState(false);
+  const hostFailCountRef = useRef({});
+  const launcherFailCountRef = useRef({});
 
   const activeHost = useMemo(() => normalizeHostInput(hostInput), [hostInput]);
-
-  const activeReach = useMemo(
-    () =>
-      activeHost
-        ? hostStatus[activeHost] || HOST_STATUS.OFFLINE
-        : HOST_STATUS.OFFLINE,
-    [activeHost, hostStatus],
-  );
 
   const pollHosts = useMemo(() => {
     const hosts = new Set(saved.hosts.map((h) => h.host));
@@ -209,10 +250,49 @@ const RobotStartup = () => {
     return [...hosts];
   }, [saved.hosts, activeHost]);
 
+  const reachByHost = useMemo(() => {
+    const map = {};
+    for (const host of pollHosts) {
+      map[host] = combineRobotReach(
+        launcherStatus[host],
+        hostReachability[host],
+        dockerStatus[host],
+      );
+    }
+    return map;
+  }, [pollHosts, launcherStatus, hostReachability, dockerStatus]);
+
+  const activeLauncherReach = useMemo(
+    () =>
+      activeHost
+        ? launcherStatus[activeHost] || HOST_STATUS.OFFLINE
+        : HOST_STATUS.OFFLINE,
+    [activeHost, launcherStatus],
+  );
+
+  const activeReach = useMemo(
+    () => (activeHost ? reachByHost[activeHost] || HOST_STATUS.OFFLINE : HOST_STATUS.OFFLINE),
+    [activeHost, reachByHost],
+  );
+
+  const activeHostReach = useMemo(
+    () =>
+      activeHost
+        ? hostReachability[activeHost] || HOST_REACHABILITY.OFFLINE
+        : HOST_REACHABILITY.OFFLINE,
+    [activeHost, hostReachability],
+  );
+
+  const activeDockerReach = useMemo(
+    () =>
+      activeHost ? dockerStatus[activeHost] || DOCKER_STATUS.UNKNOWN : DOCKER_STATUS.UNKNOWN,
+    [activeHost, dockerStatus],
+  );
+
   const pollHost = useCallback(async (host) => {
     const clean = normalizeHostInput(host);
     if (!clean) return;
-    setHostStatus((prev) => {
+    setLauncherStatus((prev) => {
       const current = prev[clean];
       // Keep last known status during refresh polls to avoid Start-button flicker.
       if (current === HOST_STATUS.AVAILABLE || current === HOST_STATUS.RUNNING) {
@@ -224,8 +304,72 @@ const RobotStartup = () => {
     const reach = result.ok
       ? parseLauncherStatusBody(result.body)
       : HOST_STATUS.OFFLINE;
-    setHostStatus((prev) => ({ ...prev, [clean]: reach }));
+
+    if (reach === HOST_STATUS.AVAILABLE || reach === HOST_STATUS.RUNNING) {
+      launcherFailCountRef.current[clean] = 0;
+    } else if (!result.ok || reach === HOST_STATUS.OFFLINE) {
+      launcherFailCountRef.current[clean] = (launcherFailCountRef.current[clean] || 0) + 1;
+    }
+
+    setLauncherStatus((prev) => {
+      const previous = prev[clean];
+      if (
+        reach === HOST_STATUS.OFFLINE &&
+        (previous === HOST_STATUS.AVAILABLE || previous === HOST_STATUS.RUNNING) &&
+        (launcherFailCountRef.current[clean] || 0) < LAUNCHER_OFFLINE_FAIL_THRESHOLD
+      ) {
+        return prev;
+      }
+      return { ...prev, [clean]: reach };
+    });
   }, []);
+
+  const pollHostService = useCallback(async (host) => {
+    const clean = normalizeHostInput(host);
+    if (!clean) return;
+    setHostReachability((prev) => {
+      const current = prev[clean];
+      if (current === HOST_REACHABILITY.ONLINE) {
+        return prev;
+      }
+      return { ...prev, [clean]: HOST_REACHABILITY.CHECKING };
+    });
+    const result = await fetchRobotHostStatus(clean);
+    const reach = hostReachabilityFromFetch(result.ok, result.body);
+    const docker = dockerStatusFromHostBody(result.body);
+
+    if (reach === HOST_REACHABILITY.ONLINE) {
+      hostFailCountRef.current[clean] = 0;
+    } else if (result.ok === false) {
+      const fails = (hostFailCountRef.current[clean] || 0) + 1;
+      hostFailCountRef.current[clean] = fails;
+    }
+
+    setHostReachability((prev) => {
+      const previous = prev[clean];
+      if (
+        reach === HOST_REACHABILITY.OFFLINE &&
+        previous === HOST_REACHABILITY.ONLINE &&
+        (hostFailCountRef.current[clean] || 0) < HOST_OFFLINE_FAIL_THRESHOLD
+      ) {
+        return prev;
+      }
+      return { ...prev, [clean]: reach };
+    });
+    setDockerStatus((prev) => {
+      if (!result.ok && prev[clean] === DOCKER_STATUS.RUNNING) {
+        return prev;
+      }
+      return { ...prev, [clean]: docker };
+    });
+  }, []);
+
+  const refreshHostAndLauncher = useCallback(
+    async (host) => {
+      await Promise.all([pollHostService(host), pollHost(host)]);
+    },
+    [pollHost, pollHostService],
+  );
 
   const backgroundPollHosts = useMemo(
     () => pollHosts.filter((host) => host !== activeHost),
@@ -235,7 +379,7 @@ const RobotStartup = () => {
   const pollBackgroundHosts = useCallback(async () => {
     if (backgroundPollHosts.length === 0) return;
 
-    setHostStatus((prev) => {
+    setLauncherStatus((prev) => {
       const next = { ...prev };
       for (const host of backgroundPollHosts) {
         const current = prev[host];
@@ -248,6 +392,22 @@ const RobotStartup = () => {
 
     await Promise.all(backgroundPollHosts.map((host) => pollHost(host)));
   }, [backgroundPollHosts, pollHost]);
+
+  const pollBackgroundHostServices = useCallback(async () => {
+    if (backgroundPollHosts.length === 0) return;
+
+    setHostReachability((prev) => {
+      const next = { ...prev };
+      for (const host of backgroundPollHosts) {
+        if (next[host] !== HOST_REACHABILITY.ONLINE) {
+          next[host] = HOST_REACHABILITY.CHECKING;
+        }
+      }
+      return next;
+    });
+
+    await Promise.all(backgroundPollHosts.map((host) => pollHostService(host)));
+  }, [backgroundPollHosts, pollHostService]);
 
   useEffect(() => {
     saveSavedHosts(saved);
@@ -263,16 +423,24 @@ const RobotStartup = () => {
 
   useEffect(() => {
     pollBackgroundHosts();
-    const interval = setInterval(pollBackgroundHosts, POLL_INTERVAL_MS);
+    pollBackgroundHostServices();
+    const interval = setInterval(() => {
+      pollBackgroundHosts();
+      pollBackgroundHostServices();
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [pollBackgroundHosts]);
+  }, [pollBackgroundHosts, pollBackgroundHostServices]);
 
   useEffect(() => {
     if (!activeHost) return undefined;
     pollHost(activeHost);
-    const interval = setInterval(() => pollHost(activeHost), SELECTED_POLL_INTERVAL_MS);
+    pollHostService(activeHost);
+    const interval = setInterval(() => {
+      pollHost(activeHost);
+      pollHostService(activeHost);
+    }, SELECTED_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [activeHost, pollHost]);
+  }, [activeHost, pollHost, pollHostService]);
 
   const applyEntry = useCallback((entry) => {
     if (!entry) return;
@@ -293,10 +461,36 @@ const RobotStartup = () => {
     }
   }, []);
 
+  const launcherReachable =
+    activeLauncherReach === HOST_STATUS.AVAILABLE ||
+    activeLauncherReach === HOST_STATUS.RUNNING;
+  const hostServiceReachable = activeHostReach === HOST_REACHABILITY.ONLINE;
+  const dockerRunning =
+    activeDockerReach === DOCKER_STATUS.RUNNING ||
+    activeLauncherReach === HOST_STATUS.AVAILABLE ||
+    activeLauncherReach === HOST_STATUS.RUNNING;
+
+  const hostOnlineForDocker =
+    hostServiceReachable ||
+    activeReach === HOST_STATUS.HOST_ONLINE ||
+    activeReach === HOST_STATUS.AVAILABLE ||
+    activeReach === HOST_STATUS.RUNNING;
+
+  const usePrimaryDockerStart =
+    Boolean(activeHost) &&
+    hostOnlineForDocker &&
+    !dockerRunning &&
+    activeReach !== HOST_STATUS.OFFLINE &&
+    activeReach !== HOST_STATUS.CHECKING;
+
   const canStart =
     Boolean(activeHost) &&
-    activeReach === HOST_STATUS.AVAILABLE &&
+    activeLauncherReach === HOST_STATUS.AVAILABLE &&
     !busy;
+
+  const canPrimaryDockerStart = usePrimaryDockerStart && !busy;
+  const canPrimaryRosStart = !usePrimaryDockerStart && canStart;
+  const primaryActionReady = canPrimaryDockerStart || canPrimaryRosStart;
 
   const startDisabledReason =
     !activeHost
@@ -306,20 +500,46 @@ const RobotStartup = () => {
         : activeReach === HOST_STATUS.RUNNING
           ? 'ROS is already running on this robot'
           : activeReach === HOST_STATUS.OFFLINE
-            ? 'Robot launcher not reachable (is the robot on?)'
-            : '';
+            ? 'Robot unreachable (is it powered on?)'
+            : dockerRunning && activeLauncherReach !== HOST_STATUS.AVAILABLE
+              ? 'Waiting for robot launcher…'
+              : !dockerRunning && !hostOnlineForDocker
+                ? 'Robot host not reachable (is it powered on?)'
+                : 'Robot launcher not reachable';
 
-  const launcherReachable =
-    activeReach === HOST_STATUS.AVAILABLE || activeReach === HOST_STATUS.RUNNING;
-  const canRobotActions = Boolean(activeHost) && launcherReachable && !busy;
+  const canShowMoreMenu =
+    Boolean(activeHost) && (hostOnlineForDocker || launcherReachable) && !busy;
 
-  const robotActionsDisabledReason = !activeHost
+  const moreMenuDisabledReason = !activeHost
     ? 'Enter a robot IP'
-    : activeReach === HOST_STATUS.CHECKING
+    : activeReach === HOST_STATUS.CHECKING || activeHostReach === HOST_REACHABILITY.CHECKING
       ? 'Checking robot…'
-      : !launcherReachable
-        ? 'Robot launcher not reachable (is the robot on?)'
+      : !hostOnlineForDocker && !launcherReachable
+        ? 'Robot host service and launcher not reachable'
         : '';
+
+  const canDockerAction = hostOnlineForDocker && !busy;
+  const dockerDisabledReason = !activeHost
+    ? 'Enter a robot IP'
+    : activeHostReach === HOST_REACHABILITY.CHECKING
+      ? 'Checking host service…'
+      : !hostOnlineForDocker
+        ? 'Host service not reachable (is port 8081 open?)'
+        : '';
+
+  const canPowerOff = hostOnlineForDocker && !busy;
+  const powerOffDisabledReason = dockerDisabledReason;
+
+  const canSoftwareUpdate = launcherReachable && !busy;
+  const softwareUpdateDisabledReason = !activeHost
+    ? 'Enter a robot IP'
+    : activeLauncherReach === HOST_STATUS.CHECKING || activeReach === HOST_STATUS.CHECKING
+      ? 'Checking robot…'
+      : activeReach === HOST_STATUS.HOST_ONLINE
+        ? 'Start Docker first'
+        : !launcherReachable
+          ? 'Robot launcher not reachable (start Docker first)'
+          : '';
 
   const handlePowerOffConfirm = async () => {
     const host = normalizeHostInput(hostInput);
@@ -335,11 +555,11 @@ const RobotStartup = () => {
         setPowerOffOpen(false);
         setStatus({
           type: 'success',
-          message:
-            result.body?.trim() ||
-            'Power off scheduled. The robot PC should halt shortly.',
+          message: summarizeHostPowerOffBody(result.body),
         });
-        setHostStatus((prev) => ({ ...prev, [host]: HOST_STATUS.OFFLINE }));
+        setLauncherStatus((prev) => ({ ...prev, [host]: HOST_STATUS.OFFLINE }));
+        setHostReachability((prev) => ({ ...prev, [host]: HOST_REACHABILITY.OFFLINE }));
+        setDockerStatus((prev) => ({ ...prev, [host]: DOCKER_STATUS.STOPPED }));
       } else {
         setStatus({
           type: 'error',
@@ -352,6 +572,75 @@ const RobotStartup = () => {
       setStatus({
         type: 'error',
         message: err.message || 'Power off request failed.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDockerStart = async () => {
+    const host = normalizeHostInput(hostInput);
+    if (!host) {
+      setStatus({ type: 'error', message: 'Enter a robot IP.' });
+      return;
+    }
+    setBusy(true);
+    setStatus({ type: '', message: '' });
+    try {
+      const result = await requestRobotDockerStart(host);
+      if (result.ok) {
+        setStatus({
+          type: 'success',
+          message: result.body?.trim() || 'Docker container started.',
+        });
+        await refreshHostAndLauncher(host);
+      } else {
+        setStatus({
+          type: 'error',
+          message: result.body
+            ? `Docker start failed: ${result.body}`
+            : `Docker start failed (HTTP ${result.status}).`,
+        });
+      }
+    } catch (err) {
+      setStatus({
+        type: 'error',
+        message: err.message || 'Docker start request failed.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDockerStop = async () => {
+    const host = normalizeHostInput(hostInput);
+    if (!host) {
+      setStatus({ type: 'error', message: 'Enter a robot IP.' });
+      return;
+    }
+    setBusy(true);
+    setStatus({ type: '', message: '' });
+    try {
+      const result = await requestRobotDockerStop(host);
+      if (result.ok) {
+        setStatus({
+          type: 'success',
+          message: result.body?.trim() || 'Docker container stopped.',
+        });
+        setLauncherStatus((prev) => ({ ...prev, [host]: HOST_STATUS.OFFLINE }));
+        await refreshHostAndLauncher(host);
+      } else {
+        setStatus({
+          type: 'error',
+          message: result.body
+            ? `Docker stop failed: ${result.body}`
+            : `Docker stop failed (HTTP ${result.status}).`,
+        });
+      }
+    } catch (err) {
+      setStatus({
+        type: 'error',
+        message: err.message || 'Docker stop request failed.',
       });
     } finally {
       setBusy(false);
@@ -376,7 +665,7 @@ const RobotStartup = () => {
         setStatus({ type: 'success', message: summary });
         fetchRobotLauncherStatus(host).then((r) => {
           if (r.ok) {
-            setHostStatus((prev) => ({
+            setLauncherStatus((prev) => ({
               ...prev,
               [host]: parseLauncherStatusBody(r.body),
             }));
@@ -472,10 +761,10 @@ const RobotStartup = () => {
           type: 'success',
           message: result.body?.trim() || 'ROS launch started successfully.',
         });
-        setHostStatus((prev) => ({ ...prev, [host]: HOST_STATUS.RUNNING }));
+        setLauncherStatus((prev) => ({ ...prev, [host]: HOST_STATUS.RUNNING }));
         fetchRobotLauncherStatus(host).then((r) => {
           if (r.ok) {
-            setHostStatus((prev) => ({
+            setLauncherStatus((prev) => ({
               ...prev,
               [host]: parseLauncherStatusBody(r.body),
             }));
@@ -509,7 +798,7 @@ const RobotStartup = () => {
           <div className="robot-startup__saved-row">
             <SavedHostPicker
               hosts={saved.hosts}
-              hostStatus={hostStatus}
+              reachByHost={reachByHost}
               selectedId={selectedId}
               disabled={busy}
               onSelect={handleSelectSaved}
@@ -584,7 +873,7 @@ const RobotStartup = () => {
               type="checkbox"
               checked={useSocialPlanner}
               onChange={(e) => setUseSocialPlanner(e.target.checked)}
-              disabled={busy}
+              disabled={busy || usePrimaryDockerStart}
             />
             Social
           </label>
@@ -596,7 +885,7 @@ const RobotStartup = () => {
               type="checkbox"
               checked={useMultiRobotPlanner}
               onChange={(e) => setUseMultiRobotPlanner(e.target.checked)}
-              disabled={busy}
+              disabled={busy || usePrimaryDockerStart}
             />
             Multi
           </label>
@@ -607,20 +896,34 @@ const RobotStartup = () => {
         <button
           type="button"
           className={`robot-startup__btn robot-startup__btn--start${
-            canStart ? ' robot-startup__btn--start-ready' : ''
+            primaryActionReady ? ' robot-startup__btn--start-ready' : ''
           }`}
-          onClick={handleStart}
-          disabled={!canStart}
-          title={canStart ? 'Start ROS launch on this robot' : startDisabledReason}
+          onClick={usePrimaryDockerStart ? handleDockerStart : handleStart}
+          disabled={!primaryActionReady}
+          title={
+            primaryActionReady
+              ? usePrimaryDockerStart
+                ? 'Start the ROS Docker container on this robot'
+                : 'Start ROS on this robot (roslaunch via robot launcher)'
+              : usePrimaryDockerStart
+                ? dockerDisabledReason
+                : startDisabledReason
+          }
         >
-          {busy && !powerOffOpen ? '…' : 'Start'}
+          {busy && !powerOffOpen ? '…' : usePrimaryDockerStart ? 'Docker Start' : 'Start ROS'}
         </button>
         <RobotActionsMenu
-          disabled={!canRobotActions}
-          disabledReason={robotActionsDisabledReason}
+          disabled={!canShowMoreMenu}
+          disabledReason={moreMenuDisabledReason}
           busy={busy}
+          showDockerInMenu={dockerRunning}
+          canPowerOff={canPowerOff}
+          canSoftwareUpdate={canSoftwareUpdate}
+          powerOffDisabledReason={powerOffDisabledReason}
+          softwareUpdateDisabledReason={softwareUpdateDisabledReason}
           onPowerOff={() => setPowerOffOpen(true)}
           onSoftwareUpdate={handleSoftwareUpdate}
+          onDockerStop={handleDockerStop}
         />
       </div>
 

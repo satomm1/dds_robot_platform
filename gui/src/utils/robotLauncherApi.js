@@ -109,29 +109,6 @@ export async function requestRobotLauncher(host, path, options = {}) {
 }
 
 /**
- * Build path for GET /host-poweroff (optional token query).
- * @param {string} [token]
- */
-export function buildHostPowerOffPath(token = '') {
-  const trimmed = (token || '').trim();
-  if (!trimmed) {
-    return '/host-poweroff';
-  }
-  const params = new URLSearchParams();
-  params.set('token', trimmed);
-  return `/host-poweroff?${params.toString()}`;
-}
-
-/**
- * Stop ROS, stop the robot container, and power off the host (launch_server /host-poweroff).
- * @param {string} host
- * @param {string} [token]
- */
-export async function requestRobotHostPowerOff(host, token = '') {
-  return requestRobotLauncherRaw(host, buildHostPowerOffPath(token), REQUEST_TIMEOUT_MS);
-}
-
-/**
  * Build path for GET /software-update (optional stop/build query).
  * @param {{ stopRos?: boolean, build?: boolean }} [options]
  */
@@ -148,7 +125,7 @@ export function buildSoftwareUpdatePath(options = {}) {
 }
 
 /**
- * Run git pull on configured repos via launch_server GET /software-update.
+ * Run git pull on configured repos via startup_script GET /software-update.
  * @param {string} host
  * @param {{ stopRos?: boolean, build?: boolean }} [options]
  */

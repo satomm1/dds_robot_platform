@@ -1,0 +1,2 @@
+# Shell scripts must use LF so Linux shebangs work after scp from Windows
+*.sh text eol=lf

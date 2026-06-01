@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""HTTP launcher on port 8080. Deploy on each robot; GUI polls GET /status every ~15s."""
+"""HTTP launcher on port 8080 inside the robot Docker container. GUI polls GET /status.
+
+Host power off and Docker start/stop are handled by host_service.py on port 8081 (Jetson base).
+"""
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
@@ -8,8 +11,6 @@ import subprocess
 from urllib.parse import parse_qs, urlparse
 
 launch_process = None
-
-POWEROFF_TOKEN = os.environ.get("ROBOT_POWEROFF_TOKEN", "")
 
 # --- Software update (git pull) template -----------------------------------
 # Edit GIT_REPO_PATHS for your robot: each entry is an absolute path to a git
@@ -26,31 +27,12 @@ GIT_REPO_PATHS = [
     "/workspace/catkin_ws/src/mattbot_teleop",
     "/workspace/catkin_ws/src/mattbot_database",
     "/workspace/catkin_ws/src/twist_mux",
-    "/workspace/catkin_ws/src/path_planning"
+    "/workspace/catkin_ws/src/path_planning",
 ]
 UPDATE_REPOS_FILE = os.environ.get("ROBOT_UPDATE_REPOS_FILE", "")
 GIT_PULL_TIMEOUT_SEC = int(os.environ.get("ROBOT_GIT_PULL_TIMEOUT_SEC", "120"))
 CATKIN_WS_DIR = "/workspace/catkin_ws"
 CATKIN_MAKE_TIMEOUT_SEC = int(os.environ.get("ROBOT_CATKIN_MAKE_TIMEOUT_SEC", "600"))
-
-# Host shutdown only (no docker stop). Use nohup so the HTTP handler can return
-# before the machine halts; Docker stops when the host shuts down.
-HOST_POWEROFF_CMD = (
-    "nohup bash -c '/usr/sbin/shutdown -h now' </dev/null >/dev/null 2>&1 &"
-)
-
-NSENTER_POWEROFF = [
-    "nsenter",
-    "-t",
-    "1",
-    "-m",
-    "-u",
-    "-i",
-    "-n",
-    "bash",
-    "-lc",
-    HOST_POWEROFF_CMD,
-]
 
 # Single-robot vs multi-robot bringup (same car/social args on each).
 LAUNCH_FILES = {
@@ -68,13 +50,6 @@ def _parse_bool_query(query_string, param_name):
     values = parse_qs(query_string).get(param_name, ["false"])
     token = (values[0] if values else "false").strip().lower()
     return token in ("true", "1", "yes")
-
-
-def _poweroff_token_ok(query_string):
-    if not POWEROFF_TOKEN:
-        return True
-    values = parse_qs(query_string).get("token", [""])
-    return (values[0] if values else "").strip() == POWEROFF_TOKEN
 
 
 def _load_git_repo_paths():
@@ -174,7 +149,7 @@ def _run_catkin_make(workspace_dir):
 
 def _run_software_update(stop_ros=False, run_catkin_make=False):
     """
-    Template entry point for /software-update.
+    Entry point for /software-update.
     Pulls git repos, then optionally runs catkin_make in CATKIN_WS_DIR.
     """
     if stop_ros:
@@ -231,16 +206,6 @@ def _stop_ros_launch():
     launch_process = None
 
 
-def _schedule_host_poweroff():
-    subprocess.Popen(
-        NSENTER_POWEROFF,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-
-
 class LaunchServer(BaseHTTPRequestHandler):
     def _ros_running(self):
         return launch_process is not None and launch_process.poll() is None
@@ -272,7 +237,7 @@ class LaunchServer(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        elif pathname == "/start":
+        if pathname == "/start":
             social = _parse_bool_query(parsed.query, "social")
             multi = _parse_bool_query(parsed.query, "multi")
             social_arg = "true" if social else "false"
@@ -321,7 +286,7 @@ class LaunchServer(BaseHTTPRequestHandler):
                 self.wfile.write(b"Launch file is already running.")
             return
 
-        elif pathname == "/stop":
+        if pathname == "/stop":
             if launch_process and launch_process.poll() is None:
                 _stop_ros_launch()
                 msg = b"ROS Launch stopped cleanly."
@@ -332,25 +297,7 @@ class LaunchServer(BaseHTTPRequestHandler):
             self.wfile.write(msg)
             return
 
-        elif pathname == "/host-poweroff":
-            if not _poweroff_token_ok(parsed.query):
-                self.send_response(403)
-                self.end_headers()
-                self.wfile.write(b"Forbidden.")
-                return
-
-            _stop_ros_launch()
-
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"ROS stopped; host shutdown scheduled.")
-            self.wfile.flush()
-
-            _schedule_host_poweroff()
-            return
-
-        elif pathname == "/software-update":
+        if pathname == "/software-update":
             stop_ros = _parse_bool_query(parsed.query, "stop")
             run_build = _parse_bool_query(parsed.query, "build")
             payload = _run_software_update(stop_ros=stop_ros, run_catkin_make=run_build)
@@ -363,17 +310,15 @@ class LaunchServer(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        else:
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b"Invalid request.")
-            return
+        self.send_response(404)
+        self.end_headers()
+        self.wfile.write(b"Invalid request.")
 
 
 if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", 8080), LaunchServer)
     print(
-        "Web launcher listening on port 8080 "
-        "(GET /status, /start, /stop, /host-poweroff, /software-update)..."
+        "Robot launcher (startup_script) listening on port 8080 "
+        "(GET /status, /start, /stop, /software-update)..."
     )
     server.serve_forever()

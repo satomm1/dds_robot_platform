@@ -1,0 +1,14 @@
+[Unit]
+Description=Robot host service (Docker control and power off on port 8081)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/robot/host_service.py
+Restart=on-failure
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

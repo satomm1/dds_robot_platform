@@ -1,6 +1,7 @@
 const STORAGE_KEY = 'dds_robot_launcher_hosts';
 
 const DEFAULT_PORT = 8080;
+const HOST_SERVICE_PORT = 8081;
 
 export function normalizeHostInput(raw) {
   if (!raw || typeof raw !== 'string') return '';
@@ -70,4 +71,4 @@ export function createHostId() {
   return `host-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export { DEFAULT_PORT };
+export { DEFAULT_PORT, HOST_SERVICE_PORT };
