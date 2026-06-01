@@ -57,6 +57,11 @@ docker exec dds bash -lc "pgrep -af python"
 
 You should see the six publisher/subscriber scripts (`entry_exit.py`, `heartbeat_publisher.py`, `goal_publisher.py`, `location_subscriber.py`, `data_subscriber.py`, `image_subscriber.py`).
 
+Script output (prints, tracebacks) is sent to the container log so **Docker Desktop** and `docker logs -f dds` show the same detail as a terminal run:
+```
+docker logs -f dds
+```
+
 ### Optional: run DDS on the host with conda
 
 If you prefer not to use the `dds` container (for example, local development without rebuilding the image), you can run the scripts directly on the host:

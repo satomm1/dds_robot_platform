@@ -12,6 +12,7 @@ services:
     volumes:
       - ./dds:/dds
     working_dir: /dds
+    command: ["bash", "/dds/container_entry.sh"]
     depends_on:
       - graphql_endpoint_dds
       - influx
