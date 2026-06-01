@@ -518,7 +518,6 @@ const RobotStartup = () => {
         ? 'Robot host service and launcher not reachable'
         : '';
 
-  const canDockerAction = hostOnlineForDocker && !busy;
   const dockerDisabledReason = !activeHost
     ? 'Enter a robot IP'
     : activeHostReach === HOST_REACHABILITY.CHECKING
