@@ -281,8 +281,6 @@ class DataListener(Listener):
                             f"air_quality skipped Influx: stale position (agent {self.topic_id})",
                         )
 
-                dds_log("data_sub", f"air_quality (agent {self.topic_id})")
-
             elif message_type == "sensor_detected_objects":
                 x = data['x']
                 y = data['y']
