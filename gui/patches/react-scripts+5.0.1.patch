@@ -1,8 +1,31 @@
-﻿diff --git a/node_modules/react-scripts/config/webpackDevServer.config.js b/node_modules/react-scripts/config/webpackDevServer.config.js
-index 522a81b..ee8ffde 100644
+diff --git a/node_modules/react-scripts/config/webpackDevServer.config.js b/node_modules/react-scripts/config/webpackDevServer.config.js
+index 522a81b..32b907a 100644
 --- a/node_modules/react-scripts/config/webpackDevServer.config.js
 +++ b/node_modules/react-scripts/config/webpackDevServer.config.js
-@@ -107,29 +107,34 @@ module.exports = function (proxy, allowedHost) {
+@@ -24,6 +24,13 @@ const sockPort = process.env.WDS_SOCKET_PORT;
+ module.exports = function (proxy, allowedHost) {
+   const disableFirewall =
+     !proxy || process.env.DANGEROUSLY_DISABLE_HOST_CHECK === 'true';
++  const httpsConfig = getHttpsConfig();
++  const server =
++    httpsConfig === true
++      ? 'https'
++      : typeof httpsConfig === 'object'
++        ? { type: 'https', options: httpsConfig }
++        : undefined;
+   return {
+     // WebpackDevServer 2.4.3 introduced a security fix that prevents remote
+     // websites from potentially accessing local content through DNS rebinding:
+@@ -99,7 +106,7 @@ module.exports = function (proxy, allowedHost) {
+       publicPath: paths.publicUrlOrPath.slice(0, -1),
+     },
+ 
+-    https: getHttpsConfig(),
++    ...(server !== undefined ? { server } : {}),
+     host,
+     historyApiFallback: {
+       // Paths with dots should still use the history fallback.
+@@ -107,29 +114,34 @@ module.exports = function (proxy, allowedHost) {
        disableDotRule: true,
        index: paths.publicUrlOrPath,
      },
@@ -52,3 +75,39 @@ index 522a81b..ee8ffde 100644
      },
    };
  };
+diff --git a/node_modules/react-scripts/scripts/start.js b/node_modules/react-scripts/scripts/start.js
+index 8b9a2c2..c9a0c7d 100644
+--- a/node_modules/react-scripts/scripts/start.js
++++ b/node_modules/react-scripts/scripts/start.js
+@@ -139,19 +139,24 @@ checkBrowsers(paths.appPath, isInteractive)
+       openBrowser(urls.localUrlForBrowser);
+     });
+ 
+-    ['SIGINT', 'SIGTERM'].forEach(function (sig) {
+-      process.on(sig, function () {
++    const shutdownDevServer = () => {
++      if (typeof devServer.stopCallback === 'function') {
++        devServer.stopCallback(() => process.exit());
++      } else if (typeof devServer.close === 'function') {
+         devServer.close();
+         process.exit();
+-      });
++      } else {
++        process.exit();
++      }
++    };
++
++    ['SIGINT', 'SIGTERM'].forEach(function (sig) {
++      process.on(sig, shutdownDevServer);
+     });
+ 
+     if (process.env.CI !== 'true') {
+       // Gracefully exit when stdin ends
+-      process.stdin.on('end', function () {
+-        devServer.close();
+-        process.exit();
+-      });
++      process.stdin.on('end', shutdownDevServer);
+     }
+   })
+   .catch(err => {
