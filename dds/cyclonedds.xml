@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CycloneDDS xmlns="https://cdds.io/config">
+
+  <Domain Id="any">
+
+    <General>
+
+      <!-- Use only the WiFi interface -->
+      <Interfaces>
+        <!-- Add the name of your WiFi interface here -->
+        <!-- Use ifconfig to find the interface name -->
+        <!-- Common names: wlan0, wlp2s0, eth0 -->
+        <NetworkInterface name="eth4"/>
+      </Interfaces>
+
+      <!-- Disable multicast -->
+      <AllowMulticast>false</AllowMulticast>
+
+    </General>
+
+    <Discovery>
+
+      <!-- Explicit peer list -->
+      <Peers>
+        <!-- Add any relevant IP Addresses Here -->
+        <Peer Address="192.168.50.2"/>
+        <Peer Address="192.168.50.3"/>
+        <Peer Address="192.168.50.4"/>
+        <Peer Address="192.168.50.5"/>
+        <Peer Address="192.168.50.6"/>
+        <Peer Address="192.168.50.7"/>
+        <Peer Address="192.168.50.8"/>
+        <Peer Address="192.168.50.9"/>
+        <Peer Address="192.168.50.10"/>
+        <Peer Address="192.168.50.11"/>
+      </Peers>
+
+      <!-- Longer timeout for WiFi roaming -->
+      <ParticipantIndex>auto</ParticipantIndex>
+
+      <LeaseDuration>60s</LeaseDuration>
+      
+    </Discovery>
+
+  </Domain>
+
+</CycloneDDS>

@@ -11,7 +11,12 @@ This repo contains the software for a human observer to connect to the mobile ro
 
 You need [Docker Desktop](https://www.docker.com/products/docker-desktop/). Install it and ensure the Docker daemon is running.
 
-Copy [`dds/dds_env.sh.example`](dds/dds_env.sh.example) to `dds/dds_env.sh` and set **`AGENT_ID`**, **`INFLUXDB_TOKEN`**, and any other operator variables. The compose stack, DDS container, and GUI read this file.
+Copy [`dds/dds_env.sh.example`](dds/dds_env.sh.example) to `dds/dds_env.sh` and set **`AGENT_ID`**, **`INFLUXDB_TOKEN`**, and any other operator variables. The compose stack, DDS container, and GUI read this file. The example file also sets **`CYCLONEDDS_URI`** to [`dds/cyclonedds.xml`](dds/cyclonedds.xml), which CycloneDDS uses for discovery.
+
+Before connecting to mobile robots, edit **`dds/cyclonedds.xml`** for your network:
+
+- **Network interface** — set `<NetworkInterface name="…"/>` to the interface that reaches the robot fleet (run `ifconfig` or `ip link`; common names include `wlan0`, `wlp2s0`, `eth0`).
+- **Peer addresses** — replace the placeholder `<Peer Address="…"/>` entries with the IP address of each robot (or other DDS participant) on that network.
 
 > [!NOTE]
 > I run this on a Windows machine with WSL (Windows Subsystem for Linux). Docker Compose and DDS commands should be run via WSL; the GUI can be run from Windows (desktop app) or from source.

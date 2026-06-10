@@ -3,8 +3,9 @@
 #
 # Required by start_scripts.sh and the GUI Local DDS launcher.
 
-export AGENT_ID=1
+export AGENT_ID=101
 export INFLUXDB_TOKEN=your-influx-token-here
+export CYCLONEDDS_URI=file://$(pwd)/cyclonedds.xml
 
 # Optional:
 # export GRAPHQL_HTTP_URL=http://localhost:8000/graphql
