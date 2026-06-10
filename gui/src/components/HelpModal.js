@@ -291,23 +291,23 @@ const HelpModal = ({ onClose }) => {
           <p className="help-modal__body">
             Click{' '}
             <HelpChip className="btn-goal-init-active btn-goal-narrow">Multi-Robot Plan</HelpChip> in
-            the left sidebar to open the planner panel below the robot controls.
+            the left sidebar. Fleet checkboxes appear in the robot list; plan controls stay pinned
+            above <strong>Stop All</strong> / <strong>Shut Down All</strong>.
           </p>
           <HelpSubheading>Choose fleet</HelpSubheading>
           <ul className="help-modal__list">
             <li>
-              Under <strong>Fleet</strong>, check at least two robots, for example{' '}
+              In <strong>Fleet &amp; Select Robot</strong>, check at least two robots, for example{' '}
               <HelpChip className="help-modal__fleet-check">
                 <span className="help-modal__checkbox" aria-hidden="true" />
-                <span className="multi-robot-planner__dot" style={{ backgroundColor: '#2196F3' }} />
-                Robot 1 (staged)
+                Robot 1 ✓
               </HelpChip>
-              .
+              . A checkmark shows when that robot&apos;s goal is staged on the map.
             </li>
           </ul>
           <HelpSubheading>Stage each goal</HelpSubheading>
           <ol className="help-modal__steps">
-            <li>Select a fleet robot in <strong>Select Robot</strong>.</li>
+            <li>Click a fleet robot in the list (checking a box also selects it).</li>
             <li>Click-drag on the map to stage its goal and heading.</li>
             <li>Repeat for every robot in the fleet.</li>
           </ol>

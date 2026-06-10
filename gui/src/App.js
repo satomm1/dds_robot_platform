@@ -6,6 +6,7 @@ import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
 import RobotControls from './components/RobotControls';
 import ShutDownAllButton from './components/ShutDownAllButton';
+import StopAllButton from './components/StopAllButton';
 import DdsLocalControl from './components/DdsLocalControl';
 import RobotStartup from './components/RobotStartup';
 import AirQualityPanel from './components/AirQualityPanel';
@@ -317,6 +318,22 @@ function AppContent() {
     setMultiSubmitError('');
   };
 
+  const setMultiFleetAll = useCallback(
+    (checked) => {
+      if (checked) {
+        const next = {};
+        robotPositions.forEach((robot) => {
+          next[robot.id] = true;
+        });
+        setMultiFleet(next);
+      } else {
+        setMultiFleet({});
+      }
+      setMultiSubmitError('');
+    },
+    [robotPositions],
+  );
+
   const clearStagedMultiGoals = () => {
     setStagedMultiGoals({});
     setMultiSubmitError('');
@@ -467,6 +484,11 @@ function AppContent() {
               robotPositions={robotPositions}
               positionsLoading={positionsLoading}
               positionsError={positionsError}
+              multiPlanMode={positionMode === 'multiPlan'}
+              multiFleet={multiFleet}
+              onToggleFleet={toggleMultiFleet}
+              onSetFleetAll={setMultiFleetAll}
+              stagedMultiGoals={stagedMultiGoals}
             />
           <div className="mode-toggle">
             <button 
@@ -496,29 +518,36 @@ function AppContent() {
               dismissPathForRobot={dismissPathForRobot}
               onCenterOnRobot={handleCenterOnRobot}
             />
-          {positionMode === 'multiPlan' && (
-            <MultiRobotGoalPlanner
-              robotPositions={robotPositions}
-              multiFleet={multiFleet}
-              onToggleFleet={toggleMultiFleet}
-              planId={multiPlanId}
-              onPlanIdChange={setMultiPlanId}
-              coordinated={multiCoordinated}
-              onCoordinatedChange={setMultiCoordinated}
-              stagedMultiGoals={stagedMultiGoals}
-              onClearStaged={clearStagedMultiGoals}
-              onSubmit={handleSubmitMultiRobotPlan}
-              submitting={multiSubmitting}
-              submitError={multiSubmitError}
-            />
-          )}
           </div>
+          {positionMode === 'multiPlan' && (
+            <div className="sidebar__multi-plan-dock">
+              <MultiRobotGoalPlanner
+                multiFleet={multiFleet}
+                planId={multiPlanId}
+                onPlanIdChange={setMultiPlanId}
+                coordinated={multiCoordinated}
+                onCoordinatedChange={setMultiCoordinated}
+                stagedMultiGoals={stagedMultiGoals}
+                onClearStaged={clearStagedMultiGoals}
+                onSubmit={handleSubmitMultiRobotPlan}
+                submitting={multiSubmitting}
+                submitError={multiSubmitError}
+              />
+            </div>
+          )}
           <div className="sidebar__left-footer">
-            <ShutDownAllButton
-              robotPositions={robotPositions}
-              positionsLoading={positionsLoading}
-              dismissPathForRobot={dismissPathForRobot}
-            />
+            <div className="sidebar__fleet-actions">
+              <StopAllButton
+                robotPositions={robotPositions}
+                positionsLoading={positionsLoading}
+                dismissPathForRobot={dismissPathForRobot}
+              />
+              <ShutDownAllButton
+                robotPositions={robotPositions}
+                positionsLoading={positionsLoading}
+                dismissPathForRobot={dismissPathForRobot}
+              />
+            </div>
           </div>
         </div>
         <ColumnResizeHandle
