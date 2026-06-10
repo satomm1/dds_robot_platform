@@ -114,7 +114,6 @@ class EntryExitListener(Listener):
 
     Methods:
     - on_data_available(reader): Callback method for handling incoming data.
-    - find_if_closest_robot(robot_hash): Determines if the given robot is the closest robot to the current agent.
     - agent_update_available(): Checks if there are updates to be sent to agents.
     - get_agents(): Retrieves the active agents, exited agents, and lost agents.
     - update_agents(agents): Updates the active agents.
@@ -165,24 +164,19 @@ class EntryExitListener(Listener):
 
             # Determine what type of message was received
             if sample.action == 'enter':
-                new_robot_hash = hash_func(str(sample.agent_id))
-                # If the new agent is the closest robot, send an initialization message
-                # The initalization message contains the map, map metadata, and all agents in the environment
-                if self.find_if_closest_robot(new_robot_hash, sample.agent_id):
-                    dds_log(
-                        "entry_exit",
-                        f"Agent {sample.agent_id} ({sample.agent_type}) requesting entry",
-                    )
+                if not self.known_points:
+                    continue
 
-                    # Message containing details of all active agents
-                    agents_message = json.dumps(self.agents)
+                dds_log(
+                    "entry_exit",
+                    f"Agent {sample.agent_id} ({sample.agent_type}) requesting entry",
+                )
 
-                    known_points_json = json.dumps(self.known_points)
+                agents_message = json.dumps(self.agents)
+                known_points_json = json.dumps(self.known_points)
 
-                    init_message = Initialization(target_agent=sample.agent_id, sending_agent=self.my_id_int, agents=agents_message, known_points=known_points_json)
-                    self.init_writer.write(init_message)
-
-                    # print("Sent initialization message to new agent")
+                init_message = Initialization(target_agent=sample.agent_id, sending_agent=self.my_id_int, agents=agents_message, known_points=known_points_json)
+                self.init_writer.write(init_message)
             elif sample.action == "initialized":
                 # Only if the sample.timestamp is recent
                 if int(time.time()) - sample.timestamp < 10: 
@@ -213,33 +207,6 @@ class EntryExitListener(Listener):
                     self.agents.pop(sample.agent_id)  # Pop from agents dictionary
                     self.exited_agents[sample.agent_id] = int(time.time())  # Add to exited agents dictionary
                     self.update_to_agents = True
-
-    def find_if_closest_robot(self, robot_hash, requesting_agent_id):
-        """
-        Finds if the given robot is the closest robot to the current agent.
-        The closest robot is the robot that has the smallest difference in hash value
-
-        Parameters:
-        - robot_hash (int): The hash value of the robot.
-        - requesting_agent_id: Agent id requesting initialization.
-
-        Returns:
-        - bool: True if the given robot is the closest robot, False otherwise.
-        """
-        my_distance = abs(self.my_hash - robot_hash)
-
-        for agent_id, agent_info in self.agents.items():
-            agent_hash = agent_info['hash']
-
-            distance = abs(agent_hash - robot_hash)
-            if distance < my_distance and distance != 0:
-                dds_log(
-                    "entry_exit",
-                    f"Skipping init for agent {requesting_agent_id}: agent {agent_id} is closer",
-                )
-                return False
-
-        return True
 
     def agent_update_available(self):
         """
@@ -330,28 +297,40 @@ class InitializationListener(Listener):
             if sample.target_agent != self.my_id_int:
                 continue
 
-            agent_dict = json.loads(sample.agents)
-            if len(agent_dict) > 0:
-                # Cycle through agents in the initialization message and insert into our agents dictionary
-                for agent_id, agent_info in agent_dict.items():
-                    if int(agent_id) != self.my_id_int:
-                        agent_type = agent_info['agent_type']
-                        ip_address = agent_info['ip_address']
-                        agent_hash = agent_info['hash']
-                        timestamp = agent_info['timestamp']
-                        self.agents[int(agent_id)] = {
-                            'agent_type': agent_type,
-                            'ip_address': ip_address,
-                            'hash': agent_hash,
-                            'timestamp': timestamp
-                        }
+            try:
+                known_points = json.loads(sample.known_points)
+            except (json.JSONDecodeError, TypeError) as exc:
+                dds_log("entry_exit", f"Initialization known_points parse failed: {exc}")
+                continue
 
-            # Load the known points from the initialization message
-            known_points = json.loads(sample.known_points)
-            self.reference_known_points = known_points
-            self.known_points_received = True
+            if not self.known_points_received:
+                self.reference_known_points = known_points
+                self.known_points_received = True
+                dds_log("entry_exit", f"Init from agent {sending_agent}: reference points loaded")
 
-            dds_log("entry_exit", f"Init from agent {sending_agent}: reference points loaded")
+            try:
+                agent_dict = json.loads(sample.agents)
+            except (json.JSONDecodeError, TypeError) as exc:
+                dds_log("entry_exit", f"Initialization agents parse failed: {exc}")
+                continue
+
+            for agent_id, agent_info in agent_dict.items():
+                try:
+                    aid = int(agent_id)
+                except (TypeError, ValueError):
+                    continue
+                if aid == self.my_id_int:
+                    continue
+                if aid in self.agents:
+                    continue
+                if not isinstance(agent_info, dict):
+                    continue
+                self.agents[aid] = {
+                    'agent_type': agent_info.get('agent_type', AGENT_TYPE),
+                    'ip_address': agent_info.get('ip_address', ''),
+                    'hash': agent_info.get('hash', hash_func(str(aid))),
+                    'timestamp': agent_info.get('timestamp', int(time.time())),
+                }
 
     def map_available(self):
         """
