@@ -13,7 +13,8 @@ set -a
 source "${DDS_ENV_FILE}"
 set +a
 
-# In the compose container, send output to PID 1 so `docker logs dds` / Docker Desktop show it.
+# When started from the GUI, output is appended to dds_scripts.log in this directory.
+# In a terminal, output goes to stdout.
 if [[ -f /.dockerenv ]] && [[ -w /proc/1/fd/1 ]]; then
   DDS_LOG=/proc/1/fd/1
 else
@@ -27,20 +28,46 @@ dds_log() {
 
 export PYTHONUNBUFFERED=1
 
-if ! python3 -c "import cyclonedds" 2>/dev/null; then
-  CONDA_BASE="$(conda info --base 2>/dev/null)" || true
-  if [[ -z "${CONDA_BASE}" || ! -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
+activate_dds_python() {
+  if python3 -c "import cyclonedds" 2>/dev/null; then
+    return 0
+  fi
+
+  local conda_base=""
+  if conda_base="$(conda info --base 2>/dev/null)" && [[ -n "${conda_base}" ]]; then
+    :
+  elif [[ -n "${CONDA_BASE:-}" ]]; then
+    conda_base="${CONDA_BASE}"
+  else
+    local candidate
+    for candidate in \
+      "${HOME}/miniconda3" \
+      "${HOME}/anaconda3" \
+      "${HOME}/mambaforge" \
+      "${HOME}/miniforge3"; do
+      if [[ -f "${candidate}/etc/profile.d/conda.sh" ]]; then
+        conda_base="${candidate}"
+        break
+      fi
+    done
+  fi
+
+  if [[ -z "${conda_base}" || ! -f "${conda_base}/etc/profile.d/conda.sh" ]]; then
     echo "Error: cyclonedds not available and conda not found on PATH." >&2
+    echo "Install miniconda in WSL or set CONDA_BASE in dds_env.sh." >&2
     exit 1
   fi
+
   # shellcheck source=/dev/null
-  source "${CONDA_BASE}/etc/profile.d/conda.sh"
-  conda activate dds
+  source "${conda_base}/etc/profile.d/conda.sh"
+  conda activate "${DDS_CONDA_ENV:-dds}"
   if ! python3 -c "import cyclonedds" 2>/dev/null; then
-    echo "Error: conda env 'dds' is missing cyclonedds." >&2
+    echo "Error: conda env '${DDS_CONDA_ENV:-dds}' is missing cyclonedds." >&2
     exit 1
   fi
-fi
+}
+
+activate_dds_python
 
 cleanup() {
   local pids

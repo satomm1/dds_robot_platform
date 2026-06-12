@@ -16,16 +16,14 @@ const {
 } = require('./shellRunner');
 const dockerComposeRunner = require('./dockerComposeRunner');
 const {
-  DDS_CONTAINER,
   START_SCRIPT,
-  STOP_SCRIPT,
-  isDdsContainerRunningCheck,
+  START_LOG,
   ddsStatusCommand,
-  ddsScriptsRunningCheckViaExec,
+  ddsScriptsRunningCheck,
   startDdsScriptsCommand,
   stopDdsScriptsCommand,
-  withPlatformCwd,
-} = require('./ddsContainerShell');
+  withDdsCwd,
+} = require('./ddsHostShell');
 
 const STOP_TIMEOUT_MS = 15000;
 const STATUS_TIMEOUT_MS = 8000;
@@ -131,8 +129,8 @@ async function getDdsStatus(settings) {
     };
   }
 
-  const shellRoot = shellPlatformRoot(platformDir, isWindows());
-  const result = spawnShellCommand(withPlatformCwd(shellRoot, ddsStatusCommand()), settings, {
+  const shellDds = shellDdsDir(platformDir);
+  const result = spawnShellCommand(withDdsCwd(shellDds, ddsStatusCommand()), settings, {
     sync: true,
     timeoutMs: STATUS_TIMEOUT_MS,
   });
@@ -162,14 +160,13 @@ async function startDds(settings) {
     return { ok: true, body: 'DDS is already running.' };
   }
 
-  const shellRoot = shellPlatformRoot(normalizeDdsSettings(settings).platformDir, isWindows());
+  const shellDds = shellDdsDir(normalizeDdsSettings(settings).platformDir);
 
-  const startAttempt = withPlatformCwd(
-    shellRoot,
-    `if ! ${isDdsContainerRunningCheck()}; then echo container_stopped; exit 0; fi && ` +
-      `${startDdsScriptsCommand()} && sleep 5 && ` +
-      `(if ${ddsScriptsRunningCheckViaExec()}; then echo running; ` +
-      `else echo failed; docker logs ${DDS_CONTAINER} --tail 120 2>&1 || true; fi)`,
+  const startAttempt = withDdsCwd(
+    shellDds,
+    `${startDdsScriptsCommand()} && sleep 5 && ` +
+      `(if ${ddsScriptsRunningCheck()}; then echo running; ` +
+      `else echo failed; tail -120 ${START_LOG} 2>/dev/null || true; fi)`,
   );
 
   const result = spawnShellCommand(startAttempt, settings, {
@@ -180,20 +177,13 @@ async function startDds(settings) {
   const combined = combineShellOutput(result);
   const stdout = (result.stdout || '').toLowerCase();
 
-  if (stdout.includes('container_stopped')) {
-    return {
-      ok: false,
-      error: 'DDS container is not running. Start Docker Compose first.',
-    };
-  }
-
   if (stdout.includes('running')) {
     return { ok: true, body: 'DDS started.' };
   }
 
   return {
     ok: false,
-    error: combined || 'DDS failed to start (no matching processes found in container).',
+    error: combined || 'DDS failed to start (no matching processes found on host).',
   };
 }
 
@@ -203,18 +193,11 @@ async function stopDds(settings) {
     return { ok: false, error: validation.error };
   }
 
-  const shellRoot = shellPlatformRoot(normalizeDdsSettings(settings).platformDir, isWindows());
-  const result = spawnShellCommand(
-    withPlatformCwd(
-      shellRoot,
-      `if ! ${isDdsContainerRunningCheck()}; then echo 'DDS container is not running.'; exit 0; fi && ${stopDdsScriptsCommand()}`,
-    ),
-    settings,
-    {
-      sync: true,
-      timeoutMs: STOP_TIMEOUT_MS,
-    },
-  );
+  const shellDds = shellDdsDir(normalizeDdsSettings(settings).platformDir);
+  const result = spawnShellCommand(withDdsCwd(shellDds, stopDdsScriptsCommand()), settings, {
+    sync: true,
+    timeoutMs: STOP_TIMEOUT_MS,
+  });
 
   const combined = combineShellOutput(result);
 

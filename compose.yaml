@@ -1,25 +1,11 @@
-# Local orchestrator stack: InfluxDB, Ignite, GraphQL API, and DDS scripts.
+# Local orchestrator stack: InfluxDB, Ignite, and GraphQL API.
+# DDS Python scripts run on the host (WSL on Windows), not in Docker.
 # Pulls matt_python from GHCR (see README). Requires dds/dds_env.sh and compose
 # env vars for Influx (INFLUXDB_USERNAME, INFLUXDB_PASSWORD, INFLUXDB_TOKEN).
 x-matt-python-image: &matt_python_image ghcr.io/satomm1/matt_python:1.0.0
 
 services:
 
-  dds:
-    image: *matt_python_image
-    container_name: dds
-    network_mode: host
-    volumes:
-      - ./dds:/dds
-    working_dir: /dds
-    command: ["bash", "/dds/container_entry.sh"]
-    depends_on:
-      - graphql_endpoint_dds
-      - influx
-    restart: unless-stopped
-    stdin_open: true
-    tty: true
-    
   ignite_dds:
     image: apacheignite/ignite:latest
     hostname: ignite_host

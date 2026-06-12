@@ -1,5 +1,6 @@
 *ignite*log
 dds/dds_env.sh
+dds/dds_scripts.log
 
 # Python bytecode
 __pycache__/

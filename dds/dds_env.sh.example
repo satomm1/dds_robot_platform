@@ -8,4 +8,6 @@ export INFLUXDB_TOKEN=your-influx-token-here
 export CYCLONEDDS_URI=file://$(pwd)/cyclonedds.xml
 
 # Optional:
+# export CONDA_BASE=$HOME/miniconda3
+# export DDS_CONDA_ENV=dds
 # export GRAPHQL_HTTP_URL=http://localhost:8000/graphql

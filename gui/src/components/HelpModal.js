@@ -111,12 +111,12 @@ const HelpModal = ({ onClose }) => {
           <ul className="help-modal__list">
             <li>
               <strong>Start</strong> / <strong>Stop</strong> runs <code>start_scripts.sh</code> /{' '}
-              <code>stop_scripts.sh</code> inside the <code>dds</code> Docker container (start Docker
-              first).
+              <code>stop_scripts.sh</code> on the host (WSL on Windows), not inside Docker.
             </li>
             <li>
               Configure <code>dds/dds_env.sh</code> (from <code>dds_env.sh.example</code>) for{' '}
-              <code>AGENT_ID</code>, <code>INFLUXDB_TOKEN</code>, and compose variables.
+              <code>AGENT_ID</code>, <code>INFLUXDB_TOKEN</code>, and compose variables. Create the{' '}
+              <code>dds</code> conda env from <code>environment.yml</code> if needed.
             </li>
           </ul>
           <HelpSubheading>Repo path</HelpSubheading>
@@ -131,9 +131,9 @@ const HelpModal = ({ onClose }) => {
             </li>
           </ul>
           <p className="help-modal__note">
-            On Windows, Docker and DDS run in WSL. DDS scripts run in the <code>dds</code>{' '}
-            container from <code>compose.yaml</code>. Use the Electron app or <code>npm start</code>{' '}
-            (not a static browser-only build).
+            On Windows, Docker and DDS commands run in WSL. DDS Python scripts run on the WSL host;
+            Docker Compose runs the GraphQL, InfluxDB, and Ignite services. Use the Electron app or{' '}
+            <code>npm start</code> (not a static browser-only build).
           </p>
         </HelpSection>
 

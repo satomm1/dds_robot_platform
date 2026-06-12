@@ -11,7 +11,16 @@ This repo contains the software for a human observer to connect to the mobile ro
 
 You need [Docker Desktop](https://www.docker.com/products/docker-desktop/). Install it and ensure the Docker daemon is running.
 
-Copy [`dds/dds_env.sh.example`](dds/dds_env.sh.example) to `dds/dds_env.sh` and set **`AGENT_ID`**, **`INFLUXDB_TOKEN`**, and any other operator variables. The compose stack, DDS container, and GUI read this file. The example file also sets **`CYCLONEDDS_URI`** to [`dds/cyclonedds.xml`](dds/cyclonedds.xml), which CycloneDDS uses for discovery.
+Copy [`dds/dds_env.sh.example`](dds/dds_env.sh.example) to `dds/dds_env.sh` and set **`AGENT_ID`**, **`INFLUXDB_TOKEN`**, and any other operator variables. The compose stack and GUI read this file. The example file also sets **`CYCLONEDDS_URI`** to [`dds/cyclonedds.xml`](dds/cyclonedds.xml), which CycloneDDS uses for discovery.
+
+Install the DDS Python environment on your host (WSL on Windows):
+
+```
+conda env create -f environment.yml
+conda activate dds
+```
+
+`start_scripts.sh` activates the `dds` conda env automatically when `cyclonedds` is not already on `PATH`.
 
 Before connecting to mobile robots, edit **`dds/cyclonedds.xml`** for your network:
 
@@ -21,33 +30,35 @@ Before connecting to mobile robots, edit **`dds/cyclonedds.xml`** for your netwo
 > [!NOTE]
 > I run this on a Windows machine with WSL (Windows Subsystem for Linux). Docker Compose and DDS commands should be run via WSL; the GUI can be run from Windows (desktop app) or from source.
 
-## DDS (Docker)
+## Local stack (Docker + host DDS)
 
-The local stack runs entirely in Docker. The `dds` and GraphQL services use the **`ghcr.io/satomm1/matt_python`** image (published on [GitHub Container Registry](https://github.com/users/satomm1/packages)). The `./dds` directory is mounted into the container; DDS scripts are started and stopped on demand (they do not auto-run when the container is created).
+The GraphQL API, InfluxDB, and Ignite run in Docker. **DDS Python scripts run on the host** (WSL on Windows), not in a container. The GraphQL service uses the **`ghcr.io/satomm1/matt_python`** image from [GitHub Container Registry](https://github.com/users/satomm1/packages).
 
-1) Pull images and start the stack (from the repo root):
+1) Pull images and start the Docker services (from the repo root):
     ```
     docker compose pull
     docker compose up -d
     ```
-    `docker compose up -d` alone also pulls missing images. This starts InfluxDB, Ignite, the GraphQL API, and the idle `dds` container.
+    `docker compose up -d` alone also pulls missing images. This starts InfluxDB, Ignite, and the GraphQL API.
 
     **Alternatively**, use the GUI **Local Stack** panel (right sidebar): **Docker** → **Start** (runs `docker compose up -d` via WSL on Windows). Requires `compose.yaml` and `dds/dds_env.sh`.
 
-2) Start the DDS scripts (after Docker is up):
+2) Start the DDS scripts on the host (WSL on Windows):
     ```
-    docker exec -d dds ./start_scripts.sh
+    cd dds
+    ./start_scripts.sh
     ```
 
-    **Alternatively**, in the GUI **Local Stack** panel: set the path to the `dds_robot_platform` repo root (auto-checked on startup), start **Docker**, then **DDS** → **Start**. The DDS Start button stays disabled until Docker is running.
+    **Alternatively**, in the GUI **Local Stack** panel: set the path to the `dds_robot_platform` repo root (auto-checked on startup), then **DDS** → **Start**. Docker does not need to be running for DDS Start (but GraphQL/Influx must be up for the scripts to work).
 
 3) When finished, stop the DDS scripts:
     ```
-    docker exec dds ./stop_scripts.sh
+    cd dds
+    ./stop_scripts.sh
     ```
     Or click **DDS** → **Stop** in the GUI **Local Stack** panel.
 
-    To tear down the whole stack:
+    To tear down the Docker services:
     ```
     docker compose down
     ```
@@ -55,35 +66,14 @@ The local stack runs entirely in Docker. The `dds` and GraphQL services use the 
 
 ### Verify DDS scripts are running
 
-Inside the `dds` container:
+On the host (WSL on Windows):
 ```
-docker exec dds bash -lc "pgrep -af python"
+pgrep -af python
 ```
 
 You should see the six publisher/subscriber scripts (`entry_exit.py`, `heartbeat_publisher.py`, `goal_publisher.py`, `location_subscriber.py`, `data_subscriber.py`, `image_subscriber.py`).
 
-Script output (prints, tracebacks) is sent to the container log so **Docker Desktop** and `docker logs -f dds` show the same detail as a terminal run:
-```
-docker logs -f dds
-```
-
-### Optional: run DDS on the host with conda
-
-If you prefer not to use the `dds` container (for example, local development without rebuilding the image), you can run the scripts directly on the host:
-
-1. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/main) and create the environment:
-    ```
-    conda env create -f environment.yml
-    conda activate dds
-    ```
-
-2. From the `dds` directory:
-    ```
-    ./start_scripts.sh
-    ```
-    Stop with `./stop_scripts.sh`.
-
-    `start_scripts.sh` activates the `dds` conda env automatically when `cyclonedds` is not already on `PATH`.
+When started from the GUI, script output is appended to `dds/dds_scripts.log`. When started manually in a terminal, output goes to that terminal.
 
 For a throwaway container shell (same GHCR image as compose, useful for debugging imports):
 ```
@@ -118,7 +108,7 @@ These builds are produced automatically by GitHub Actions. You only need a norma
    - **macOS:** `gui-installer-macos-latest` — unzip, open the **`.dmg`**, drag **DDS Robot GUI** into Applications. First launch may require **right‑click → Open** (unsigned app), or allowing the app under **System Settings → Privacy & Security**.
    - **Linux:** `gui-installer-ubuntu-latest` — unzip the **`.AppImage`**, make it executable (`chmod +x "DDS Robot GUI"*.AppImage` or similar), then run it. Some distributions need **FUSE** / **libfuse2** for AppImages; install your distro’s fuse package if the app will not start.
 4. You should now have an executable to run on your machine to start and run the GUI!
-5. **Backend:** The desktop app is **only the UI**. Start the Docker stack and DDS scripts so the GraphQL API is available (see [DDS (Docker)](#dds-docker) above). The app expects **`http://localhost:8000/graphql`** unless the maintainer changed the URL at build time (`REACT_APP_GRAPHQL_HTTP_URL` in `gui`).
+5. **Backend:** The desktop app is **only the UI**. Start the Docker services and host DDS scripts so the GraphQL API is available (see [Local stack (Docker + host DDS)](#local-stack-docker--host-dds) above). The app expects **`http://localhost:8000/graphql`** unless the maintainer changed the URL at build time (`REACT_APP_GRAPHQL_HTTP_URL` in `gui`).
 
 ### Run from source (developers)
 

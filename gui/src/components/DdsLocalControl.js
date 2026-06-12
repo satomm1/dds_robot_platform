@@ -22,7 +22,6 @@ import {
 
 const STATUS_AUTO_DISMISS_MS = 5000;
 const PATH_INVALID_TITLE = 'Check path in Settings first';
-const DOCKER_REQUIRED_TITLE = 'Start Docker Compose first';
 
 /** One action per row: Start when stopped, Stop when running; Start disabled if path not verified. */
 function StackRowActions({
@@ -34,14 +33,11 @@ function StackRowActions({
   onStop,
   startTitle,
   stopTitle,
-  startPrerequisiteMet = true,
-  startBlockedTitle = DOCKER_REQUIRED_TITLE,
 }) {
   const isRunning = reach === DDS_STATUS.RUNNING;
   const startReady =
     bridgeAvailable &&
     pathValidated &&
-    startPrerequisiteMet &&
     !busy &&
     !isRunning &&
     reach !== DDS_STATUS.CHECKING &&
@@ -73,9 +69,7 @@ function StackRowActions({
       title={
         !pathValidated
           ? PATH_INVALID_TITLE
-          : !startPrerequisiteMet
-            ? startBlockedTitle
-            : startTitle
+          : startTitle
       }
     >
       {busy ? '…' : 'Start'}
@@ -420,9 +414,8 @@ const DdsLocalControl = () => {
             busy={busy}
             onStart={handleDdsStart}
             onStop={handleDdsStop}
-            startTitle="Start local DDS"
-            stopTitle="Stop local DDS"
-            startPrerequisiteMet={dockerReach === DDS_STATUS.RUNNING}
+            startTitle="Start local DDS scripts on host (WSL on Windows)"
+            stopTitle="Stop local DDS scripts"
           />
         </div>
       </div>

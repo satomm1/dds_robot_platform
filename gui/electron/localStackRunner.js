@@ -10,7 +10,7 @@ const {
   spawnShellCommandAsync,
   combineShellOutput,
 } = require('./shellRunner');
-const { ddsStatusCommand } = require('./ddsContainerShell');
+const { ddsStatusCommand } = require('./ddsHostShell');
 
 const DDS_ENV_FILE = 'dds_env.sh';
 const STATUS_TIMEOUT_MS = 12000;

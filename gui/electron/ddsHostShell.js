@@ -1,9 +1,8 @@
 const { escapeBashSingleQuoted } = require('./ddsLocalPaths');
 
-/** Must match compose.yaml `container_name` for the dds service. */
-const DDS_CONTAINER = 'dds';
 const START_SCRIPT = 'start_scripts.sh';
 const STOP_SCRIPT = 'stop_scripts.sh';
+const START_LOG = 'dds_scripts.log';
 
 const DDS_SCRIPT_NAMES = [
   'entry_exit.py',
@@ -24,46 +23,37 @@ function ddsProcessChecksFragment() {
   }).join(' || ');
 }
 
-function isDdsContainerRunningCheck() {
-  return `docker inspect -f '{{.State.Running}}' ${DDS_CONTAINER} 2>/dev/null | grep -q true`;
-}
-
-function ddsScriptsRunningCheckViaExec() {
-  const checks = ddsProcessChecksFragment();
-  return `docker exec ${DDS_CONTAINER} bash -lc "${checks}"`;
+function ddsScriptsRunningCheck() {
+  return ddsProcessChecksFragment();
 }
 
 function ddsStatusCommand(runningLabel = 'running', stoppedLabel = 'stopped') {
   const checks = ddsProcessChecksFragment();
-  return (
-    `if ${isDdsContainerRunningCheck()}; then ` +
-    `docker exec ${DDS_CONTAINER} bash -lc "if ${checks}; then echo ${runningLabel}; else echo ${stoppedLabel}; fi"; ` +
-    `else echo ${stoppedLabel}; fi`
-  );
+  return `if ${checks}; then echo ${runningLabel}; else echo ${stoppedLabel}; fi`;
 }
 
 function startDdsScriptsCommand() {
-  return `docker exec -d ${DDS_CONTAINER} ./${START_SCRIPT}`;
+  // Subshell so callers can chain with `&&` after backgrounding start_scripts.sh.
+  return `(nohup ./${START_SCRIPT} >> ${START_LOG} 2>&1 &)`;
 }
 
 function stopDdsScriptsCommand() {
-  return `docker exec ${DDS_CONTAINER} ./${STOP_SCRIPT}`;
+  return `./${STOP_SCRIPT}`;
 }
 
-function withPlatformCwd(shellRoot, inner) {
-  return `cd '${escapeBashSingleQuoted(shellRoot)}' && ${inner}`;
+function withDdsCwd(shellDdsDir, inner) {
+  return `cd '${escapeBashSingleQuoted(shellDdsDir)}' && ${inner}`;
 }
 
 module.exports = {
-  DDS_CONTAINER,
-  DDS_SCRIPT_NAMES,
   START_SCRIPT,
   STOP_SCRIPT,
+  START_LOG,
+  DDS_SCRIPT_NAMES,
   ddsProcessChecksFragment,
-  isDdsContainerRunningCheck,
-  ddsScriptsRunningCheckViaExec,
+  ddsScriptsRunningCheck,
   ddsStatusCommand,
   startDdsScriptsCommand,
   stopDdsScriptsCommand,
-  withPlatformCwd,
+  withDdsCwd,
 };
