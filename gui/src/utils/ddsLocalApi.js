@@ -51,61 +51,7 @@ export async function validateDdsLocalSettings(settings) {
       body: JSON.stringify(settings),
     });
   }
-  return { valid: false, error: 'Local DDS control requires the Electron app or npm start.' };
-}
-
-/**
- * @param {{ platformDir?: string, wslDistro?: string }} settings
- */
-export async function fetchDdsLocalStatus(settings) {
-  if (!hasDdsBridge()) {
-    return { running: false, configured: false, platform: '' };
-  }
-  if (window.ddsLocal?.status) {
-    return window.ddsLocal.status(settings);
-  }
-  if (process.env.NODE_ENV === 'development') {
-    const params = new URLSearchParams({
-      platformDir: settings.platformDir || '',
-      wslDistro: settings.wslDistro || '',
-    });
-    return devFetch(`/api/dds-local/status?${params}`);
-  }
-  return { running: false, configured: false, platform: '' };
-}
-
-/**
- * @param {{ platformDir?: string, wslDistro?: string }} settings
- */
-export async function startDdsLocal(settings) {
-  if (window.ddsLocal?.start) {
-    return window.ddsLocal.start(settings);
-  }
-  if (process.env.NODE_ENV === 'development') {
-    return devFetch('/api/dds-local/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-  }
-  throw new Error('Local DDS control requires the Electron app or npm start.');
-}
-
-/**
- * @param {{ platformDir?: string, wslDistro?: string }} settings
- */
-export async function stopDdsLocal(settings) {
-  if (window.ddsLocal?.stop) {
-    return window.ddsLocal.stop(settings);
-  }
-  if (process.env.NODE_ENV === 'development') {
-    return devFetch('/api/dds-local/stop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-  }
-  throw new Error('Local DDS control requires the Electron app or npm start.');
+  return { valid: false, error: 'Local stack control requires the Electron app or npm start.' };
 }
 
 export { hasDdsBridge };

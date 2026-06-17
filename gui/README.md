@@ -16,7 +16,7 @@ End users can install a **desktop build** without Node.js or the command line. I
    - **Linux:** `gui-installer-ubuntu-latest` — unzip the **`.AppImage`**, run `chmod +x` on it if needed, then execute it. Install **FUSE** / **libfuse2** for AppImage support if your distro requires it.
 4. **Backend:** This package is only the UI. Start the Docker services and host DDS scripts so the GraphQL server is available (see root [README](../README.md#local-stack-docker--host-dds)). The app uses **`http://localhost:8000/graphql`** by default (see [`src/apolloClient.js`](src/apolloClient.js)) unless the maintainer built it with another URL.
 
-**Local Stack:** The **Local Stack** panel (right sidebar) runs **Docker Compose** (`docker compose up -d` / `down`, pulling `ghcr.io/satomm1/matt_python` from GHCR) and **DDS** (`start_scripts.sh` / `stop_scripts.sh` on the host via WSL on Windows). Set the **dds_robot_platform** repo path in settings and configure `dds/dds_env.sh` (from `dds_env.sh.example`). Works in **Electron** and **`npm start`** (not a static browser-only build). On Windows, commands run via WSL.
+**Local Stack:** The **Local Stack** panel (right sidebar) runs **Docker Compose** (`docker compose up -d` / `down`, pulling `ghcr.io/satomm1/matt_python` from GHCR). Set the **dds_robot_platform** repo path in settings and configure `dds/dds_env.sh` (from `dds_env.sh.example`). DDS scripts are started manually on the host (see root README). Works in **Electron** and **`npm start`** (not a static browser-only build). On Windows, commands run via WSL.
 
 **Maintainers:** See the root [`README.md`](../README.md) for the same end-user steps in the main project docs.
 

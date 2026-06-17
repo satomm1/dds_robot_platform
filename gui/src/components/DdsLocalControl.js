@@ -2,16 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   fetchDdsLocalDefaults,
   hasDdsBridge,
-  startDdsLocal,
-  stopDdsLocal,
   validateDdsLocalSettings,
 } from '../utils/ddsLocalApi';
 import {
   dockerComposeDown,
   dockerComposeUp,
+  fetchDockerComposeStatus,
   hasDockerBridge,
 } from '../utils/dockerComposeApi';
-import { fetchLocalStackStatus } from '../utils/localStackApi';
 import { loadDdsLocalSettings, saveDdsLocalSettings } from '../utils/ddsLocalStorage';
 import {
   DDS_POLL_INTERVAL_MS,
@@ -66,11 +64,7 @@ function StackRowActions({
       }`}
       onClick={onStart}
       disabled={!startReady}
-      title={
-        !pathValidated
-          ? PATH_INVALID_TITLE
-          : startTitle
-      }
+      title={!pathValidated ? PATH_INVALID_TITLE : startTitle}
     >
       {busy ? '…' : 'Start'}
     </button>
@@ -88,7 +82,6 @@ const DdsLocalControl = () => {
   const [settingsOpen, setSettingsOpen] = useState(() => !loadDdsLocalSettings().platformDir);
   const [pathValidated, setPathValidated] = useState(false);
   const [dockerReach, setDockerReach] = useState(DDS_STATUS.CHECKING);
-  const [ddsReach, setDdsReach] = useState(DDS_STATUS.CHECKING);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
   const startupCheckDoneRef = useRef(false);
@@ -125,16 +118,14 @@ const DdsLocalControl = () => {
     setter((prev) => (prev === next ? prev : next));
   }, []);
 
-  const pollStackStatus = useCallback(async () => {
+  const pollDockerStatus = useCallback(async () => {
     if (!bridgeAvailable) {
       setReachIfChanged(setDockerReach, DDS_STATUS.UNSUPPORTED);
-      setReachIfChanged(setDdsReach, DDS_STATUS.UNSUPPORTED);
       return;
     }
 
     if (!pathValidated) {
       setReachIfChanged(setDockerReach, DDS_STATUS.UNCONFIGURED);
-      setReachIfChanged(setDdsReach, DDS_STATUS.UNCONFIGURED);
       return;
     }
 
@@ -144,16 +135,10 @@ const DdsLocalControl = () => {
     pollInFlightRef.current = true;
 
     try {
-      const { docker: dockerPayload, dds: ddsPayload } = await fetchLocalStackStatus(
-        settings,
-      );
-      const dockerNext = reachFromPayload(dockerPayload, true);
-      const ddsNext = reachFromPayload(ddsPayload, true);
-      setReachIfChanged(setDockerReach, dockerNext);
-      setReachIfChanged(setDdsReach, ddsNext);
+      const dockerPayload = await fetchDockerComposeStatus(settings);
+      setReachIfChanged(setDockerReach, reachFromPayload(dockerPayload, true));
     } catch {
       setReachIfChanged(setDockerReach, DDS_STATUS.STOPPED);
-      setReachIfChanged(setDdsReach, DDS_STATUS.STOPPED);
     } finally {
       pollInFlightRef.current = false;
     }
@@ -162,14 +147,13 @@ const DdsLocalControl = () => {
   useEffect(() => {
     if (!pathValidated) {
       setReachIfChanged(setDockerReach, DDS_STATUS.UNCONFIGURED);
-      setReachIfChanged(setDdsReach, DDS_STATUS.UNCONFIGURED);
       return undefined;
     }
 
-    pollStackStatus();
-    const interval = setInterval(pollStackStatus, DDS_POLL_INTERVAL_MS);
+    pollDockerStatus();
+    const interval = setInterval(pollDockerStatus, DDS_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [pathValidated, pollStackStatus, setReachIfChanged]);
+  }, [pathValidated, pollDockerStatus, setReachIfChanged]);
 
   useEffect(() => {
     if (!status.message || status.type !== 'success') return undefined;
@@ -206,8 +190,7 @@ const DdsLocalControl = () => {
           setSettingsOpen(false);
           setPathValidated(true);
           setDockerReach(DDS_STATUS.STOPPED);
-          setDdsReach(DDS_STATUS.STOPPED);
-          pollStackStatus();
+          pollDockerStatus();
           return true;
         }
         setPathValidated(false);
@@ -227,7 +210,7 @@ const DdsLocalControl = () => {
         setBusy(false);
       }
     },
-    [settings, pollStackStatus],
+    [settings, pollDockerStatus],
   );
 
   useEffect(() => {
@@ -279,7 +262,7 @@ const DdsLocalControl = () => {
       if (result.ok) {
         setStatus({ type: '', message: '' });
         setDockerReach(DDS_STATUS.RUNNING);
-        setTimeout(pollStackStatus, 2000);
+        setTimeout(pollDockerStatus, 2000);
       } else {
         setStatus({
           type: 'error',
@@ -301,7 +284,7 @@ const DdsLocalControl = () => {
       if (result.ok) {
         setStatus({ type: '', message: '' });
         setDockerReach(DDS_STATUS.STOPPED);
-        pollStackStatus();
+        pollDockerStatus();
       } else {
         setStatus({
           type: 'error',
@@ -310,50 +293,6 @@ const DdsLocalControl = () => {
       }
     } catch (err) {
       setStatus({ type: 'error', message: err.message || 'Docker stop failed.' });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDdsStart = async () => {
-    setBusy(true);
-    setStatus({ type: '', message: '' });
-    try {
-      const result = await startDdsLocal(settings);
-      if (result.ok) {
-        setStatus({ type: '', message: '' });
-        setDdsReach(DDS_STATUS.RUNNING);
-        setTimeout(pollStackStatus, 1500);
-      } else {
-        setStatus({
-          type: 'error',
-          message: result.error || 'DDS start failed.',
-        });
-      }
-    } catch (err) {
-      setStatus({ type: 'error', message: err.message || 'DDS start failed.' });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDdsStop = async () => {
-    setBusy(true);
-    setStatus({ type: '', message: '' });
-    try {
-      const result = await stopDdsLocal(settings);
-      if (result.ok) {
-        setStatus({ type: '', message: '' });
-        setDdsReach(DDS_STATUS.STOPPED);
-        pollStackStatus();
-      } else {
-        setStatus({
-          type: 'error',
-          message: result.error || 'DDS stop failed.',
-        });
-      }
-    } catch (err) {
-      setStatus({ type: 'error', message: err.message || 'DDS stop failed.' });
     } finally {
       setBusy(false);
     }
@@ -393,29 +332,6 @@ const DdsLocalControl = () => {
             onStop={handleDockerStop}
             startTitle="Start Docker Compose"
             stopTitle="Stop Docker Compose"
-          />
-        </div>
-      </div>
-
-      <div className="dds-local__stack-row">
-        <span className="dds-local__row-label">
-          <span
-            className={`dds-local__reach dds-local__reach--${ddsReach}`}
-            title={DDS_STATUS_LABELS[ddsReach]}
-            aria-label={`DDS: ${DDS_STATUS_LABELS[ddsReach]}`}
-          />
-          DDS
-        </span>
-        <div className="dds-local__row-actions">
-          <StackRowActions
-            reach={ddsReach}
-            pathValidated={pathValidated}
-            bridgeAvailable={bridgeAvailable}
-            busy={busy}
-            onStart={handleDdsStart}
-            onStop={handleDdsStop}
-            startTitle="Start local DDS scripts on host (WSL on Windows)"
-            stopTitle="Stop local DDS scripts"
           />
         </div>
       </div>

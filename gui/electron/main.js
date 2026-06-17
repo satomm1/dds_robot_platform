@@ -4,7 +4,6 @@ const fs = require('fs');
 const http = require('http');
 const ddsLocalRunner = require('./ddsLocalRunner');
 const dockerComposeRunner = require('./dockerComposeRunner');
-const localStackRunner = require('./localStackRunner');
 
 const ROBOT_LAUNCHER_TIMEOUT_MS = 20000;
 
@@ -64,22 +63,6 @@ ipcMain.handle('dds-local-get-defaults', () => ({
 
 ipcMain.handle('dds-local-validate', (_event, settings) =>
   ddsLocalRunner.validateSettings(settings || {}),
-);
-
-ipcMain.handle('dds-local-status', (_event, settings) =>
-  ddsLocalRunner.getDdsStatus(settings || {}),
-);
-
-ipcMain.handle('dds-local-start', (_event, settings) =>
-  ddsLocalRunner.startDds(settings || {}),
-);
-
-ipcMain.handle('dds-local-stop', (_event, settings) =>
-  ddsLocalRunner.stopDds(settings || {}),
-);
-
-ipcMain.handle('local-stack-status', (_event, settings) =>
-  localStackRunner.getLocalStackStatus(settings || {}),
 );
 
 ipcMain.handle('docker-compose-status', (_event, settings) =>

@@ -4,28 +4,16 @@ const {
   escapeBashSingleQuoted,
   normalizeDdsSettings,
   shellDdsDirFromPlatform,
-  shellPlatformRoot,
   DDS_SUBDIR,
 } = require('./ddsLocalPaths');
 const {
   isWindows,
-  getPlatform,
   defaultWslDistro,
   spawnShellCommand,
-  combineShellOutput,
 } = require('./shellRunner');
 const dockerComposeRunner = require('./dockerComposeRunner');
-const {
-  START_SCRIPT,
-  START_LOG,
-  ddsStatusCommand,
-  ddsScriptsRunningCheck,
-  startDdsScriptsCommand,
-  stopDdsScriptsCommand,
-  withDdsCwd,
-} = require('./ddsHostShell');
 
-const STOP_TIMEOUT_MS = 15000;
+const START_SCRIPT = 'start_scripts.sh';
 const STATUS_TIMEOUT_MS = 8000;
 const DDS_ENV_FILE = 'dds_env.sh';
 
@@ -111,115 +99,9 @@ function validateSettings(settings) {
   return { valid: true, error: null };
 }
 
-async function getDdsStatus(settings) {
-  const platform = getPlatform();
-  const { platformDir } = normalizeDdsSettings(settings);
-  const configured = Boolean(platformDir);
-  if (!configured) {
-    return { running: false, platform, configured: false };
-  }
-
-  const validation = validateSettings(settings);
-  if (!validation.valid) {
-    return {
-      running: false,
-      platform,
-      configured: false,
-      error: validation.error,
-    };
-  }
-
-  const shellDds = shellDdsDir(platformDir);
-  const result = spawnShellCommand(withDdsCwd(shellDds, ddsStatusCommand()), settings, {
-    sync: true,
-    timeoutMs: STATUS_TIMEOUT_MS,
-  });
-
-  if (result.error || result.status !== 0) {
-    return {
-      running: false,
-      platform,
-      configured: true,
-      probeError: combineShellOutput(result) || 'Status check failed in WSL/bash',
-    };
-  }
-
-  const stdout = (result.stdout || '').trim().toLowerCase();
-  const running = stdout.includes('running');
-  return { running, platform, configured: true };
-}
-
-async function startDds(settings) {
-  const validation = validateSettings(settings);
-  if (!validation.valid) {
-    return { ok: false, error: validation.error };
-  }
-
-  const status = await getDdsStatus(settings);
-  if (status.running) {
-    return { ok: true, body: 'DDS is already running.' };
-  }
-
-  const shellDds = shellDdsDir(normalizeDdsSettings(settings).platformDir);
-
-  const startAttempt = withDdsCwd(
-    shellDds,
-    `${startDdsScriptsCommand()} && sleep 5 && ` +
-      `(if ${ddsScriptsRunningCheck()}; then echo running; ` +
-      `else echo failed; tail -120 ${START_LOG} 2>/dev/null || true; fi)`,
-  );
-
-  const result = spawnShellCommand(startAttempt, settings, {
-    sync: true,
-    timeoutMs: 30000,
-  });
-
-  const combined = combineShellOutput(result);
-  const stdout = (result.stdout || '').toLowerCase();
-
-  if (stdout.includes('running')) {
-    return { ok: true, body: 'DDS started.' };
-  }
-
-  return {
-    ok: false,
-    error: combined || 'DDS failed to start (no matching processes found on host).',
-  };
-}
-
-async function stopDds(settings) {
-  const validation = validateSettings(settings);
-  if (!validation.valid) {
-    return { ok: false, error: validation.error };
-  }
-
-  const shellDds = shellDdsDir(normalizeDdsSettings(settings).platformDir);
-  const result = spawnShellCommand(withDdsCwd(shellDds, stopDdsScriptsCommand()), settings, {
-    sync: true,
-    timeoutMs: STOP_TIMEOUT_MS,
-  });
-
-  const combined = combineShellOutput(result);
-
-  if (result.error) {
-    return { ok: false, error: result.error.message || 'Stop failed.' };
-  }
-  if (result.status !== 0 && !combined) {
-    return { ok: false, error: `stop_scripts.sh exited with code ${result.status}` };
-  }
-
-  return {
-    ok: true,
-    body: combined || 'DDS processes stopped.',
-  };
-}
-
 module.exports = {
   getDefaultPlatformDir,
   getDefaultDdsDir,
   validateSettings,
-  getDdsStatus,
-  startDds,
-  stopDds,
   defaultWslDistro,
 };
