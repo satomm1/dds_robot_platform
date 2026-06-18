@@ -164,8 +164,9 @@ const HelpModal = ({ onClose }) => {
             </li>
             <li>
               Under <strong>Planner Settings (beta)</strong>, optionally check{' '}
-              <strong>social</strong> (social planner when on; regular A* when off) and/or{' '}
-              <strong>multi</strong> (multi-robot planning at launch).
+              <strong>social</strong> (social planner when on; regular A* when off),{' '}
+              <strong>multi</strong> (multi-robot planning at launch), or{' '}
+              <strong>KAIST</strong> (<code>kaist.launch</code> for KAIST collaborator robots).
             </li>
             <li>
               When the host is on but Docker is not running, the main button is{' '}

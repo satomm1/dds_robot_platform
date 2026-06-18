@@ -93,6 +93,7 @@ function buildLauncherPath(path, options = {}) {
   const params = new URLSearchParams();
   params.set('social', Boolean(options.social) ? 'true' : 'false');
   params.set('multi', Boolean(options.multi) ? 'true' : 'false');
+  params.set('kaist', Boolean(options.kaist) ? 'true' : 'false');
   return `/start?${params.toString()}`;
 }
 
@@ -101,7 +102,7 @@ function buildLauncherPath(path, options = {}) {
  * dev proxy in development, otherwise direct fetch (may fail on browser CORS).
  * @param {string} host
  * @param {string} path
- * @param {{ social?: boolean, multi?: boolean }} [options] — for /start, planner launch args
+ * @param {{ social?: boolean, multi?: boolean, kaist?: boolean }} [options] — for /start, planner launch args
  */
 export async function requestRobotLauncher(host, path, options = {}) {
   const route = buildLauncherPath(path, options);

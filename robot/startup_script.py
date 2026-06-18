@@ -240,6 +240,7 @@ class LaunchServer(BaseHTTPRequestHandler):
         if pathname == "/start":
             social = _parse_bool_query(parsed.query, "social")
             multi = _parse_bool_query(parsed.query, "multi")
+            kaist = _parse_bool_query(parsed.query, "kaist")
             social_arg = "true" if social else "false"
 
             if launch_process is None or launch_process.poll() is not None:
@@ -261,18 +262,25 @@ class LaunchServer(BaseHTTPRequestHandler):
                 robot_car = (parts[1] if len(parts) > 1 else "false").strip().lower()
                 is_tall = robot_height == "tall"
                 car_arg = "true" if robot_car == "true" else "false"
-                launch_file = LAUNCH_FILES[("tall" if is_tall else "short", multi)]
+                if kaist:
+                    launch_file = "kaist.launch"
+                    roslaunch_args = f"car:={car_arg}"
+                    mode = "single-robot"
+                    planner = "A*"
+                else:
+                    launch_file = LAUNCH_FILES[("tall" if is_tall else "short", multi)]
+                    roslaunch_args = f"car:={car_arg} social:={social_arg}"
+                    planner = "social" if social else "A*"
+                    mode = "multi-robot" if multi else "single-robot"
                 cmd = (
                     "source /opt/ros/noetic/setup.bash && "
                     "source /workspace/catkin_ws/devel/setup.bash && "
                     "source /workspace/catkin_ws/src/robot_env.sh && "
-                    f"roslaunch mattbot_bringup {launch_file} car:={car_arg} social:={social_arg}"
+                    f"roslaunch mattbot_bringup {launch_file} {roslaunch_args}"
                 )
                 launch_process = subprocess.Popen(
                     cmd, shell=True, executable="/bin/bash"
                 )
-                planner = "social" if social else "A*"
-                mode = "multi-robot" if multi else "single-robot"
                 msg = (
                     f"ROS Launch started successfully "
                     f"({launch_file}, {mode}, {planner} planner)."
