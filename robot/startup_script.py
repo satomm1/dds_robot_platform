@@ -264,7 +264,7 @@ class LaunchServer(BaseHTTPRequestHandler):
                 car_arg = "true" if robot_car == "true" else "false"
                 if kaist:
                     launch_file = "kaist.launch"
-                    roslaunch_args = f"car:={car_arg}"
+                    roslaunch_args = f""
                     mode = "single-robot"
                     planner = "A*"
                 else:
