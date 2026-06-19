@@ -1,4 +1,5 @@
 [
   "/workspace/catkin_ws/src/mattbot_bringup",
+  "/workspace/catkin_ws/src/mattbot_capture",
   "/workspace/catkin_ws/src/your_other_repo"
 ]

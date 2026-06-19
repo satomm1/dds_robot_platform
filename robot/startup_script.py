@@ -21,6 +21,7 @@ GIT_REPO_PATHS = [
     "/workspace/catkin_ws/src/mattbot_bringup",
     "/workspace/catkin_ws/src/mattbot_dds",
     "/workspace/catkin_ws/src/mattbot_record",
+    "/workspace/catkin_ws/src/mattbot_capture",
     "/workspace/catkin_ws/src/mattbot_image_detection",
     "/workspace/catkin_ws/src/mattbot_mcl",
     "/workspace/catkin_ws/src/mattbot_navigation",
