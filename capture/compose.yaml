@@ -1,0 +1,39 @@
+x-matt-python-image: &matt_python_image ghcr.io/satomm1/matt_python:1.1.0
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: capture_postgres
+    environment:
+      POSTGRES_DB: robot_capture
+      POSTGRES_USER: capture
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U capture -d robot_capture"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ingest:
+    image: *matt_python_image
+    container_name: capture_ingest
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql://capture:${POSTGRES_PASSWORD:-changeme}@postgres/robot_capture
+      STORAGE_ROOT: ${STORAGE_ROOT:-/data/captures}
+      API_KEYS: ${API_KEYS:-}
+    volumes:
+      - .:/home/capture
+      - ${CAPTURE_DATA_DIR:-./data/captures}:/data/captures
+    working_dir: /home/capture
+    command: uvicorn server:app --host 0.0.0.0 --port 8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

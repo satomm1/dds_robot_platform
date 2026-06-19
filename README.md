@@ -6,6 +6,7 @@ This repo contains the software for a human observer to connect to the mobile ro
 - `./gui`: The software for the web-based GUI for human interaction
 - `./graphql`: The GraphQL implementation for API calls
 - `./ignite`: Contains log files for the ignite database
+- `./capture`: Central ingest service for robot image/video capture (standalone Docker stack; see [`capture/README.md`](capture/README.md))
 
 ## Getting Started
 

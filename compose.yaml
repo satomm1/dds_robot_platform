@@ -2,7 +2,7 @@
 # DDS Python scripts run on the host (WSL on Windows), not in Docker.
 # Pulls matt_python from GHCR (see README). Requires dds/dds_env.sh and compose
 # env vars for Influx (INFLUXDB_USERNAME, INFLUXDB_PASSWORD, INFLUXDB_TOKEN).
-x-matt-python-image: &matt_python_image ghcr.io/satomm1/matt_python:1.0.0
+x-matt-python-image: &matt_python_image ghcr.io/satomm1/matt_python:1.1.0
 
 services:
 

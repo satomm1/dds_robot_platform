@@ -2,6 +2,9 @@
 dds/dds_env.sh
 dds/dds_scripts.log
 
+capture/data/
+capture/.env
+
 # Python bytecode
 __pycache__/
 *.py[cod]
