@@ -1,7 +1,6 @@
 const http = require('http');
 const ddsLocalRunner = require('../electron/ddsLocalRunner');
 const dockerComposeRunner = require('../electron/dockerComposeRunner');
-const localStackRunner = require('../electron/localStackRunner');
 
 const REQUEST_TIMEOUT_MS = 20000;
 
@@ -38,26 +37,6 @@ function settingsFromQuery(query) {
  * Packaged Electron uses IPC instead (see electron/main.js).
  */
 module.exports = function setupRobotLauncherProxy(app) {
-  app.get('/api/local-stack/status', async (req, res) => {
-    try {
-      const payload = await localStackRunner.getLocalStackStatus(
-        settingsFromQuery(req.query),
-      );
-      res.json(payload);
-    } catch (err) {
-      res.status(500).json({ error: err.message || 'Local stack status failed' });
-    }
-  });
-
-  app.get('/api/dds-local/status', async (req, res) => {
-    try {
-      const payload = await ddsLocalRunner.getDdsStatus(settingsFromQuery(req.query));
-      res.json(payload);
-    } catch (err) {
-      res.status(500).json({ error: err.message || 'Status check failed' });
-    }
-  });
-
   app.get('/api/dds-local/defaults', (_req, res) => {
     res.json({
       platformDir: ddsLocalRunner.getDefaultPlatformDir(),
@@ -72,34 +51,6 @@ module.exports = function setupRobotLauncherProxy(app) {
       res.json(ddsLocalRunner.validateSettings(body));
     } catch (err) {
       res.status(400).json({ valid: false, error: err.message || 'Invalid JSON' });
-    }
-  });
-
-  app.post('/api/dds-local/start', async (req, res) => {
-    try {
-      const body = await parseJsonBody(req);
-      const result = await ddsLocalRunner.startDds(body);
-      if (result.ok) {
-        res.json(result);
-      } else {
-        res.status(400).json(result);
-      }
-    } catch (err) {
-      res.status(500).json({ ok: false, error: err.message || 'Start failed' });
-    }
-  });
-
-  app.post('/api/dds-local/stop', async (req, res) => {
-    try {
-      const body = await parseJsonBody(req);
-      const result = await ddsLocalRunner.stopDds(body);
-      if (result.ok) {
-        res.json(result);
-      } else {
-        res.status(400).json(result);
-      }
-    } catch (err) {
-      res.status(500).json({ ok: false, error: err.message || 'Stop failed' });
     }
   });
 

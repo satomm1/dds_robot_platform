@@ -50,14 +50,11 @@ The GraphQL API, InfluxDB, and Ignite run in Docker. **DDS Python scripts run on
     ./start_scripts.sh
     ```
 
-    **Alternatively**, in the GUI **Local Stack** panel: set the path to the `dds_robot_platform` repo root (auto-checked on startup), then **DDS** → **Start**. Docker does not need to be running for DDS Start (but GraphQL/Influx must be up for the scripts to work).
-
 3) When finished, stop the DDS scripts:
     ```
     cd dds
     ./stop_scripts.sh
     ```
-    Or click **DDS** → **Stop** in the GUI **Local Stack** panel.
 
     To tear down the Docker services:
     ```

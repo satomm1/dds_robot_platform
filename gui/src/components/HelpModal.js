@@ -87,7 +87,7 @@ const HelpModal = ({ onClose }) => {
         <HelpSection title="Local Stack (this computer)">
           <p className="help-modal__body">
             The <strong>Local Stack</strong> panel at the <strong>bottom of the right sidebar</strong>{' '}
-            (with GraphQL / DDS status pills) controls Docker and DDS on your operator PC.
+            controls Docker Compose on your operator PC.
           </p>
           <HelpSubheading>Panel visibility</HelpSubheading>
           <ul className="help-modal__list">
@@ -107,11 +107,11 @@ const HelpModal = ({ onClose }) => {
               (where <code>compose.yaml</code> lives).
             </li>
           </ul>
-          <HelpSubheading>DDS</HelpSubheading>
+          <HelpSubheading>DDS scripts</HelpSubheading>
           <ul className="help-modal__list">
             <li>
-              <strong>Start</strong> / <strong>Stop</strong> runs <code>start_scripts.sh</code> /{' '}
-              <code>stop_scripts.sh</code> on the host (WSL on Windows), not inside Docker.
+              Start and stop DDS Python scripts manually from the <code>dds</code> directory:{' '}
+              <code>./start_scripts.sh</code> / <code>stop_scripts.sh</code> (WSL on Windows).
             </li>
             <li>
               Configure <code>dds/dds_env.sh</code> (from <code>dds_env.sh.example</code>) for{' '}
@@ -131,9 +131,9 @@ const HelpModal = ({ onClose }) => {
             </li>
           </ul>
           <p className="help-modal__note">
-            On Windows, Docker and DDS commands run in WSL. DDS Python scripts run on the WSL host;
-            Docker Compose runs the GraphQL, InfluxDB, and Ignite services. Use the Electron app or{' '}
-            <code>npm start</code> (not a static browser-only build).
+            On Windows, Docker commands run in WSL. DDS Python scripts run on the WSL host
+            separately from the GUI. Use the Electron app or <code>npm start</code> (not a static
+            browser-only build).
           </p>
         </HelpSection>
 
@@ -164,8 +164,9 @@ const HelpModal = ({ onClose }) => {
             </li>
             <li>
               Under <strong>Planner Settings (beta)</strong>, optionally check{' '}
-              <strong>social</strong> (social planner when on; regular A* when off) and/or{' '}
-              <strong>multi</strong> (multi-robot planning at launch).
+              <strong>social</strong> (social planner when on; regular A* when off),{' '}
+              <strong>multi</strong> (multi-robot planning at launch), or{' '}
+              <strong>KAIST</strong> (<code>kaist.launch</code> for KAIST collaborator robots).
             </li>
             <li>
               When the host is on but Docker is not running, the main button is{' '}

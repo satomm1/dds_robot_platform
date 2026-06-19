@@ -235,6 +235,7 @@ const RobotStartup = () => {
   const [busy, setBusy] = useState(false);
   const [useSocialPlanner, setUseSocialPlanner] = useState(false);
   const [useMultiRobotPlanner, setUseMultiRobotPlanner] = useState(false);
+  const [useKaist, setUseKaist] = useState(false);
   const [launcherStatus, setLauncherStatus] = useState({});
   const [hostReachability, setHostReachability] = useState({});
   const [dockerStatus, setDockerStatus] = useState({});
@@ -753,6 +754,7 @@ const RobotStartup = () => {
       const result = await requestRobotLauncher(host, '/start', {
         social: useSocialPlanner,
         multi: useMultiRobotPlanner,
+        kaist: useKaist,
       });
       const detail = result.body ? `: ${result.body}` : '';
       if (result.ok) {
@@ -871,8 +873,12 @@ const RobotStartup = () => {
             <input
               type="checkbox"
               checked={useSocialPlanner}
-              onChange={(e) => setUseSocialPlanner(e.target.checked)}
-              disabled={busy || usePrimaryDockerStart}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setUseSocialPlanner(checked);
+                if (checked) setUseKaist(false);
+              }}
+              disabled={busy || usePrimaryDockerStart || useKaist}
             />
             Social
           </label>
@@ -883,10 +889,33 @@ const RobotStartup = () => {
             <input
               type="checkbox"
               checked={useMultiRobotPlanner}
-              onChange={(e) => setUseMultiRobotPlanner(e.target.checked)}
-              disabled={busy || usePrimaryDockerStart}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setUseMultiRobotPlanner(checked);
+                if (checked) setUseKaist(false);
+              }}
+              disabled={busy || usePrimaryDockerStart || useKaist}
             />
             Multi
+          </label>
+          <label
+            className="robot-startup__planner-option"
+            title="Launch kaist.launch for KAIST collaborator robots"
+          >
+            <input
+              type="checkbox"
+              checked={useKaist}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setUseKaist(checked);
+                if (checked) {
+                  setUseSocialPlanner(false);
+                  setUseMultiRobotPlanner(false);
+                }
+              }}
+              disabled={busy || usePrimaryDockerStart}
+            />
+            KAIST
           </label>
         </div>
       </div>
