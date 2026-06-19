@@ -10,7 +10,7 @@
         <!-- Add the name of your WiFi interface here -->
         <!-- Use ifconfig to find the interface name -->
         <!-- Common names: wlan0, wlp2s0, eth0 -->
-        <NetworkInterface name="eth4"/>
+        <NetworkInterface autodetermine="true"/>
       </Interfaces>
 
       <!-- Disable multicast -->
