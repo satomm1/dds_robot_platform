@@ -2,6 +2,11 @@
 dds/dds_env.sh
 dds/dds_scripts.log
 
+# Operator map data (GUI sync / local copies; not repo config)
+dds/user_map.json
+dds/user_map_*.json
+dds/saved_maps/
+
 capture/data/
 capture/.env
 
