@@ -54,4 +54,14 @@ export async function validateDdsLocalSettings(settings) {
   return { valid: false, error: 'Local stack control requires the Electron app or npm start.' };
 }
 
+/**
+ * @param {{ platformDir?: string, wslDistro?: string, mapJsonText: string }} args
+ */
+export async function writeUserMap(args) {
+  if (window.ddsLocal?.writeUserMap) {
+    return window.ddsLocal.writeUserMap(args);
+  }
+  return { ok: false, error: 'Electron bridge not available' };
+}
+
 export { hasDdsBridge };

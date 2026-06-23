@@ -59,3 +59,37 @@ export const SET_ROBOT_INITIAL_POSITION = gql`
                             theta_init: $theta, 
                             init_timestamp: $timestamp) 
 }`;
+
+export const SET_MAP = gql`
+  mutation SetMap($data: String!) {
+    setMap(data: $data)
+  }
+`;
+
+export const SET_MAP_METADATA = gql`
+  mutation SetMapMetadata(
+    $resolution: Float!
+    $width: Int!
+    $height: Int!
+    $origin_pos_x: Float!
+    $origin_pos_y: Float!
+    $origin_pos_z: Float!
+    $origin_ori_x: Float!
+    $origin_ori_y: Float!
+    $origin_ori_z: Float!
+    $origin_ori_w: Float!
+  ) {
+    setMapMetadata(
+      resolution: $resolution
+      width: $width
+      height: $height
+      origin_pos_x: $origin_pos_x
+      origin_pos_y: $origin_pos_y
+      origin_pos_z: $origin_pos_z
+      origin_ori_x: $origin_ori_x
+      origin_ori_y: $origin_ori_y
+      origin_ori_z: $origin_ori_z
+      origin_ori_w: $origin_ori_w
+    )
+  }
+`;

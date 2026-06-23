@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('robotLauncher', {
 contextBridge.exposeInMainWorld('ddsLocal', {
   getDefaults: () => ipcRenderer.invoke('dds-local-get-defaults'),
   validate: (settings) => ipcRenderer.invoke('dds-local-validate', settings),
+  writeUserMap: (args) => ipcRenderer.invoke('dds-local-write-user-map', args),
 });
 
 contextBridge.exposeInMainWorld('dockerCompose', {

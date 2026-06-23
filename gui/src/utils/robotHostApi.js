@@ -3,6 +3,7 @@ import { HOST_SERVICE_PORT, normalizeHostInput } from './robotLauncherStorage';
 const REQUEST_TIMEOUT_MS = 20000;
 const STATUS_REQUEST_TIMEOUT_MS = 5000;
 const DOCKER_ACTION_TIMEOUT_MS = 120000;
+export const MAP_SYNC_TIMEOUT_MS = 120000;
 
 function hostUrl(host, port, path) {
   const h = normalizeHostInput(host);
@@ -118,6 +119,21 @@ export async function requestRobotDockerStart(host) {
 /** GET /docker-stop on the Jetson host service. */
 export async function requestRobotDockerStop(host) {
   return requestRobotHostRaw(host, '/docker-stop', DOCKER_ACTION_TIMEOUT_MS);
+}
+
+/** GET /map on the Jetson host service (current_map.json). */
+export async function fetchRobotMapJson(host) {
+  try {
+    return await requestRobotHostRaw(host, '/map', MAP_SYNC_TIMEOUT_MS);
+  } catch (err) {
+    const base =
+      err.message ||
+      'Could not reach the robot host service.';
+    throw new Error(
+      `${base} Ensure the robot is powered on, host service is installed ` +
+        '(jetson-host-install.sh), port 8081 is reachable, and the map was finalized (finalize_map.py).',
+    );
+  }
 }
 
 /**

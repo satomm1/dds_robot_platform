@@ -57,6 +57,40 @@ function ddsEnvExists(platformDir, settings) {
   return fs.existsSync(path.join(nativeDdsDir(platformDir), DDS_ENV_FILE));
 }
 
+async function writeAtomicUtf8(filePath, content) {
+  const tmpPath = `${filePath}.tmp`;
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(tmpPath, content, 'utf8');
+  await fs.promises.rename(tmpPath, filePath);
+}
+
+/**
+ * Persist raw map JSON to {platformDir}/dds/user_map.json (atomic write).
+ * @param {{ platformDir?: string, wslDistro?: string }} settings
+ * @param {string} mapJsonText
+ */
+async function writeUserMapJson(settings, mapJsonText) {
+  const { platformDir } = normalizeDdsSettings(settings);
+  if (!platformDir) {
+    return { ok: false, error: 'Enter the platform folder in Local Stack settings.' };
+  }
+  if (typeof mapJsonText !== 'string' || !mapJsonText.trim()) {
+    return { ok: false, error: 'Map JSON is empty.' };
+  }
+
+  const targetPath = path.join(nativeDdsDir(platformDir), 'user_map.json');
+
+  try {
+    await writeAtomicUtf8(targetPath, mapJsonText);
+    return { ok: true, path: targetPath };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err.message || `Failed to write ${targetPath}`,
+    };
+  }
+}
+
 function getDefaultPlatformDir() {
   const candidate = path.resolve(__dirname, '..', '..');
   if (
@@ -103,5 +137,6 @@ module.exports = {
   getDefaultPlatformDir,
   getDefaultDdsDir,
   validateSettings,
+  writeUserMapJson,
   defaultWslDistro,
 };

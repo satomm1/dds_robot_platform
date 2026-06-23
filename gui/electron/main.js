@@ -65,6 +65,14 @@ ipcMain.handle('dds-local-validate', (_event, settings) =>
   ddsLocalRunner.validateSettings(settings || {}),
 );
 
+ipcMain.handle('dds-local-write-user-map', async (_event, args) => {
+  const { platformDir, wslDistro, mapJsonText } = args || {};
+  return ddsLocalRunner.writeUserMapJson(
+    { platformDir, wslDistro },
+    mapJsonText,
+  );
+});
+
 ipcMain.handle('docker-compose-status', (_event, settings) =>
   dockerComposeRunner.getDockerStatus(settings || {}),
 );
