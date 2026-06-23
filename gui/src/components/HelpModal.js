@@ -201,6 +201,40 @@ const HelpModal = ({ onClose }) => {
               <code>8080</code>).
             </li>
           </ul>
+          <HelpSubheading>Load/Sync Map</HelpSubheading>
+          <p className="help-modal__body help-modal__body--tight">
+            Below <strong>Start ROS</strong> / <strong>More</strong>, expand{' '}
+            <strong>Load/Sync Map</strong> with the{' '}
+            <HelpChip className="central-maps__btn central-maps__btn--expand">▾</HelpChip> button
+            (same style as Local Stack settings).
+          </p>
+          <ul className="help-modal__list">
+            <li>
+              <strong>Map Name</strong> — name used when saving a map synced from a robot. Syncing
+              with an existing name updates that saved entry.
+            </li>
+            <li>
+              <strong>Load Previously Synced Map</strong> — pick a map from the library, then{' '}
+              <HelpChip className="robot-startup__btn central-maps__btn-load">Load</HelpChip> to
+              apply it to the GUI and <code>dds/user_map.json</code>, or{' '}
+              <HelpChip className="robot-startup__btn central-maps__btn-delete">Delete</HelpChip> to
+              remove it from <code>dds/saved_maps/</code> (confirmation required).
+            </li>
+            <li>
+              <HelpChip className="robot-startup__btn central-maps__btn-sync">
+                Sync Map From Robot
+              </HelpChip>{' '}
+              — fetches <code>current_map.json</code> from the robot host service (port{' '}
+              <code>8081</code>). The robot must have finalized its map (
+              <code>finalize_map.py</code>); Docker/ROS need not be running. Saves to the map
+              library and <code>dds/user_map.json</code>.
+            </li>
+          </ul>
+          <p className="help-modal__note">
+            Map files are stored under <code>dds/saved_maps/</code> in the repo path set in{' '}
+            <strong>Local Stack</strong> settings. Use the Electron app so saves go to the same{' '}
+            <code>dds/</code> folder DDS uses on startup.
+          </p>
           <HelpSubheading>Shut down</HelpSubheading>
           <ul className="help-modal__list">
             <li>

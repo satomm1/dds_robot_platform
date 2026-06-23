@@ -14,8 +14,7 @@ import {
   requestRobotHostPowerOff,
   summarizeHostPowerOffBody,
 } from '../utils/robotHostApi';
-import { loadDdsLocalSettings } from '../utils/ddsLocalStorage';
-import { syncMapFromRobot } from '../utils/mapSync';
+import CentralMapSection from './CentralMapSection';
 import {
   DOCKER_STATUS,
   HOST_REACHABILITY,
@@ -561,48 +560,6 @@ const RobotStartup = () => {
     return (label || entry?.label || activeHost || '').trim();
   }, [saved.hosts, selectedId, label, activeHost]);
 
-  const handleSyncMap = async () => {
-    const host = normalizeHostInput(hostInput);
-    if (!host) {
-      setStatus({ type: 'error', message: 'Enter a robot IP.' });
-      return;
-    }
-
-    const confirmLabel = activeHostLabel || host;
-    const confirmed = window.confirm(
-      `Replace the central map with the map from ${confirmLabel} (${host})? ` +
-        'This updates the GUI and overwrites dds/user_map.json.',
-    );
-    if (!confirmed) return;
-
-    setBusy(true);
-    setStatus({ type: '', message: 'Syncing map…' });
-    try {
-      const platformSettings = loadDdsLocalSettings();
-      const summary = await syncMapFromRobot({
-        host,
-        apolloClient,
-        platformSettings,
-      });
-      let message =
-        `Map synced (${summary.width}×${summary.height}, ${summary.resolution} m/px).`;
-      if (summary.bytesWritten > 0) {
-        message += ' Saved to user_map.json.';
-      }
-      if (summary.persistNote) {
-        message += ` ${summary.persistNote}`;
-      }
-      setStatus({ type: 'success', message });
-    } catch (err) {
-      setStatus({
-        type: 'error',
-        message: err.message || 'Map sync failed.',
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handlePowerOffConfirm = async () => {
     const host = normalizeHostInput(hostInput);
     if (!host) {
@@ -1002,19 +959,6 @@ const RobotStartup = () => {
         >
           {busy && !powerOffOpen ? '…' : usePrimaryDockerStart ? 'Docker Start' : 'Start ROS'}
         </button>
-        <button
-          type="button"
-          className="robot-startup__btn robot-startup__btn--sync-map"
-          onClick={handleSyncMap}
-          disabled={!canSyncMap}
-          title={
-            canSyncMap
-              ? 'Fetch current_map.json from robot and update central map'
-              : syncMapDisabledReason
-          }
-        >
-          {busy ? '…' : 'Sync map'}
-        </button>
         <RobotActionsMenu
           disabled={!canShowMoreMenu}
           disabledReason={moreMenuDisabledReason}
@@ -1029,6 +973,18 @@ const RobotStartup = () => {
           onDockerStop={handleDockerStop}
         />
       </div>
+
+      <CentralMapSection
+        apolloClient={apolloClient}
+        busy={busy}
+        setBusy={setBusy}
+        setStatus={setStatus}
+        canSyncMap={canSyncMap}
+        syncMapDisabledReason={syncMapDisabledReason}
+        activeHost={activeHost}
+        activeHostLabel={activeHostLabel}
+        hostInput={hostInput}
+      />
 
       <RobotPowerOffModal
         open={powerOffOpen}

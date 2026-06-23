@@ -64,4 +64,50 @@ export async function writeUserMap(args) {
   return { ok: false, error: 'Electron bridge not available' };
 }
 
+function platformArgs(settings) {
+  return {
+    platformDir: settings?.platformDir || '',
+    wslDistro: settings?.wslDistro || '',
+  };
+}
+
+export async function listSavedMaps(settings) {
+  if (window.ddsLocal?.listSavedMaps) {
+    return window.ddsLocal.listSavedMaps(platformArgs(settings));
+  }
+  return { ok: false, error: 'Electron bridge not available', maps: [] };
+}
+
+export async function saveNamedMap(args) {
+  if (window.ddsLocal?.saveNamedMap) {
+    return window.ddsLocal.saveNamedMap(args);
+  }
+  return { ok: false, error: 'Electron bridge not available' };
+}
+
+export async function readSavedMap(args) {
+  if (window.ddsLocal?.readSavedMap) {
+    return window.ddsLocal.readSavedMap(args);
+  }
+  return { ok: false, error: 'Electron bridge not available' };
+}
+
+export async function setActiveSavedMap(args) {
+  if (window.ddsLocal?.setActiveSavedMap) {
+    return window.ddsLocal.setActiveSavedMap(args);
+  }
+  return { ok: false, error: 'Electron bridge not available' };
+}
+
+export async function deleteSavedMap(args) {
+  if (window.ddsLocal?.deleteSavedMap) {
+    return window.ddsLocal.deleteSavedMap(args);
+  }
+  return { ok: false, error: 'Electron bridge not available' };
+}
+
+export function hasMapLibraryBridge() {
+  return Boolean(window.ddsLocal?.listSavedMaps);
+}
+
 export { hasDdsBridge };

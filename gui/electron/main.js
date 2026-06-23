@@ -73,6 +73,37 @@ ipcMain.handle('dds-local-write-user-map', async (_event, args) => {
   );
 });
 
+ipcMain.handle('dds-local-list-saved-maps', async (_event, settings) =>
+  ddsLocalRunner.listSavedMaps(settings || {}),
+);
+
+ipcMain.handle('dds-local-save-named-map', async (_event, args) => {
+  const { platformDir, wslDistro, name, mapJsonText, sourceHost } = args || {};
+  return ddsLocalRunner.saveNamedMap(
+    { platformDir, wslDistro },
+    { name, mapJsonText, sourceHost },
+  );
+});
+
+ipcMain.handle('dds-local-read-saved-map', async (_event, args) => {
+  const { platformDir, wslDistro, mapId } = args || {};
+  return ddsLocalRunner.readSavedMapJson({ platformDir, wslDistro }, mapId);
+});
+
+ipcMain.handle('dds-local-set-active-saved-map', async (_event, args) => {
+  const { platformDir, wslDistro, mapId, mapJsonText } = args || {};
+  return ddsLocalRunner.setActiveSavedMap(
+    { platformDir, wslDistro },
+    mapId,
+    mapJsonText,
+  );
+});
+
+ipcMain.handle('dds-local-delete-saved-map', async (_event, args) => {
+  const { platformDir, wslDistro, mapId } = args || {};
+  return ddsLocalRunner.deleteSavedMap({ platformDir, wslDistro }, mapId);
+});
+
 ipcMain.handle('docker-compose-status', (_event, settings) =>
   dockerComposeRunner.getDockerStatus(settings || {}),
 );

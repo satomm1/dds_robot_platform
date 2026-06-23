@@ -1,6 +1,6 @@
 import { SET_MAP, SET_MAP_METADATA } from '../mutations';
 import { GET_OCCUPANCY_GRID } from '../queries';
-import { writeUserMap } from './ddsLocalApi';
+import { saveNamedMap, readSavedMap, setActiveSavedMap, writeUserMap } from './ddsLocalApi';
 import { fetchRobotMapJson } from './robotHostApi';
 
 const MAP_SYNC_HINT =
@@ -122,19 +122,10 @@ function formatFetchError(result) {
 }
 
 /**
- * @param {{ host: string, apolloClient: import('@apollo/client').ApolloClient, platformSettings?: { platformDir?: string, wslDistro?: string } }} args
+ * @param {import('@apollo/client').ApolloClient} apolloClient
+ * @param {string} mapJsonText
  */
-export async function syncMapFromRobot({ host, apolloClient, platformSettings = {} }) {
-  const result = await fetchRobotMapJson(host);
-  if (!result.ok) {
-    throw new Error(formatFetchError(result));
-  }
-
-  const mapJsonText = result.body || '';
-  if (!mapJsonText) {
-    throw new Error(`Empty map response from robot. ${MAP_SYNC_HINT}`);
-  }
-
+export async function applyMapJsonToGraphQL(apolloClient, mapJsonText) {
   const mapData = parseMapPayload(mapJsonText);
   const { data, metadata } = buildSetMapVariables(mapData);
 
@@ -156,10 +147,40 @@ export async function syncMapFromRobot({ host, apolloClient, platformSettings = 
 
   await apolloClient.refetchQueries({ include: [GET_OCCUPANCY_GRID] });
 
-  let bytesWritten = 0;
-  let persistNote = '';
+  return {
+    width: mapData.width,
+    height: mapData.height,
+    resolution: mapData.resolution,
+  };
+}
 
-  if (window.ddsLocal?.writeUserMap) {
+async function persistSyncedMap(platformSettings, { mapJsonText, mapName, sourceHost }) {
+  const trimmedName = (mapName || '').trim();
+  let persistNote = '';
+  let savedPath = '';
+  let savedName = trimmedName;
+  let mapId = null;
+  let bytesWritten = 0;
+
+  if (window.ddsLocal?.saveNamedMap && trimmedName) {
+    const writeResult = await saveNamedMap({
+      platformDir: platformSettings.platformDir || '',
+      wslDistro: platformSettings.wslDistro || '',
+      name: trimmedName,
+      mapJsonText,
+      sourceHost: sourceHost || '',
+    });
+    if (writeResult?.ok) {
+      bytesWritten = mapJsonText.length;
+      savedName = writeResult.name || trimmedName;
+      mapId = writeResult.mapId || null;
+      savedPath = writeResult.userMapPath || writeResult.path || '';
+    } else {
+      persistNote =
+        writeResult?.error ||
+        'Map updated in GUI but failed to save to the map library.';
+    }
+  } else if (window.ddsLocal?.writeUserMap) {
     const writeResult = await writeUserMap({
       platformDir: platformSettings.platformDir || '',
       wslDistro: platformSettings.wslDistro || '',
@@ -167,25 +188,105 @@ export async function syncMapFromRobot({ host, apolloClient, platformSettings = 
     });
     if (writeResult?.ok) {
       bytesWritten = mapJsonText.length;
+      savedPath = writeResult.shellPath || writeResult.path || '';
     } else {
       persistNote =
         writeResult?.error ||
         'Map updated in GUI but failed to save dds/user_map.json. Set the platform folder in Local Stack settings.';
     }
+    if (trimmedName && !window.ddsLocal?.saveNamedMap) {
+      persistNote =
+        'Named map library requires the Electron app. Saved user_map.json only for this session path.';
+    }
   } else {
     console.warn(
-      'Map sync: Electron bridge unavailable; skipping dds/user_map.json write. ' +
+      'Map sync: Electron bridge unavailable; skipping file persistence. ' +
         'GraphQL map updated for this session only.',
     );
     persistNote =
-      'Map updated in GUI; restart DDS after installing the Electron build to persist for next session.';
+      'Map updated in GUI; use the Electron app and Local Stack settings to persist maps.';
+  }
+
+  return { bytesWritten, persistNote, savedPath, savedName, mapId };
+}
+
+/**
+ * @param {{ host: string, apolloClient: import('@apollo/client').ApolloClient, platformSettings?: { platformDir?: string, wslDistro?: string }, mapName?: string }} args
+ */
+export async function syncMapFromRobot({ host, apolloClient, platformSettings = {}, mapName = '' }) {
+  const result = await fetchRobotMapJson(host);
+  if (!result.ok) {
+    throw new Error(formatFetchError(result));
+  }
+
+  const mapJsonText = result.body || '';
+  if (!mapJsonText) {
+    throw new Error(`Empty map response from robot. ${MAP_SYNC_HINT}`);
+  }
+
+  const summary = await applyMapJsonToGraphQL(apolloClient, mapJsonText);
+  const persist = await persistSyncedMap(platformSettings, {
+    mapJsonText,
+    mapName,
+    sourceHost: host,
+  });
+
+  return {
+    ...summary,
+    ...persist,
+  };
+}
+
+/**
+ * @param {{ mapId: string, apolloClient: import('@apollo/client').ApolloClient, platformSettings?: { platformDir?: string, wslDistro?: string } }} args
+ */
+export async function loadSavedMapToCentral({ mapId, apolloClient, platformSettings = {} }) {
+  if (!mapId) {
+    throw new Error('Select a saved map.');
+  }
+
+  const readResult = await readSavedMap({
+    platformDir: platformSettings.platformDir || '',
+    wslDistro: platformSettings.wslDistro || '',
+    mapId,
+  });
+  if (!readResult?.ok) {
+    throw new Error(readResult?.error || 'Failed to read saved map.');
+  }
+
+  const mapJsonText = readResult.mapJsonText || '';
+  const summary = await applyMapJsonToGraphQL(apolloClient, mapJsonText);
+
+  let persistNote = '';
+  let savedPath = '';
+  let bytesWritten = 0;
+
+  if (window.ddsLocal?.setActiveSavedMap) {
+    const activateResult = await setActiveSavedMap({
+      platformDir: platformSettings.platformDir || '',
+      wslDistro: platformSettings.wslDistro || '',
+      mapId,
+      mapJsonText,
+    });
+    if (activateResult?.ok) {
+      bytesWritten = mapJsonText.length;
+      savedPath = activateResult.path || '';
+    } else {
+      persistNote =
+        activateResult?.error ||
+        'Map updated in GUI but failed to save dds/user_map.json.';
+    }
+  } else {
+    persistNote =
+      'Map updated in GUI; use the Electron app to persist user_map.json for the next DDS start.';
   }
 
   return {
-    width: mapData.width,
-    height: mapData.height,
-    resolution: mapData.resolution,
+    ...summary,
+    name: readResult.entry?.name || '',
+    mapId,
     bytesWritten,
+    savedPath,
     persistNote,
   };
 }
