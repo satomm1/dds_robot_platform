@@ -242,7 +242,9 @@ class LaunchServer(BaseHTTPRequestHandler):
             social = _parse_bool_query(parsed.query, "social")
             multi = _parse_bool_query(parsed.query, "multi")
             kaist = _parse_bool_query(parsed.query, "kaist")
+            audio = _parse_bool_query(parsed.query, "audio")
             social_arg = "true" if social else "false"
+            audio_arg = "true" if audio else "false"
 
             if launch_process is None or launch_process.poll() is not None:
                 env_cmd = (
@@ -265,12 +267,12 @@ class LaunchServer(BaseHTTPRequestHandler):
                 car_arg = "true" if robot_car == "true" else "false"
                 if kaist:
                     launch_file = "kaist.launch"
-                    roslaunch_args = f""
+                    roslaunch_args = f"audio:={audio_arg}"
                     mode = "single-robot"
                     planner = "A*"
                 else:
                     launch_file = LAUNCH_FILES[("tall" if is_tall else "short", multi)]
-                    roslaunch_args = f"car:={car_arg} social:={social_arg}"
+                    roslaunch_args = f"car:={car_arg} social:={social_arg} audio:={audio_arg}"
                     planner = "social" if social else "A*"
                     mode = "multi-robot" if multi else "single-robot"
                 cmd = (

@@ -1920,12 +1920,51 @@
   margin-top: 10px;
 }
 
-.robot-startup__planner-settings-title {
-  margin: 0 0 6px;
+.robot-startup__planner-settings-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
   font-size: 12px;
   font-weight: 700;
   color: #495057;
   letter-spacing: 0.02em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.robot-startup__planner-settings-trigger:hover:not(:disabled) {
+  color: #212529;
+}
+
+.robot-startup__planner-settings-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.robot-startup__planner-settings-trigger-label {
+  flex: 0 1 auto;
+}
+
+.robot-startup__planner-settings-trigger .robot-startup__picker-caret {
+  font-size: 13px;
+  font-weight: 700;
+  color: #343a40;
+  line-height: 1;
+}
+
+.robot-startup__planner-settings-body {
+  margin-top: 8px;
+  padding: 0 2px;
+}
+
+.robot-startup__launch-options {
+  margin-top: 8px;
 }
 
 .robot-startup__planner-settings-row {

@@ -129,6 +129,66 @@ function SavedHostPicker({ hosts, reachByHost, selectedId, disabled, onSelect })
   );
 }
 
+function PlannerSettingsPanel({
+  open,
+  onToggle,
+  useSocialPlanner,
+  setUseSocialPlanner,
+  useMultiRobotPlanner,
+  setUseMultiRobotPlanner,
+  disabled,
+  plannerDisabled,
+}) {
+  return (
+    <div className="robot-startup__planner-settings">
+      <button
+        type="button"
+        className="robot-startup__planner-settings-trigger"
+        onClick={onToggle}
+        aria-expanded={open}
+        disabled={disabled}
+      >
+        <span className="robot-startup__planner-settings-trigger-label">
+          Planner Settings (beta)
+        </span>
+        <span className="robot-startup__picker-caret" aria-hidden>
+          {open ? '▴' : '▾'}
+        </span>
+      </button>
+      {open && (
+        <div className="robot-startup__planner-settings-body">
+          <div className="robot-startup__planner-settings-row">
+            <label
+              className="robot-startup__planner-option"
+              title="Unchecked uses regular A* planner; checked uses social planner"
+            >
+              <input
+                type="checkbox"
+                checked={useSocialPlanner}
+                onChange={(e) => setUseSocialPlanner(e.target.checked)}
+                disabled={plannerDisabled}
+              />
+              Social
+            </label>
+            <label
+              className="robot-startup__planner-option"
+              title="Enable multi-robot planning on this robot at launch"
+            >
+              <input
+                type="checkbox"
+                checked={useMultiRobotPlanner}
+                onChange={(e) => setUseMultiRobotPlanner(e.target.checked)}
+                disabled={plannerDisabled}
+              />
+              Multi
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RobotActionsMenu({
   disabled,
   disabledReason,
@@ -239,6 +299,8 @@ const RobotStartup = () => {
   const [useSocialPlanner, setUseSocialPlanner] = useState(false);
   const [useMultiRobotPlanner, setUseMultiRobotPlanner] = useState(false);
   const [useKaist, setUseKaist] = useState(false);
+  const [useAudio, setUseAudio] = useState(false);
+  const [plannerSettingsOpen, setPlannerSettingsOpen] = useState(false);
   const [launcherStatus, setLauncherStatus] = useState({});
   const [hostReachability, setHostReachability] = useState({});
   const [dockerStatus, setDockerStatus] = useState({});
@@ -774,6 +836,7 @@ const RobotStartup = () => {
         social: useSocialPlanner,
         multi: useMultiRobotPlanner,
         kaist: useKaist,
+        audio: useAudio,
       });
       const detail = result.body ? `: ${result.body}` : '';
       if (result.ok) {
@@ -882,41 +945,25 @@ const RobotStartup = () => {
         </button>
       </div>
 
-      <div className="robot-startup__planner-settings">
-        <p className="robot-startup__planner-settings-title">Planner Settings (beta)</p>
+      <PlannerSettingsPanel
+        open={plannerSettingsOpen}
+        onToggle={() => setPlannerSettingsOpen((o) => !o)}
+        useSocialPlanner={useSocialPlanner}
+        setUseSocialPlanner={(checked) => {
+          setUseSocialPlanner(checked);
+          if (checked) setUseKaist(false);
+        }}
+        useMultiRobotPlanner={useMultiRobotPlanner}
+        setUseMultiRobotPlanner={(checked) => {
+          setUseMultiRobotPlanner(checked);
+          if (checked) setUseKaist(false);
+        }}
+        disabled={busy}
+        plannerDisabled={busy || usePrimaryDockerStart || useKaist}
+      />
+
+      <div className="robot-startup__launch-options">
         <div className="robot-startup__planner-settings-row">
-          <label
-            className="robot-startup__planner-option"
-            title="Unchecked uses regular A* planner; checked uses social planner"
-          >
-            <input
-              type="checkbox"
-              checked={useSocialPlanner}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setUseSocialPlanner(checked);
-                if (checked) setUseKaist(false);
-              }}
-              disabled={busy || usePrimaryDockerStart || useKaist}
-            />
-            Social
-          </label>
-          <label
-            className="robot-startup__planner-option"
-            title="Enable multi-robot planning on this robot at launch"
-          >
-            <input
-              type="checkbox"
-              checked={useMultiRobotPlanner}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setUseMultiRobotPlanner(checked);
-                if (checked) setUseKaist(false);
-              }}
-              disabled={busy || usePrimaryDockerStart || useKaist}
-            />
-            Multi
-          </label>
           <label
             className="robot-startup__planner-option"
             title="Launch kaist.launch for KAIST collaborator robots"
@@ -935,6 +982,18 @@ const RobotStartup = () => {
               disabled={busy || usePrimaryDockerStart}
             />
             KAIST
+          </label>
+          <label
+            className="robot-startup__planner-option"
+            title="Pass audio:=true to roslaunch at startup"
+          >
+            <input
+              type="checkbox"
+              checked={useAudio}
+              onChange={(e) => setUseAudio(e.target.checked)}
+              disabled={busy || usePrimaryDockerStart}
+            />
+            Audio
           </label>
         </div>
       </div>
