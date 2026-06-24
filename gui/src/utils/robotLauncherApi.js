@@ -160,11 +160,18 @@ export function summarizeSoftwareUpdateBody(body) {
         ? ' catkin_make OK.'
         : ' catkin_make failed.';
     }
+    const startupScript = data.startup_script;
+    let startupScriptNote = '';
+    if (startupScript && typeof startupScript === 'object') {
+      startupScriptNote = startupScript.ok
+        ? ' Launcher script updated for next Docker start.'
+        : ' Launcher script update failed.';
+    }
     const failed = repos.filter((r) => !r.ok).map((r) => r.path);
     if (failed.length > 0 && failed.length <= 3) {
-      return `${base}${catkinNote} Failed: ${failed.join(', ')}`;
+      return `${base}${catkinNote}${startupScriptNote} Failed: ${failed.join(', ')}`;
     }
-    return `${base}${catkinNote}`;
+    return `${base}${catkinNote}${startupScriptNote}`;
   } catch {
     return body.trim() || 'Software update finished.';
   }

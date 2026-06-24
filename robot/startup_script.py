@@ -7,7 +7,10 @@ Host power off and Docker start/stop are handled by host_service.py on port 8081
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
+import py_compile
 import subprocess
+import tempfile
+import urllib.request
 from urllib.parse import parse_qs, urlparse
 
 launch_process = None
@@ -32,6 +35,13 @@ GIT_REPO_PATHS = [
 ]
 UPDATE_REPOS_FILE = os.environ.get("ROBOT_UPDATE_REPOS_FILE", "")
 GIT_PULL_TIMEOUT_SEC = int(os.environ.get("ROBOT_GIT_PULL_TIMEOUT_SEC", "120"))
+STARTUP_SCRIPT_RAW_URL = os.environ.get(
+    "ROBOT_STARTUP_SCRIPT_RAW_URL",
+    "https://raw.githubusercontent.com/satomm1/dds_robot_platform/main/robot/startup_script.py",
+)
+STARTUP_SCRIPT_FETCH_TIMEOUT_SEC = int(
+    os.environ.get("ROBOT_STARTUP_SCRIPT_FETCH_TIMEOUT_SEC", "10")
+)
 CATKIN_WS_DIR = "/workspace/catkin_ws"
 CATKIN_MAKE_TIMEOUT_SEC = int(os.environ.get("ROBOT_CATKIN_MAKE_TIMEOUT_SEC", "600"))
 
@@ -104,6 +114,84 @@ def _git_pull_repo(repo_path):
         }
 
 
+def _update_startup_script_on_disk():
+    """
+    Download the latest startup_script.py from the platform repo and replace this file.
+    The running launcher keeps the old code until the next Docker start.
+    """
+    target_path = os.path.realpath(__file__)
+    url = STARTUP_SCRIPT_RAW_URL.strip()
+    if not url:
+        return {
+            "path": target_path,
+            "ok": True,
+            "stdout": "Skipped (ROBOT_STARTUP_SCRIPT_RAW_URL is empty).",
+            "stderr": "",
+        }
+
+    try:
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "dds-robot-startup-script/1.0"},
+        )
+        with urllib.request.urlopen(
+            request, timeout=STARTUP_SCRIPT_FETCH_TIMEOUT_SEC
+        ) as response:
+            data = response.read()
+    except OSError as exc:
+        return {
+            "path": target_path,
+            "ok": False,
+            "stdout": "",
+            "stderr": str(exc),
+        }
+
+    if not data or len(data) < 100:
+        return {
+            "path": target_path,
+            "ok": False,
+            "stdout": "",
+            "stderr": "Downloaded startup_script.py was empty or too small.",
+        }
+
+    target_dir = os.path.dirname(target_path)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".startup_script.",
+        suffix=".py",
+        dir=target_dir,
+    )
+    replaced = False
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        try:
+            py_compile.compile(tmp_path, doraise=True)
+        except py_compile.PyCompileError as exc:
+            return {
+                "path": target_path,
+                "ok": False,
+                "stdout": "",
+                "stderr": f"Downloaded startup_script.py failed syntax check: {exc}",
+            }
+
+        old_mode = os.stat(target_path).st_mode
+        os.replace(tmp_path, target_path)
+        replaced = True
+        os.chmod(target_path, old_mode)
+        return {
+            "path": target_path,
+            "ok": True,
+            "stdout": (
+                f"Downloaded from {url}. "
+                "The updated launcher will run on the next Docker start."
+            ),
+            "stderr": "",
+        }
+    finally:
+        if not replaced and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
 def _run_catkin_make(workspace_dir):
     """Run catkin_make in workspace_dir after sourcing ROS. Returns a result dict."""
     if not os.path.isdir(workspace_dir):
@@ -151,7 +239,7 @@ def _run_catkin_make(workspace_dir):
 def _run_software_update(stop_ros=False, run_catkin_make=False):
     """
     Entry point for /software-update.
-    Pulls git repos, then optionally runs catkin_make in CATKIN_WS_DIR.
+    Pulls git repos, refreshes startup_script.py on disk, then optionally runs catkin_make.
     """
     if stop_ros:
         _stop_ros_launch()
@@ -162,11 +250,14 @@ def _run_software_update(stop_ros=False, run_catkin_make=False):
             "ok": False,
             "message": "No git repo paths configured (edit GIT_REPO_PATHS or ROBOT_UPDATE_REPOS_FILE).",
             "repos": [],
+            "startup_script": None,
             "catkin_make": None,
         }
 
     results = [_git_pull_repo(path) for path in repos]
     pulls_ok = all(entry["ok"] for entry in results)
+    startup_script_result = _update_startup_script_on_disk()
+    startup_script_ok = startup_script_result["ok"]
 
     catkin_result = None
     if run_catkin_make:
@@ -180,11 +271,15 @@ def _run_software_update(stop_ros=False, run_catkin_make=False):
                 "stderr": "Skipped catkin_make because one or more git pulls failed.",
             }
 
-    all_ok = pulls_ok and (catkin_result is None or catkin_result["ok"])
+    all_ok = pulls_ok and startup_script_ok and (
+        catkin_result is None or catkin_result["ok"]
+    )
     if catkin_result and not catkin_result["ok"]:
         message = "Git pulls succeeded but catkin_make failed."
     elif not pulls_ok:
         message = "One or more git pulls failed."
+    elif not startup_script_ok:
+        message = "Git pulls succeeded but startup_script.py update failed."
     else:
         message = "Software update finished."
 
@@ -192,6 +287,7 @@ def _run_software_update(stop_ros=False, run_catkin_make=False):
         "ok": all_ok,
         "message": message,
         "repos": results,
+        "startup_script": startup_script_result,
         "catkin_make": catkin_result,
     }
 
