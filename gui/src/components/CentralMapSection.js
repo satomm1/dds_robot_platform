@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadDdsLocalSettings } from '../utils/ddsLocalStorage';
 import { hasMapLibraryBridge, listSavedMaps, deleteSavedMap } from '../utils/ddsLocalApi';
-import { loadSavedMapToCentral, syncMapFromRobot } from '../utils/mapSync';
+import { loadSavedMapToCentral, sendMapToRobot, syncMapFromRobot } from '../utils/mapSync';
 
 function formatMapOptionLabel(entry) {
   const dims =
@@ -113,6 +113,7 @@ const CentralMapSection = ({
   const [libraryNote, setLibraryNote] = useState('');
   const [ddsDirHint, setDdsDirHint] = useState('');
   const [expanded, setExpanded] = useState(false);
+  const [panelMode, setPanelMode] = useState('loadSync');
 
   const hasLibrary = hasMapLibraryBridge();
 
@@ -180,10 +181,26 @@ const CentralMapSection = ({
         : '';
 
   const canSyncWithName = canSyncMap && mapName.trim().length > 0;
+  const canSendMap = canSyncWithName;
 
   const syncDisabledReason = !mapName.trim()
     ? 'Enter a map name'
     : syncMapDisabledReason;
+
+  const sendDisabledReason = syncDisabledReason;
+
+  const robotDisplayName = useMemo(
+    () => (activeHostLabel || activeHost || '').trim(),
+    [activeHostLabel, activeHost],
+  );
+
+  const syncButtonLabel = robotDisplayName
+    ? `Sync Map From ${robotDisplayName}`
+    : 'Sync Map From Robot';
+
+  const sendButtonLabel = robotDisplayName
+    ? `Send Map To ${robotDisplayName}`
+    : 'Send Map To Robot';
 
   const handleSyncMap = async () => {
     const host = (hostInput || '').trim();
@@ -295,6 +312,55 @@ const CentralMapSection = ({
     }
   };
 
+  const handleSendMapToRobot = async () => {
+    const host = (hostInput || '').trim();
+    if (!host) {
+      setStatus({ type: 'error', message: 'Enter a robot IP.' });
+      return;
+    }
+
+    const trimmedName = mapName.trim();
+    if (!trimmedName) {
+      setStatus({ type: 'error', message: 'Enter a map name before sending.' });
+      return;
+    }
+
+    const confirmLabel = activeHostLabel || host;
+    const mapSourceNote = selectedMapId
+      ? 'the selected saved map'
+      : 'the current central map (user_map.json)';
+
+    const confirmed = window.confirm(
+      `Send ${mapSourceNote} to ${confirmLabel} (${host}) as "${trimmedName}"? ` +
+        'This overwrites current_map.json on the robot.',
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    setStatus({ type: '', message: 'Sending map to robot…' });
+    try {
+      const platformSettings = loadDdsLocalSettings();
+      const summary = await sendMapToRobot({
+        host,
+        mapName: trimmedName,
+        platformSettings,
+        mapId: selectedMapId || '',
+      });
+      let message = summary.message || `Map "${summary.name}" sent to robot.`;
+      if (summary.namedPath) {
+        message += ` (${summary.namedPath})`;
+      }
+      setStatus({ type: 'success', message });
+    } catch (err) {
+      setStatus({
+        type: 'error',
+        message: err.message || 'Failed to send map to robot.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDeleteSavedMap = async () => {
     if (!selectedMapId) {
       setStatus({ type: 'error', message: 'Choose a saved map.' });
@@ -340,14 +406,14 @@ const CentralMapSection = ({
   return (
     <div className="central-maps">
       <div className="central-maps__head">
-        <span className="central-maps__title">Load/Sync Map</span>
+        <span className="central-maps__title">Maps</span>
         <button
           type="button"
           className="central-maps__btn central-maps__btn--expand"
           onClick={() => setExpanded((o) => !o)}
           aria-expanded={expanded}
           aria-controls="central-maps-panel"
-          title="Load or sync map"
+          title="Load, sync, or send maps"
         >
           {expanded ? '▴' : '▾'}
         </button>
@@ -355,74 +421,176 @@ const CentralMapSection = ({
 
       {expanded && (
         <div className="central-maps__panel" id="central-maps-panel">
-          <div className="central-maps__saved-section">
-            <label className="central-maps__label" htmlFor="central-maps-saved">
-              Load Previously Synced Map
-            </label>
-            <div className="central-maps__saved-row">
-              <SavedMapPicker
-                maps={savedMaps}
-                activeMapId={activeMapId}
-                selectedId={selectedMapId}
-                disabled={busy}
-                onSelect={setSelectedMapId}
-              />
-              <div className="central-maps__saved-actions">
+          <div
+            className="central-maps__mode-toggle"
+            role="tablist"
+            aria-label="Map actions"
+          >
+            <button
+              type="button"
+              role="tab"
+              id="central-maps-tab-load-sync"
+              className={
+                panelMode === 'loadSync'
+                  ? 'central-maps__mode-btn btn-goal-init-active btn-goal-narrow'
+                  : 'central-maps__mode-btn btn-goal-init-inactive btn-goal-narrow'
+              }
+              aria-selected={panelMode === 'loadSync'}
+              onClick={() => setPanelMode('loadSync')}
+              disabled={busy}
+            >
+              Load/Sync Map
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="central-maps-tab-send"
+              className={
+                panelMode === 'send'
+                  ? 'central-maps__mode-btn btn-goal-init-active btn-goal-narrow'
+                  : 'central-maps__mode-btn btn-goal-init-inactive btn-goal-narrow'
+              }
+              aria-selected={panelMode === 'send'}
+              onClick={() => setPanelMode('send')}
+              disabled={busy}
+            >
+              Send Map
+            </button>
+          </div>
+
+          <div className="central-maps__mode-body">
+          {panelMode === 'loadSync' ? (
+            <>
+              <div
+                className="central-maps__saved-section"
+                role="tabpanel"
+                aria-labelledby="central-maps-tab-load-sync"
+              >
+                <label className="central-maps__label" htmlFor="central-maps-saved">
+                  Load Previously Synced Map
+                </label>
+                <div className="central-maps__saved-row">
+                  <SavedMapPicker
+                    maps={savedMaps}
+                    activeMapId={activeMapId}
+                    selectedId={selectedMapId}
+                    disabled={busy}
+                    onSelect={setSelectedMapId}
+                  />
+                  <div className="central-maps__saved-actions">
+                    <button
+                      type="button"
+                      className="robot-startup__btn central-maps__btn-load"
+                      onClick={handleLoadSavedMap}
+                      disabled={!canLoadSavedMap}
+                      title={canLoadSavedMap ? 'Load selected map into GUI' : loadDisabledReason}
+                    >
+                      {busy ? '…' : 'Load'}
+                    </button>
+                    <button
+                      type="button"
+                      className="robot-startup__btn central-maps__btn-delete"
+                      onClick={handleDeleteSavedMap}
+                      disabled={!canDeleteSavedMap}
+                      title={
+                        canDeleteSavedMap
+                          ? 'Remove selected map from saved maps'
+                          : loadDisabledReason
+                      }
+                    >
+                      {busy ? '…' : 'Delete'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="central-maps__sync-row">
+                <div className="central-maps__field">
+                  <label className="central-maps__label" htmlFor="central-maps-name">
+                    Map Name
+                  </label>
+                  <input
+                    id="central-maps-name"
+                    type="text"
+                    className="central-maps__input"
+                    placeholder="e.g. Lab floor 1"
+                    value={mapName}
+                    onChange={(e) => setMapName(e.target.value)}
+                    disabled={busy}
+                    autoComplete="off"
+                  />
+                </div>
                 <button
                   type="button"
-                  className="robot-startup__btn central-maps__btn-load"
-                  onClick={handleLoadSavedMap}
-                  disabled={!canLoadSavedMap}
-                  title={canLoadSavedMap ? 'Load selected map into GUI' : loadDisabledReason}
-                >
-                  {busy ? '…' : 'Load'}
-                </button>
-                <button
-                  type="button"
-                  className="robot-startup__btn central-maps__btn-delete"
-                  onClick={handleDeleteSavedMap}
-                  disabled={!canDeleteSavedMap}
+                  className="robot-startup__btn central-maps__btn-sync"
+                  onClick={handleSyncMap}
+                  disabled={!canSyncWithName || busy}
                   title={
-                    canDeleteSavedMap
-                      ? 'Remove selected map from saved maps'
-                      : loadDisabledReason
+                    canSyncWithName
+                      ? `Fetch map from ${robotDisplayName || 'robot'}, save under map name, and activate`
+                      : syncDisabledReason
                   }
                 >
-                  {busy ? '…' : 'Delete'}
+                  {busy ? '…' : syncButtonLabel}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div
+              className="central-maps__send-section"
+              role="tabpanel"
+              aria-labelledby="central-maps-tab-send"
+            >
+              <div className="central-maps__saved-section">
+                <label className="central-maps__label" htmlFor="central-maps-saved">
+                  Map to Send
+                </label>
+                <p className="central-maps__field-hint">
+                  Pick a saved map, or leave unset to send the current central map (
+                  <code>user_map.json</code>).
+                </p>
+                <SavedMapPicker
+                  maps={savedMaps}
+                  activeMapId={activeMapId}
+                  selectedId={selectedMapId}
+                  disabled={busy}
+                  onSelect={setSelectedMapId}
+                />
+              </div>
+
+              <div className="central-maps__sync-row">
+                <div className="central-maps__field">
+                  <label className="central-maps__label" htmlFor="central-maps-send-name">
+                    Map Name on Robot
+                  </label>
+                  <input
+                    id="central-maps-send-name"
+                    type="text"
+                    className="central-maps__input"
+                    placeholder="e.g. office"
+                    value={mapName}
+                    onChange={(e) => setMapName(e.target.value)}
+                    disabled={busy}
+                    autoComplete="off"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="robot-startup__btn central-maps__btn-send"
+                  onClick={handleSendMapToRobot}
+                  disabled={!canSendMap || busy}
+                  title={
+                    canSendMap
+                      ? `Upload map to ${robotDisplayName || 'robot'} host service (POST /map)`
+                      : sendDisabledReason
+                  }
+                >
+                  {busy ? '…' : sendButtonLabel}
                 </button>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="central-maps__sync-row">
-            <div className="central-maps__field">
-              <label className="central-maps__label" htmlFor="central-maps-name">
-                Map Name
-              </label>
-              <input
-                id="central-maps-name"
-                type="text"
-                className="central-maps__input"
-                placeholder="e.g. Lab floor 1"
-                value={mapName}
-                onChange={(e) => setMapName(e.target.value)}
-                disabled={busy}
-                autoComplete="off"
-              />
-            </div>
-            <button
-              type="button"
-              className="robot-startup__btn central-maps__btn-sync"
-              onClick={handleSyncMap}
-              disabled={!canSyncWithName || busy}
-              title={
-                canSyncWithName
-                  ? 'Fetch map from robot, save under map name, and activate'
-                  : syncDisabledReason
-              }
-            >
-              {busy ? '…' : 'Sync Map From Robot'}
-            </button>
           </div>
 
           {libraryNote ? (

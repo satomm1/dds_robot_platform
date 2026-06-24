@@ -201,12 +201,18 @@ const HelpModal = ({ onClose }) => {
               <code>8080</code>).
             </li>
           </ul>
-          <HelpSubheading>Load/Sync Map</HelpSubheading>
+          <HelpSubheading>Maps</HelpSubheading>
           <p className="help-modal__body help-modal__body--tight">
-            Below <strong>Start ROS</strong> / <strong>More</strong>, expand{' '}
-            <strong>Load/Sync Map</strong> with the{' '}
+            Below <strong>Start ROS</strong> / <strong>More</strong>, expand <strong>Maps</strong>{' '}
+            with the{' '}
             <HelpChip className="central-maps__btn central-maps__btn--expand">▾</HelpChip> button
-            (same style as Local Stack settings).
+            (same style as Local Stack settings). Choose an action with the highlighted{' '}
+            <HelpChip className="btn-goal-init-active btn-goal-narrow">Load/Sync Map</HelpChip> or{' '}
+            <HelpChip className="btn-goal-init-inactive btn-goal-narrow">Send Map</HelpChip>{' '}
+            buttons at the top of the panel (green = selected).
+          </p>
+          <p className="help-modal__body help-modal__body--tight">
+            <strong>Load/Sync Map</strong>
           </p>
           <ul className="help-modal__list">
             <li>
@@ -228,6 +234,26 @@ const HelpModal = ({ onClose }) => {
               <code>8081</code>). The robot must have finalized its map (
               <code>finalize_map.py</code>); Docker/ROS need not be running. Saves to the map
               library and <code>dds/user_map.json</code>.
+            </li>
+          </ul>
+          <p className="help-modal__body help-modal__body--tight">
+            <strong>Send Map</strong>
+          </p>
+          <ul className="help-modal__list">
+            <li>
+              <strong>Map to Send</strong> — optional saved map from the library; if none is
+              selected, the current central <code>user_map.json</code> is uploaded.
+            </li>
+            <li>
+              <strong>Map Name on Robot</strong> — archive name written on the target robot (
+              <code>{'{name}'}.json</code> and <code>current_map.json</code>).
+            </li>
+            <li>
+              <HelpChip className="robot-startup__btn central-maps__btn-send">
+                Send Map To Robot
+              </HelpChip>{' '}
+              — uploads via <code>POST /map</code> on port <code>8081</code> (host service must be
+              online on the target robot).
             </li>
           </ul>
           <p className="help-modal__note">

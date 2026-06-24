@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('ddsLocal', {
   readSavedMap: (args) => ipcRenderer.invoke('dds-local-read-saved-map', args),
   setActiveSavedMap: (args) => ipcRenderer.invoke('dds-local-set-active-saved-map', args),
   deleteSavedMap: (args) => ipcRenderer.invoke('dds-local-delete-saved-map', args),
+  readUserMap: (settings) => ipcRenderer.invoke('dds-local-read-user-map', settings),
 });
 
 contextBridge.exposeInMainWorld('dockerCompose', {

@@ -104,6 +104,10 @@ ipcMain.handle('dds-local-delete-saved-map', async (_event, args) => {
   return ddsLocalRunner.deleteSavedMap({ platformDir, wslDistro }, mapId);
 });
 
+ipcMain.handle('dds-local-read-user-map', async (_event, settings) =>
+  ddsLocalRunner.readUserMapJson(settings || {}),
+);
+
 ipcMain.handle('docker-compose-status', (_event, settings) =>
   dockerComposeRunner.getDockerStatus(settings || {}),
 );
@@ -116,12 +120,21 @@ ipcMain.handle('docker-compose-down', (_event, settings) =>
   dockerComposeRunner.dockerComposeDown(settings || {}),
 );
 
-ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route, timeoutMs }) => {
+ipcMain.handle('robot-launcher-request', (_event, options = {}) => {
+  const {
+    host,
+    port,
+    path: route,
+    timeoutMs,
+    method: rawMethod,
+    body,
+  } = options;
   const cleanHost = String(host || '').trim();
   const portNum = Number(port) > 0 ? Number(port) : 8080;
   const reqPath = route && String(route).startsWith('/') ? String(route) : '/start';
   const timeout =
     Number(timeoutMs) > 0 ? Number(timeoutMs) : ROBOT_LAUNCHER_TIMEOUT_MS;
+  const method = String(rawMethod || 'GET').toUpperCase();
 
   if (!cleanHost) {
     return { ok: false, status: 0, body: '', error: 'host is required' };
@@ -132,19 +145,34 @@ ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route, tim
       resolve({ ok: false, status: 0, body: '', error });
     };
 
-    const req = http.get(
-      { host: cleanHost, port: portNum, path: reqPath, timeout },
+    const headers = {};
+    let bodyText = null;
+    if (body != null && method !== 'GET' && method !== 'HEAD') {
+      bodyText = typeof body === 'string' ? body : JSON.stringify(body);
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(bodyText, 'utf8');
+    }
+
+    const req = http.request(
+      {
+        host: cleanHost,
+        port: portNum,
+        path: reqPath,
+        method,
+        timeout,
+        headers,
+      },
       (res) => {
-        let body = '';
+        let responseBody = '';
         res.setEncoding('utf8');
         res.on('data', (chunk) => {
-          body += chunk;
+          responseBody += chunk;
         });
         res.on('end', () => {
           resolve({
             ok: res.statusCode >= 200 && res.statusCode < 300,
             status: res.statusCode,
-            body: body.trim(),
+            body: responseBody.trim(),
           });
         });
       },
@@ -156,6 +184,10 @@ ipcMain.handle('robot-launcher-request', (_event, { host, port, path: route, tim
     req.on('error', (err) => {
       fail(err.message || 'Request failed');
     });
+    if (bodyText != null) {
+      req.write(bodyText);
+    }
+    req.end();
   });
 });
 

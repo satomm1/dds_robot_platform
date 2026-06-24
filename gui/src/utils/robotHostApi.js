@@ -5,6 +5,10 @@ const STATUS_REQUEST_TIMEOUT_MS = 5000;
 const DOCKER_ACTION_TIMEOUT_MS = 120000;
 export const MAP_SYNC_TIMEOUT_MS = 120000;
 
+const MAP_HOST_HINT =
+  'Ensure the robot is powered on, host service is installed (jetson-host-install.sh), ' +
+  'and port 8081 is reachable.';
+
 function hostUrl(host, port, path) {
   const h = normalizeHostInput(host);
   const p = Number(port) > 0 ? Number(port) : HOST_SERVICE_PORT;
@@ -26,13 +30,15 @@ async function parseResponse(res) {
   };
 }
 
-async function requestRobotHostRaw(host, path, timeoutMs) {
+async function requestRobotHost(host, path, timeoutMs, options = {}) {
   const cleanHost = normalizeHostInput(host);
   if (!cleanHost) {
     throw new Error('Enter a robot IP address or hostname.');
   }
   const portNum = HOST_SERVICE_PORT;
   const route = path.startsWith('/') ? path : `/${path}`;
+  const method = String(options.method || 'GET').toUpperCase();
+  const body = options.body ?? null;
 
   if (window.robotLauncher?.request) {
     return window.robotLauncher.request({
@@ -40,6 +46,8 @@ async function requestRobotHostRaw(host, path, timeoutMs) {
       port: portNum,
       path: route,
       timeoutMs,
+      method,
+      body,
     });
   }
 
@@ -52,9 +60,13 @@ async function requestRobotHostRaw(host, path, timeoutMs) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(`/api/robot-launcher?${params}`, {
-        signal: controller.signal,
-      });
+      const fetchOptions = { signal: controller.signal };
+      if (method === 'POST') {
+        fetchOptions.method = 'POST';
+        fetchOptions.headers = { 'Content-Type': 'application/json' };
+        fetchOptions.body = body || '';
+      }
+      const res = await fetch(`/api/robot-launcher?${params}`, fetchOptions);
       const data = await res.json();
       if (!res.ok && data?.error) {
         throw new Error(data.error);
@@ -68,10 +80,15 @@ async function requestRobotHostRaw(host, path, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(hostUrl(cleanHost, portNum, route), {
-      method: 'GET',
+    const fetchOptions = {
+      method,
       signal: controller.signal,
-    });
+    };
+    if (method === 'POST') {
+      fetchOptions.headers = { 'Content-Type': 'application/json' };
+      fetchOptions.body = body || '';
+    }
+    const res = await fetch(hostUrl(cleanHost, portNum, route), fetchOptions);
     return parseResponse(res);
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -104,7 +121,7 @@ export async function fetchRobotHostStatus(host) {
     return { ok: false, body: '' };
   }
   try {
-    const result = await requestRobotHostRaw(cleanHost, '/status', STATUS_REQUEST_TIMEOUT_MS);
+    const result = await requestRobotHost(cleanHost, '/status', STATUS_REQUEST_TIMEOUT_MS);
     return { ok: Boolean(result.ok), body: result.body || '' };
   } catch {
     return { ok: false, body: '' };
@@ -113,26 +130,36 @@ export async function fetchRobotHostStatus(host) {
 
 /** GET /docker-start on the Jetson host service. */
 export async function requestRobotDockerStart(host) {
-  return requestRobotHostRaw(host, '/docker-start', DOCKER_ACTION_TIMEOUT_MS);
+  return requestRobotHost(host, '/docker-start', DOCKER_ACTION_TIMEOUT_MS);
 }
 
 /** GET /docker-stop on the Jetson host service. */
 export async function requestRobotDockerStop(host) {
-  return requestRobotHostRaw(host, '/docker-stop', DOCKER_ACTION_TIMEOUT_MS);
+  return requestRobotHost(host, '/docker-stop', DOCKER_ACTION_TIMEOUT_MS);
 }
 
 /** GET /map on the Jetson host service (current_map.json). */
 export async function fetchRobotMapJson(host) {
   try {
-    return await requestRobotHostRaw(host, '/map', MAP_SYNC_TIMEOUT_MS);
+    return await requestRobotHost(host, '/map', MAP_SYNC_TIMEOUT_MS);
   } catch (err) {
-    const base =
-      err.message ||
-      'Could not reach the robot host service.';
+    const base = err.message || 'Could not reach the robot host service.';
     throw new Error(
-      `${base} Ensure the robot is powered on, host service is installed ` +
-        '(jetson-host-install.sh), port 8081 is reachable, and the map was finalized (finalize_map.py).',
+      `${base} ${MAP_HOST_HINT} Map must be finalized (finalize_map.py) to download.`,
     );
+  }
+}
+
+/** POST /map on the Jetson host service (save current_map.json + named copy). */
+export async function postRobotMapJson(host, mapJsonText) {
+  try {
+    return await requestRobotHost(host, '/map', MAP_SYNC_TIMEOUT_MS, {
+      method: 'POST',
+      body: mapJsonText,
+    });
+  } catch (err) {
+    const base = err.message || 'Could not reach the robot host service.';
+    throw new Error(`${base} ${MAP_HOST_HINT}`);
   }
 }
 
@@ -142,7 +169,22 @@ export async function fetchRobotMapJson(host) {
  * @param {string} [token]
  */
 export async function requestRobotHostPowerOff(host, token = '') {
-  return requestRobotHostRaw(host, buildHostPowerOffPath(token), REQUEST_TIMEOUT_MS);
+  return requestRobotHost(host, buildHostPowerOffPath(token), REQUEST_TIMEOUT_MS);
+}
+
+/** Parse POST /map success JSON into a short user-facing summary. */
+export function summarizeRobotMapUploadBody(body) {
+  if (!body) return 'Map saved on robot.';
+  try {
+    const data = JSON.parse(body);
+    if (data.ok && data.name) {
+      return `Map "${data.name}" saved on robot (current_map.json updated).`;
+    }
+    if (data.error) return data.error;
+  } catch {
+    // fall through
+  }
+  return body.trim() || 'Map saved on robot.';
 }
 
 /** Parse /poweroff JSON body into a short user-facing summary. */

@@ -1,7 +1,7 @@
 import { SET_MAP, SET_MAP_METADATA } from '../mutations';
 import { GET_OCCUPANCY_GRID } from '../queries';
-import { saveNamedMap, readSavedMap, setActiveSavedMap, writeUserMap } from './ddsLocalApi';
-import { fetchRobotMapJson } from './robotHostApi';
+import { saveNamedMap, readSavedMap, setActiveSavedMap, writeUserMap, readUserMap } from './ddsLocalApi';
+import { fetchRobotMapJson, postRobotMapJson, summarizeRobotMapUploadBody } from './robotHostApi';
 
 const MAP_SYNC_HINT =
   'Ensure the robot is powered on, host service is installed (jetson-host-install.sh), ' +
@@ -288,5 +288,129 @@ export async function loadSavedMapToCentral({ mapId, apolloClient, platformSetti
     bytesWritten,
     savedPath,
     persistNote,
+  };
+}
+
+const ROBOT_MAP_NAME_INVALID = /[/\\]/;
+
+/**
+ * Validate map name for robot POST /map (archive filename, no path separators).
+ * @param {string} name
+ */
+export function validateRobotMapName(name) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) {
+    throw new Error('Enter a map name.');
+  }
+  if (ROBOT_MAP_NAME_INVALID.test(trimmed)) {
+    throw new Error('Map name cannot contain / or \\.');
+  }
+  if (trimmed === '.' || trimmed === '..') {
+    throw new Error('Invalid map name.');
+  }
+  return trimmed;
+}
+
+/**
+ * Add top-level name to map JSON for robot host POST /map.
+ * @param {string} mapJsonText
+ * @param {string} name
+ */
+export function buildRobotUploadPayload(mapJsonText, name) {
+  const trimmedName = validateRobotMapName(name);
+  let parsed;
+  try {
+    parsed = JSON.parse(mapJsonText);
+  } catch (err) {
+    throw new Error(`Invalid map JSON: ${err.message}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Invalid map JSON: expected a JSON object.');
+  }
+  return JSON.stringify({ ...parsed, name: trimmedName });
+}
+
+function formatPostMapError(result) {
+  const snippet = (result.body || '').trim().slice(0, 300);
+  let detail = snippet;
+  try {
+    const err = JSON.parse(result.body);
+    if (err.error) detail = err.error;
+  } catch {
+    // use raw snippet
+  }
+  return `Failed to send map to robot (HTTP ${result.status || 'unknown'})` +
+    (detail ? `: ${detail}` : '.');
+}
+
+/**
+ * Resolve central map JSON for upload: selected saved map, else user_map.json.
+ */
+export async function resolveCentralMapJsonForUpload(platformSettings, mapId = '') {
+  const settings = {
+    platformDir: platformSettings.platformDir || '',
+    wslDistro: platformSettings.wslDistro || '',
+  };
+  const id = mapId || '';
+  if (id) {
+    const readResult = await readSavedMap({ ...settings, mapId: id });
+    if (!readResult?.ok) {
+      throw new Error(readResult?.error || 'Failed to read saved map.');
+    }
+    return readResult.mapJsonText || '';
+  }
+  const userResult = await readUserMap(settings);
+  if (!userResult?.ok) {
+    throw new Error(
+      userResult?.error ||
+        'No map to send. Load a saved map or sync a map to the central stack first.',
+    );
+  }
+  return userResult.mapJsonText || '';
+}
+
+/**
+ * POST the central map to a robot host service (port 8081).
+ * @param {{ host: string, mapName: string, platformSettings?: object, mapId?: string, mapJsonText?: string }} args
+ */
+export async function sendMapToRobot({
+  host,
+  mapName,
+  platformSettings = {},
+  mapId = '',
+  mapJsonText = '',
+}) {
+  const cleanHost = (host || '').trim();
+  if (!cleanHost) {
+    throw new Error('Enter a robot IP.');
+  }
+
+  const sourceJson =
+    mapJsonText || (await resolveCentralMapJsonForUpload(platformSettings, mapId));
+  if (!sourceJson.trim()) {
+    throw new Error('Map JSON is empty.');
+  }
+
+  parseMapPayload(sourceJson);
+
+  const uploadBody = buildRobotUploadPayload(sourceJson, mapName);
+  const result = await postRobotMapJson(cleanHost, uploadBody);
+  if (!result.ok) {
+    throw new Error(formatPostMapError(result));
+  }
+
+  const robotName = validateRobotMapName(mapName);
+  let namedPath = '';
+  try {
+    const data = JSON.parse(result.body || '{}');
+    namedPath = data.named_path || data.current_path || '';
+  } catch {
+    // ignore
+  }
+
+  return {
+    name: robotName,
+    message: summarizeRobotMapUploadBody(result.body),
+    namedPath,
   };
 }

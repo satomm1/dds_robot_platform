@@ -485,6 +485,25 @@ async function deleteSavedMap(settings, mapId) {
   }
 }
 
+/**
+ * Read dds/user_map.json from the platform folder.
+ */
+async function readUserMapJson(settings) {
+  const resolved = requireShellDdsDir(settings);
+  if (!resolved.ok) {
+    return resolved;
+  }
+  try {
+    const mapJsonText = await readDdsFileUtf8(settings, USER_MAP_FILE);
+    return { ok: true, mapJsonText };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err.message || `${USER_MAP_FILE} not found under dds/.`,
+    };
+  }
+}
+
 function getDefaultPlatformDir() {
   const candidate = path.resolve(__dirname, '..', '..');
   if (
@@ -537,5 +556,6 @@ module.exports = {
   readSavedMapJson,
   setActiveSavedMap,
   deleteSavedMap,
+  readUserMapJson,
   defaultWslDistro,
 };

@@ -106,6 +106,13 @@ export async function deleteSavedMap(args) {
   return { ok: false, error: 'Electron bridge not available' };
 }
 
+export async function readUserMap(settings) {
+  if (window.ddsLocal?.readUserMap) {
+    return window.ddsLocal.readUserMap(platformArgs(settings));
+  }
+  return { ok: false, error: 'Electron bridge not available' };
+}
+
 export function hasMapLibraryBridge() {
   return Boolean(window.ddsLocal?.listSavedMaps);
 }
