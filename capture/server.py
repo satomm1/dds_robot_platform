@@ -44,12 +44,41 @@ def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
 
 UNSAFE_NAME = re.compile(r"[/\\]|\.\.")
 
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".wav"}
+
+MEDIA_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".wav": "audio/wav",
+    ".json": "application/json",
+}
+
 
 def safe_filename(name: str) -> str:
     base = Path(name).name
     if not base or UNSAFE_NAME.search(base):
         raise HTTPException(status_code=400, detail=f"unsafe filename: {name!r}")
+    ext = Path(base).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"unsupported file type: {ext or '(none)'}")
     return base
+
+
+def is_wav(filename: str) -> bool:
+    return Path(filename).suffix.lower() == ".wav"
+
+
+def validate_trigger_files(trigger: str, filenames: list[str]) -> None:
+    wav_files = [f for f in filenames if is_wav(f)]
+    non_wav = [f for f in filenames if not is_wav(f)]
+    if trigger == "wakeword" and non_wav:
+        raise HTTPException(status_code=400, detail="wakeword sessions must contain only .wav files")
+    if trigger != "wakeword" and wav_files:
+        raise HTTPException(status_code=400, detail="non-wakeword sessions cannot contain .wav files")
+
+
+def media_type_for_path(path: Path) -> str:
+    return MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
 
 
 def session_storage_rel(robot_id: int, started_at: datetime, session_id: str) -> str:
@@ -302,6 +331,7 @@ async def upload(
     session_dir = resolve_storage_path(session_rel)
 
     normalized = [normalize_frame(f, session_rel) for f in parsed["frames"]]
+    validate_trigger_files(parsed["trigger"], [f["filename"] for f in normalized])
     expected_names = {f["filename"] for f in normalized}
 
     uploaded: dict[str, bytes] = {}
@@ -350,28 +380,31 @@ async def list_robots():
 @app.get("/api/v1/sessions", dependencies=[Depends(require_api_key)])
 async def list_sessions(
     robot_id: int | None = Query(default=None),
+    trigger: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
 ):
+    conditions: list[str] = []
+    args: list[Any] = []
+    n = 1
     if robot_id is not None:
-        rows = await db_fetch(
-            """
-            SELECT id, robot_id, trigger, started_at, ended_at, status,
-                   frame_count, storage_path, uploaded_at
-            FROM sessions WHERE robot_id = $1
-            ORDER BY started_at DESC LIMIT $2
-            """,
-            robot_id,
-            limit,
-        )
-    else:
-        rows = await db_fetch(
-            """
-            SELECT id, robot_id, trigger, started_at, ended_at, status,
-                   frame_count, storage_path, uploaded_at
-            FROM sessions ORDER BY started_at DESC LIMIT $1
-            """,
-            limit,
-        )
+        conditions.append(f"robot_id = ${n}")
+        args.append(robot_id)
+        n += 1
+    if trigger is not None:
+        conditions.append(f"trigger = ${n}")
+        args.append(trigger)
+        n += 1
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    args.append(limit)
+    rows = await db_fetch(
+        f"""
+        SELECT id, robot_id, trigger, started_at, ended_at, status,
+               frame_count, storage_path, uploaded_at
+        FROM sessions {where}
+        ORDER BY started_at DESC LIMIT ${n}
+        """,
+        *args,
+    )
     return [
         {
             "id": str(r["id"]),
@@ -437,5 +470,4 @@ async def serve_file(storage_path: str):
     if not full.is_file():
         raise HTTPException(status_code=404, detail="file not found")
 
-    media = "application/json" if full.suffix == ".json" else "image/jpeg"
-    return FileResponse(full, media_type=media)
+    return FileResponse(full, media_type=media_type_for_path(full))
