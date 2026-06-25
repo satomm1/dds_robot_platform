@@ -1,6 +1,6 @@
 # Robot capture ingest (central machine)
 
-Standalone service for receiving image and wakeword audio capture sessions from robots (`mattbot_capture`) and storing metadata in PostgreSQL. Separate from the DDS stack in the repo root.
+Standalone service for receiving image (RGB + IR), and wakeword audio capture sessions from robots (`mattbot_capture`) and storing metadata in PostgreSQL. Separate from the DDS stack in the repo root.
 
 Robots POST completed sessions here; they never connect to the database directly.
 
@@ -50,9 +50,12 @@ Files land on disk at `STORAGE_ROOT` (default `/data/captures`):
 
 ```
 /data/captures/robot_2/2025-06-18/{session_id}/manifest.json
-/data/captures/robot_2/2025-06-18/{session_id}/frame_*.jpg      # image sessions
-/data/captures/robot_2/2025-06-24/{session_id}/utterance.wav      # wakeword sessions
+/data/captures/robot_2/2025-06-18/{session_id}/frame_*.jpg          # RGB image sessions
+/data/captures/robot_2/2025-06-18/{session_id}/frame_*_ir.jpg       # IR companion (Astra Pro Plus)
+/data/captures/robot_2/2025-06-24/{session_id}/utterance.wav         # wakeword sessions
 ```
+
+On Astra Pro Plus robots with `capture:=true`, expect ~2× JPEG files per capture tick (RGB + IR pair). `sessions.frame_count` is the total file count (includes IR rows), not the number of capture events.
 
 ## Environment
 
@@ -80,8 +83,11 @@ Accepted file types (by extension): `.jpg`, `.jpeg`, `.wav`. MIME types on parts
 
 | Session type | `trigger` | Typical files |
 |--------------|-----------|---------------|
-| Image | `navigation`, `person`, etc. | `frame_*.jpg` |
+| Image (RGB) | `navigation`, `person`, etc. | `frame_*.jpg` |
+| Image (IR companion) | same session as RGB | `frame_*_ir.jpg` |
 | Wakeword audio | `wakeword` | `utterance.wav` |
+
+IR frames are identified by `frames[].extra.modality == "ir"` or filename `*_ir.jpg`. IR links to RGB via `extra.rgb_frame_id`. IR rows have `pose: null` and empty `detections`; metadata stays in `extra` JSONB.
 
 Wakeword metadata lives in `frames[].extra` (`content_type`, `transcript`, `sample_rate`, `channels`).
 
@@ -99,13 +105,26 @@ Errors: `400` bad manifest or unsupported file type, `401` auth, `409` file mism
 |--------|------|
 | `GET` | `/api/v1/robots` |
 | `GET` | `/api/v1/sessions?robot_id=&trigger=&limit=` |
-| `GET` | `/api/v1/sessions/{session_id}/captures` |
+| `GET` | `/api/v1/sessions/{session_id}/captures?modality=all\|rgb\|ir` |
+| `GET` | `/api/v1/sessions/{session_id}/pairs` |
 | `GET` | `/api/v1/files/{storage_path}` |
 
 Filter wakeword sessions:
 
 ```bash
 curl -s "http://127.0.0.1:8080/api/v1/sessions?trigger=wakeword"
+```
+
+RGB-only capture list (exclude IR companions):
+
+```bash
+curl -s "http://127.0.0.1:8080/api/v1/sessions/{session_id}/captures?modality=rgb"
+```
+
+RGB+IR pairs for side-by-side display:
+
+```bash
+curl -s "http://127.0.0.1:8080/api/v1/sessions/{session_id}/pairs"
 ```
 
 Captures include full `extra` JSON (e.g. `transcript`). Files are served with correct `Content-Type` (`image/jpeg` or `audio/wav`).
@@ -147,6 +166,61 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/upload \
 
 curl -s "http://127.0.0.1:8080/api/v1/sessions?robot_id=2"
 curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures"
+```
+
+## Manual upload test (RGB + IR pair)
+
+```bash
+SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
+
+cat > /tmp/rgb_ir_manifest.json <<EOF
+{
+  "schema_version": 1,
+  "status": "ready_for_upload",
+  "robot_id": 2,
+  "session_id": "$SESSION_ID",
+  "trigger": "navigation",
+  "started_at": "2025-06-24T12:00:00Z",
+  "frames": [
+    {
+      "frame_id": "frame_100_200",
+      "filename": "frame_100_200.jpg",
+      "ros_time": {"sec": 100, "nsec": 200},
+      "wall_time": "2025-06-24T12:00:00Z",
+      "pose": {"x": 1.2, "y": 3.4, "theta": 0.5},
+      "detections": [{"class_name": "person", "probability": 0.92}],
+      "extra": {}
+    },
+    {
+      "frame_id": "frame_100_200_ir",
+      "filename": "frame_100_200_ir.jpg",
+      "ros_time": {"sec": 100, "nsec": 200},
+      "wall_time": "2025-06-24T12:00:01Z",
+      "pose": null,
+      "detections": [],
+      "extra": {
+        "modality": "ir",
+        "content_type": "image/jpeg",
+        "rgb_frame_id": "frame_100_200"
+      }
+    }
+  ]
+}
+EOF
+
+echo 'fake rgb jpeg' > /tmp/frame_100_200.jpg
+echo 'fake ir jpeg' > /tmp/frame_100_200_ir.jpg
+
+curl -s -X POST http://127.0.0.1:8080/api/v1/upload \
+  -H "X-Robot-Id: 2" \
+  -F "manifest=@/tmp/rgb_ir_manifest.json;type=application/json" \
+  -F "files=@/tmp/frame_100_200.jpg;type=image/jpeg" \
+  -F "files=@/tmp/frame_100_200_ir.jpg;type=image/jpeg"
+
+curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures"
+curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures?modality=rgb"
+curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures?modality=ir"
+curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/pairs"
 ```
 
 ## Manual upload test (wakeword audio)
@@ -208,6 +282,12 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" \
 2. Set strong `POSTGRES_PASSWORD` and `API_KEYS`.
 3. Set each robot's `~ingest_url` and `~api_key` to match.
 4. `docker compose up -d` on boot (systemd or cron).
+
+**Existing Postgres volumes** (created before the IR index was added) can optionally run:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_captures_extra_modality ON captures ((extra->>'modality'));
+```
 
 ## Stop
 

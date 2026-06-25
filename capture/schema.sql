@@ -37,3 +37,4 @@ CREATE TABLE captures (
 
 CREATE INDEX idx_captures_robot_time ON captures (robot_id, wall_time);
 CREATE INDEX idx_captures_detections ON captures USING GIN (detections);
+CREATE INDEX idx_captures_extra_modality ON captures ((extra->>'modality'));

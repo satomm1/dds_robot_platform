@@ -304,6 +304,80 @@ def json_value(value: Any) -> Any:
     return value
 
 
+def is_ir_frame(frame: dict[str, Any]) -> bool:
+    extra = frame.get("extra") or {}
+    if extra.get("modality") == "ir":
+        return True
+    return str(frame.get("filename", "")).endswith("_ir.jpg")
+
+
+def build_rgb_ir_pairs(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_id = {f["frame_id"]: f for f in frames}
+    pairs: list[dict[str, Any]] = []
+    for frame in frames:
+        if is_ir_frame(frame):
+            continue
+        ir = by_id.get(frame["frame_id"] + "_ir")
+        if ir is None:
+            ir = next(
+                (
+                    x for x in frames
+                    if is_ir_frame(x)
+                    and (x.get("extra") or {}).get("rgb_frame_id") == frame["frame_id"]
+                ),
+                None,
+            )
+        pairs.append({"rgb": frame, "ir": ir})
+    return pairs
+
+
+def capture_to_dict(record: asyncpg.Record) -> dict[str, Any]:
+    return {
+        "frame_id": record["frame_id"],
+        "filename": record["filename"],
+        "storage_path": record["storage_path"],
+        "ros_time_sec": record["ros_time_sec"],
+        "ros_time_nsec": record["ros_time_nsec"],
+        "wall_time": record["wall_time"].isoformat() if record["wall_time"] else None,
+        "pose_x": record["pose_x"],
+        "pose_y": record["pose_y"],
+        "pose_theta": record["pose_theta"],
+        "detections": json_value(record["detections"]),
+        "extra": json_value(record["extra"]),
+        "sha256": record["sha256"],
+    }
+
+
+def filter_by_modality(frames: list[dict[str, Any]], modality: str) -> list[dict[str, Any]]:
+    if modality == "all":
+        return frames
+    if modality == "rgb":
+        return [f for f in frames if not is_ir_frame(f)]
+    if modality == "ir":
+        return [f for f in frames if is_ir_frame(f)]
+    raise HTTPException(status_code=400, detail="modality must be all, rgb, or ir")
+
+
+def parse_session_id(session_id: str) -> str:
+    try:
+        return str(UUID(session_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid session_id") from exc
+
+
+async def fetch_session_captures(session_id: str) -> list[asyncpg.Record]:
+    parse_session_id(session_id)
+    return await db_fetch(
+        """
+        SELECT frame_id, filename, storage_path, ros_time_sec, ros_time_nsec,
+               wall_time, pose_x, pose_y, pose_theta, detections, extra, sha256
+        FROM captures WHERE session_id = $1::uuid
+        ORDER BY wall_time NULLS LAST, ros_time_sec, ros_time_nsec
+        """,
+        session_id,
+    )
+
+
 # ---------------------------------------------------------------------------
 # App + routes
 # ---------------------------------------------------------------------------
@@ -352,6 +426,7 @@ async def upload(
         raise HTTPException(status_code=409, detail="; ".join(detail))
 
     file_hashes: dict[str, str] = {}
+    # Each manifest frame may be RGB, paired IR (*_ir.jpg), or wakeword WAV.
     for frame in normalized:
         data = uploaded[frame["filename"]]
         path = session_dir / frame["filename"]
@@ -422,38 +497,20 @@ async def list_sessions(
 
 
 @app.get("/api/v1/sessions/{session_id}/captures", dependencies=[Depends(require_api_key)])
-async def list_captures(session_id: str):
-    try:
-        UUID(session_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="invalid session_id") from exc
+async def list_captures(
+    session_id: str,
+    modality: str = Query(default="all"),
+):
+    rows = await fetch_session_captures(session_id)
+    captures = [capture_to_dict(r) for r in rows]
+    return filter_by_modality(captures, modality)
 
-    rows = await db_fetch(
-        """
-        SELECT frame_id, filename, storage_path, ros_time_sec, ros_time_nsec,
-               wall_time, pose_x, pose_y, pose_theta, detections, extra, sha256
-        FROM captures WHERE session_id = $1::uuid
-        ORDER BY wall_time NULLS LAST, ros_time_sec, ros_time_nsec
-        """,
-        session_id,
-    )
-    return [
-        {
-            "frame_id": r["frame_id"],
-            "filename": r["filename"],
-            "storage_path": r["storage_path"],
-            "ros_time_sec": r["ros_time_sec"],
-            "ros_time_nsec": r["ros_time_nsec"],
-            "wall_time": r["wall_time"].isoformat() if r["wall_time"] else None,
-            "pose_x": r["pose_x"],
-            "pose_y": r["pose_y"],
-            "pose_theta": r["pose_theta"],
-            "detections": json_value(r["detections"]),
-            "extra": json_value(r["extra"]),
-            "sha256": r["sha256"],
-        }
-        for r in rows
-    ]
+
+@app.get("/api/v1/sessions/{session_id}/pairs", dependencies=[Depends(require_api_key)])
+async def list_capture_pairs(session_id: str):
+    rows = await fetch_session_captures(session_id)
+    captures = [capture_to_dict(r) for r in rows]
+    return build_rgb_ir_pairs(captures)
 
 
 @app.get("/api/v1/files/{storage_path:path}", dependencies=[Depends(require_api_key)])
