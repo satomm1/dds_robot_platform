@@ -38,3 +38,25 @@ CREATE TABLE captures (
 CREATE INDEX idx_captures_robot_time ON captures (robot_id, wall_time);
 CREATE INDEX idx_captures_detections ON captures USING GIN (detections);
 CREATE INDEX idx_captures_extra_modality ON captures ((extra->>'modality'));
+
+CREATE TABLE robot_poses (
+  id            BIGSERIAL PRIMARY KEY,
+  robot_id      INTEGER NOT NULL,
+  wall_time     TIMESTAMPTZ NOT NULL,
+  ros_time_sec  BIGINT,
+  ros_time_nsec INTEGER,
+  x             DOUBLE PRECISION,
+  y             DOUBLE PRECISION,
+  theta         DOUBLE PRECISION,
+  frame         TEXT,
+  ref_x         DOUBLE PRECISION,
+  ref_y         DOUBLE PRECISION,
+  ref_theta     DOUBLE PRECISION,
+  is_static     BOOLEAN NOT NULL,
+  valid         BOOLEAN NOT NULL,
+  chunk_id      TEXT,
+  uploaded_at   TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (robot_id, wall_time)
+);
+
+CREATE INDEX idx_robot_poses_robot_time ON robot_poses (robot_id, wall_time);

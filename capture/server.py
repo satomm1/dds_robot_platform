@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +25,9 @@ from fastapi.responses import FileResponse
 STORAGE_ROOT = Path(os.environ.get("STORAGE_ROOT", "/data/captures")).resolve()
 DATABASE_URL = os.environ["DATABASE_URL"]
 API_KEYS = {k.strip() for k in os.environ.get("API_KEYS", "").split(",") if k.strip()}
+POSE_ARCHIVE = os.environ.get("POSE_ARCHIVE", "true").lower() in ("1", "true", "yes")
+
+POSE_INSERT_BATCH = 1000
 
 pool: asyncpg.Pool | None = None
 
@@ -207,10 +212,43 @@ def normalize_frame(frame: dict[str, Any], session_rel: str) -> dict[str, Any]:
 # DB helpers
 # ---------------------------------------------------------------------------
 
+# Applied on startup so existing Postgres volumes pick up new tables without
+# re-running docker-entrypoint-initdb.d (which only runs on first volume init).
+ROBOT_POSES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS robot_poses (
+  id            BIGSERIAL PRIMARY KEY,
+  robot_id      INTEGER NOT NULL,
+  wall_time     TIMESTAMPTZ NOT NULL,
+  ros_time_sec  BIGINT,
+  ros_time_nsec INTEGER,
+  x             DOUBLE PRECISION,
+  y             DOUBLE PRECISION,
+  theta         DOUBLE PRECISION,
+  frame         TEXT,
+  ref_x         DOUBLE PRECISION,
+  ref_y         DOUBLE PRECISION,
+  ref_theta     DOUBLE PRECISION,
+  is_static     BOOLEAN NOT NULL,
+  valid         BOOLEAN NOT NULL,
+  chunk_id      TEXT,
+  uploaded_at   TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (robot_id, wall_time)
+);
+CREATE INDEX IF NOT EXISTS idx_robot_poses_robot_time ON robot_poses (robot_id, wall_time);
+"""
+
+
+async def ensure_schema() -> None:
+    assert pool is not None
+    async with pool.acquire() as conn:
+        await conn.execute(ROBOT_POSES_SCHEMA)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global pool
     pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
+    await ensure_schema()
     STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
     yield
     await pool.close()
@@ -379,6 +417,201 @@ async def fetch_session_captures(session_id: str) -> list[asyncpg.Record]:
 
 
 # ---------------------------------------------------------------------------
+# Pose chunk ingest
+# ---------------------------------------------------------------------------
+
+def safe_chunk_id(chunk_id: str) -> str:
+    if not chunk_id or UNSAFE_NAME.search(chunk_id):
+        raise HTTPException(status_code=400, detail=f"unsafe chunk_id: {chunk_id!r}")
+    return chunk_id
+
+
+def parse_pose_meta(raw: bytes, header_robot_id: int) -> dict[str, Any]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="meta is not valid JSON") from exc
+
+    for field in (
+        "schema_version", "robot_id", "chunk_id", "started_at",
+        "ended_at", "row_count", "status",
+    ):
+        if field not in data:
+            raise HTTPException(status_code=400, detail=f"meta missing {field}")
+
+    if data["schema_version"] != 1:
+        raise HTTPException(status_code=400, detail="schema_version must be 1")
+
+    if data["status"] != "ready_for_upload":
+        raise HTTPException(status_code=400, detail="meta status must be ready_for_upload")
+
+    if int(data["robot_id"]) != header_robot_id:
+        raise HTTPException(status_code=400, detail="robot_id mismatch")
+
+    started_at = parse_iso8601(data["started_at"])
+    ended_at = parse_iso8601(data["ended_at"])
+    if started_at is None or ended_at is None:
+        raise HTTPException(status_code=400, detail="invalid started_at or ended_at")
+
+    chunk_id = safe_chunk_id(str(data["chunk_id"]))
+
+    try:
+        row_count = int(data["row_count"])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="invalid row_count") from exc
+
+    return {
+        "robot_id": int(data["robot_id"]),
+        "chunk_id": chunk_id,
+        "started_at": started_at,
+        "ended_at": ended_at,
+        "row_count": row_count,
+    }
+
+
+def read_poses_from_sqlite(chunk_bytes: bytes) -> list[dict[str, Any]]:
+    if not chunk_bytes:
+        raise HTTPException(status_code=400, detail="empty SQLite chunk")
+
+    with tempfile.NamedTemporaryFile(suffix=".sqlite") as tmp:
+        tmp.write(chunk_bytes)
+        tmp.flush()
+        try:
+            conn = sqlite3.connect(f"file:{tmp.name}?mode=ro", uri=True)
+        except sqlite3.Error as exc:
+            raise HTTPException(status_code=400, detail="invalid SQLite chunk") from exc
+
+        with conn:
+            table = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='poses'"
+            ).fetchone()
+            if not table:
+                raise HTTPException(status_code=400, detail="SQLite chunk missing poses table")
+
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT wall_time, ros_time_sec, ros_time_nsec, x, y, theta, frame,
+                           ref_x, ref_y, ref_theta, is_static, valid
+                    FROM poses ORDER BY wall_time
+                    """
+                ).fetchall()
+            except sqlite3.Error as exc:
+                raise HTTPException(status_code=400, detail="failed to read poses table") from exc
+
+    poses: list[dict[str, Any]] = []
+    for row in rows:
+        wall_time = parse_iso8601(row[0])
+        if wall_time is None:
+            raise HTTPException(status_code=400, detail=f"invalid wall_time: {row[0]!r}")
+        poses.append({
+            "wall_time": wall_time,
+            "ros_time_sec": row[1],
+            "ros_time_nsec": row[2],
+            "x": row[3],
+            "y": row[4],
+            "theta": row[5],
+            "frame": row[6],
+            "ref_x": row[7],
+            "ref_y": row[8],
+            "ref_theta": row[9],
+            "is_static": bool(row[10]),
+            "valid": bool(row[11]),
+        })
+    return poses
+
+
+def pose_archive_rel(robot_id: int, started_at: datetime, chunk_id: str) -> str:
+    day = started_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    return f"poses/robot_{robot_id}/{day}/{chunk_id}"
+
+
+def archive_pose_chunk(
+    meta: dict[str, Any], meta_bytes: bytes, chunk_bytes: bytes
+) -> None:
+    rel = pose_archive_rel(meta["robot_id"], meta["started_at"], meta["chunk_id"])
+    archive_dir = resolve_storage_path(rel)
+    try:
+        write_bytes(archive_dir / "chunk.sqlite", chunk_bytes)
+        write_bytes(archive_dir / "meta.json", meta_bytes)
+    except HTTPException as exc:
+        if exc.status_code == 507:
+            raise
+        return
+    except OSError:
+        return
+
+
+async def persist_pose_chunk(
+    meta: dict[str, Any], poses: list[dict[str, Any]]
+) -> int:
+    assert pool is not None
+    robot_id = meta["robot_id"]
+    chunk_id = meta["chunk_id"]
+    rows_accepted = 0
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO robots (id) VALUES ($1) ON CONFLICT DO NOTHING",
+                robot_id,
+            )
+
+            for i in range(0, len(poses), POSE_INSERT_BATCH):
+                batch = poses[i : i + POSE_INSERT_BATCH]
+                n = len(batch)
+                robot_ids = [robot_id] * n
+                wall_times = [p["wall_time"] for p in batch]
+                ros_secs = [p["ros_time_sec"] for p in batch]
+                ros_nsecs = [p["ros_time_nsec"] for p in batch]
+                xs = [p["x"] for p in batch]
+                ys = [p["y"] for p in batch]
+                thetas = [p["theta"] for p in batch]
+                frames = [p["frame"] for p in batch]
+                ref_xs = [p["ref_x"] for p in batch]
+                ref_ys = [p["ref_y"] for p in batch]
+                ref_thetas = [p["ref_theta"] for p in batch]
+                is_statics = [p["is_static"] for p in batch]
+                valids = [p["valid"] for p in batch]
+                chunk_ids = [chunk_id] * n
+
+                inserted = await conn.fetch(
+                    """
+                    INSERT INTO robot_poses (
+                        robot_id, wall_time, ros_time_sec, ros_time_nsec,
+                        x, y, theta, frame, ref_x, ref_y, ref_theta,
+                        is_static, valid, chunk_id
+                    )
+                    SELECT * FROM unnest(
+                        $1::int[], $2::timestamptz[], $3::bigint[], $4::int[],
+                        $5::float8[], $6::float8[], $7::float8[], $8::text[],
+                        $9::float8[], $10::float8[], $11::float8[],
+                        $12::bool[], $13::bool[], $14::text[]
+                    )
+                    ON CONFLICT (robot_id, wall_time) DO NOTHING
+                    RETURNING id
+                    """,
+                    robot_ids,
+                    wall_times,
+                    ros_secs,
+                    ros_nsecs,
+                    xs,
+                    ys,
+                    thetas,
+                    frames,
+                    ref_xs,
+                    ref_ys,
+                    ref_thetas,
+                    is_statics,
+                    valids,
+                    chunk_ids,
+                )
+                rows_accepted += len(inserted)
+
+    return rows_accepted
+
+
+# ---------------------------------------------------------------------------
 # App + routes
 # ---------------------------------------------------------------------------
 
@@ -440,6 +673,39 @@ async def upload(
         "session_id": parsed["session_id"],
         "files_accepted": len(normalized),
         "storage_path": session_rel,
+    }
+
+
+@app.post("/api/v1/pose_upload", status_code=201, dependencies=[Depends(require_api_key)])
+async def pose_upload(
+    meta: UploadFile = File(...),
+    chunk: UploadFile = File(...),
+    x_robot_id: int = Header(..., alias="X-Robot-Id"),
+):
+    meta_bytes = await meta.read()
+    chunk_bytes = await chunk.read()
+    parsed = parse_pose_meta(meta_bytes, x_robot_id)
+    poses = read_poses_from_sqlite(chunk_bytes)
+
+    if parsed["row_count"] != len(poses):
+        raise HTTPException(
+            status_code=409,
+            detail=f"row_count mismatch: meta={parsed['row_count']} actual={len(poses)}",
+        )
+
+    rows_accepted = await persist_pose_chunk(parsed, poses)
+
+    if POSE_ARCHIVE:
+        try:
+            archive_pose_chunk(parsed, meta_bytes, chunk_bytes)
+        except HTTPException as exc:
+            if exc.status_code == 507:
+                raise
+
+    return {
+        "ok": True,
+        "chunk_id": parsed["chunk_id"],
+        "rows_accepted": rows_accepted,
     }
 
 
