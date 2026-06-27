@@ -376,6 +376,26 @@ docker compose exec postgres psql -U capture -d robot_capture -c \
   "SELECT wall_time, x, y, theta, valid FROM robot_poses WHERE robot_id = 2 ORDER BY wall_time;"
 ```
 
+## Pose trajectory preview
+
+Plot an uploaded chunk as a PNG (valid path, invalid TF points, start/end markers). Uses `plot_poses.py` inside the ingest image (matplotlib included). Replace `robot_1`, date, and `chunk_id` with your archived chunk under `data/captures/poses/`:
+
+```bash
+cd capture
+docker compose run --rm ingest python plot_poses.py \
+  --chunk-dir data/captures/poses/robot_1/2026-06-26/chunk_2026-06-26T23-46-36.310450+00-00 \
+  -o data/captures/pose_preview.png
+```
+
+Open `data/captures/pose_preview.png` on the host. To load from Postgres instead of the archive:
+
+```bash
+docker compose run --rm ingest python plot_poses.py \
+  --robot-id 1 \
+  --chunk-id chunk_2026-06-26T23-46-36.310450+00-00 \
+  -o data/captures/pose_preview.png
+```
+
 ## Production (NAS)
 
 1. Bind mount large disk: set `CAPTURE_DATA_DIR=/data/captures` in `.env` (or edit compose volume).
