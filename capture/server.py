@@ -11,7 +11,7 @@ import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from uuid import UUID
 
 import asyncpg
@@ -49,11 +49,12 @@ def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
 
 UNSAFE_NAME = re.compile(r"[/\\]|\.\.")
 
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".wav"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".wav"}
 
 MEDIA_TYPES = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
+    ".png": "image/png",
     ".wav": "audio/wav",
     ".json": "application/json",
 }
@@ -349,24 +350,50 @@ def is_ir_frame(frame: dict[str, Any]) -> bool:
     return str(frame.get("filename", "")).endswith("_ir.jpg")
 
 
-def build_rgb_ir_pairs(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def is_depth_frame(frame: dict[str, Any]) -> bool:
+    extra = frame.get("extra") or {}
+    if extra.get("modality") == "depth":
+        return True
+    return str(frame.get("filename", "")).endswith("_depth.png")
+
+
+def is_companion_frame(frame: dict[str, Any]) -> bool:
+    return is_ir_frame(frame) or is_depth_frame(frame)
+
+
+def is_primary_frame(frame: dict[str, Any]) -> bool:
+    return not is_companion_frame(frame)
+
+
+def find_companion(
+    frames: list[dict[str, Any]],
+    by_id: dict[str, dict[str, Any]],
+    rgb_frame_id: str,
+    suffix: str,
+    is_match: Callable[[dict[str, Any]], bool],
+) -> dict[str, Any] | None:
+    companion = by_id.get(rgb_frame_id + suffix)
+    if companion is not None:
+        return companion
+    return next(
+        (
+            x for x in frames
+            if is_match(x) and (x.get("extra") or {}).get("rgb_frame_id") == rgb_frame_id
+        ),
+        None,
+    )
+
+
+def build_capture_groups(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_id = {f["frame_id"]: f for f in frames}
-    pairs: list[dict[str, Any]] = []
+    groups: list[dict[str, Any]] = []
     for frame in frames:
-        if is_ir_frame(frame):
+        if is_companion_frame(frame):
             continue
-        ir = by_id.get(frame["frame_id"] + "_ir")
-        if ir is None:
-            ir = next(
-                (
-                    x for x in frames
-                    if is_ir_frame(x)
-                    and (x.get("extra") or {}).get("rgb_frame_id") == frame["frame_id"]
-                ),
-                None,
-            )
-        pairs.append({"rgb": frame, "ir": ir})
-    return pairs
+        ir = find_companion(frames, by_id, frame["frame_id"], "_ir", is_ir_frame)
+        depth = find_companion(frames, by_id, frame["frame_id"], "_depth", is_depth_frame)
+        groups.append({"rgb": frame, "ir": ir, "depth": depth})
+    return groups
 
 
 def capture_to_dict(record: asyncpg.Record) -> dict[str, Any]:
@@ -390,10 +417,12 @@ def filter_by_modality(frames: list[dict[str, Any]], modality: str) -> list[dict
     if modality == "all":
         return frames
     if modality == "rgb":
-        return [f for f in frames if not is_ir_frame(f)]
+        return [f for f in frames if is_primary_frame(f)]
     if modality == "ir":
         return [f for f in frames if is_ir_frame(f)]
-    raise HTTPException(status_code=400, detail="modality must be all, rgb, or ir")
+    if modality == "depth":
+        return [f for f in frames if is_depth_frame(f)]
+    raise HTTPException(status_code=400, detail="modality must be all, rgb, ir, or depth")
 
 
 def parse_session_id(session_id: str) -> str:
@@ -659,7 +688,7 @@ async def upload(
         raise HTTPException(status_code=409, detail="; ".join(detail))
 
     file_hashes: dict[str, str] = {}
-    # Each manifest frame may be RGB, paired IR (*_ir.jpg), or wakeword WAV.
+    # Each manifest frame may be RGB, paired IR (*_ir.jpg), depth (*_depth.png), or wakeword WAV.
     for frame in normalized:
         data = uploaded[frame["filename"]]
         path = session_dir / frame["filename"]
@@ -776,7 +805,7 @@ async def list_captures(
 async def list_capture_pairs(session_id: str):
     rows = await fetch_session_captures(session_id)
     captures = [capture_to_dict(r) for r in rows]
-    return build_rgb_ir_pairs(captures)
+    return build_capture_groups(captures)
 
 
 @app.get("/api/v1/files/{storage_path:path}", dependencies=[Depends(require_api_key)])

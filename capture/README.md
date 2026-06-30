@@ -1,6 +1,6 @@
 # Robot capture ingest (central machine)
 
-Standalone service for receiving image (RGB + IR), wakeword audio, and pose trajectory data from robots (`mattbot_capture`) and storing metadata in PostgreSQL. Separate from the DDS stack in the repo root.
+Standalone service for receiving image (RGB + IR + depth), wakeword audio, and pose trajectory data from robots (`mattbot_capture`) and storing metadata in PostgreSQL. Separate from the DDS stack in the repo root.
 
 Robots POST completed sessions here; they never connect to the database directly.
 
@@ -52,11 +52,12 @@ Files land on disk at `STORAGE_ROOT` (default `/data/captures`):
 /data/captures/robot_2/2025-06-18/{session_id}/manifest.json
 /data/captures/robot_2/2025-06-18/{session_id}/frame_*.jpg          # RGB image sessions
 /data/captures/robot_2/2025-06-18/{session_id}/frame_*_ir.jpg       # IR companion (Astra Pro Plus)
+/data/captures/robot_2/2025-06-18/{session_id}/frame_*_depth.png   # depth companion (16-bit mm PNG)
 /data/captures/robot_2/2025-06-24/{session_id}/utterance.wav         # wakeword sessions
 /data/captures/poses/robot_2/2025-06-26/chunk_2025-06-26T14-00-00Z/  # pose chunk archives
 ```
 
-On Astra Pro Plus robots with `capture:=true`, expect ~2× JPEG files per capture tick (RGB + IR pair). `sessions.frame_count` is the total file count (includes IR rows), not the number of capture events.
+On Astra Pro Plus robots with `capture:=true`, expect up to **3 files per capture tick** (RGB + IR + depth) when depth is enabled, or ~2× (RGB + IR) without depth. `sessions.frame_count` is the total file count (includes IR and depth rows), not the number of capture events.
 
 With `capture:=true`, robots also run `pose_uploader`, which POSTs hourly SQLite pose chunks to `/api/v1/pose_upload` (~24 chunks/robot/day). Pose rows join to captures on `(robot_id, wall_time)`.
 
@@ -65,7 +66,7 @@ With `capture:=true`, robots also run `pose_uploader`, which POSTs hourly SQLite
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `POSTGRES_PASSWORD` | `changeme` | Postgres password (ingest `DATABASE_URL` is built from this in compose) |
-| `STORAGE_ROOT` | `/data/captures` | JPEG/WAV + manifest + pose archive storage |
+| `STORAGE_ROOT` | `/data/captures` | JPEG/PNG/WAV + manifest + pose archive storage |
 | `API_KEYS` | empty | Comma-separated keys; when set, `X-Api-Key` required on all routes except `/health` |
 | `POSE_ARCHIVE` | `true` | When true, store uploaded pose `.sqlite` + meta under `STORAGE_ROOT/poses/` |
 | `CAPTURE_DATA_DIR` | `./data/captures` | Host path bind-mounted into ingest container (compose only) |
@@ -83,15 +84,25 @@ With `capture:=true`, robots also run `pose_uploader`, which POSTs hourly SQLite
 - Part `manifest` — JSON file
 - Part `files` — one or more binaries; each filename must match `frames[].filename`
 
-Accepted file types (by extension): `.jpg`, `.jpeg`, `.wav`. MIME types on parts are optional (robot may send `image/jpeg` or `audio/wav`).
+Accepted file types (by extension): `.jpg`, `.jpeg`, `.png`, `.wav`. MIME types on parts are optional (robot may send `image/jpeg`, `image/png`, or `audio/wav`).
 
 | Session type | `trigger` | Typical files |
 |--------------|-----------|---------------|
 | Image (RGB) | `navigation`, `person`, etc. | `frame_*.jpg` |
 | Image (IR companion) | same session as RGB | `frame_*_ir.jpg` |
+| Image (depth companion) | same session as RGB | `frame_*_depth.png` |
 | Wakeword audio | `wakeword` | `utterance.wav` |
 
-IR frames are identified by `frames[].extra.modality == "ir"` or filename `*_ir.jpg`. IR links to RGB via `extra.rgb_frame_id`. IR rows have `pose: null` and empty `detections`; metadata stays in `extra` JSONB.
+IR frames are identified by `frames[].extra.modality == "ir"` or filename `*_ir.jpg`. Depth frames use `extra.modality == "depth"` or `*_depth.png`. IR and depth link to RGB via `extra.rgb_frame_id`. Companion rows have `pose: null` and empty `detections`; metadata stays in `extra` JSONB.
+
+Depth PNG files are **16-bit grayscale, millimeters (16UC1)**. Ingest stores and serves raw bytes; consumers must decode as `uint16`, not as a normal 8-bit RGB image:
+
+```python
+import numpy as np
+from PIL import Image
+
+depth_mm = np.array(Image.open(path), dtype=np.uint16)
+```
 
 Wakeword metadata lives in `frames[].extra` (`content_type`, `transcript`, `sample_rate`, `channels`).
 
@@ -137,7 +148,7 @@ WHERE robot_id = 2 ORDER BY wall_time;
 |--------|------|
 | `GET` | `/api/v1/robots` |
 | `GET` | `/api/v1/sessions?robot_id=&trigger=&limit=` |
-| `GET` | `/api/v1/sessions/{session_id}/captures?modality=all\|rgb\|ir` |
+| `GET` | `/api/v1/sessions/{session_id}/captures?modality=all\|rgb\|ir\|depth` |
 | `GET` | `/api/v1/sessions/{session_id}/pairs` |
 | `GET` | `/api/v1/files/{storage_path}` |
 
@@ -147,19 +158,25 @@ Filter wakeword sessions:
 curl -s "http://127.0.0.1:8080/api/v1/sessions?trigger=wakeword"
 ```
 
-RGB-only capture list (exclude IR companions):
+RGB-only capture list (exclude IR and depth companions):
 
 ```bash
 curl -s "http://127.0.0.1:8080/api/v1/sessions/{session_id}/captures?modality=rgb"
 ```
 
-RGB+IR pairs for side-by-side display:
+Depth-only list:
+
+```bash
+curl -s "http://127.0.0.1:8080/api/v1/sessions/{session_id}/captures?modality=depth"
+```
+
+RGB + IR + depth groups for side-by-side display (`/pairs` returns `{rgb, ir, depth}` per capture tick; missing companions are `null`):
 
 ```bash
 curl -s "http://127.0.0.1:8080/api/v1/sessions/{session_id}/pairs"
 ```
 
-Captures include full `extra` JSON (e.g. `transcript`). Files are served with correct `Content-Type` (`image/jpeg` or `audio/wav`).
+Captures include full `extra` JSON (e.g. `transcript`). Files are served with correct `Content-Type` (`image/jpeg`, `image/png`, or `audio/wav`).
 
 ## Manual upload test (image)
 
@@ -253,6 +270,78 @@ curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures"
 curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures?modality=rgb"
 curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures?modality=ir"
 curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/pairs"
+```
+
+## Manual upload test (RGB + IR + depth)
+
+```bash
+SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
+
+cat > /tmp/rgb_ir_depth_manifest.json <<EOF
+{
+  "schema_version": 1,
+  "status": "ready_for_upload",
+  "robot_id": 2,
+  "session_id": "$SESSION_ID",
+  "trigger": "navigation",
+  "started_at": "2025-06-24T12:00:00Z",
+  "frames": [
+    {
+      "frame_id": "frame_100_200",
+      "filename": "frame_100_200.jpg",
+      "ros_time": {"sec": 100, "nsec": 200},
+      "wall_time": "2025-06-24T12:00:00Z",
+      "pose": {"x": 1.2, "y": 3.4, "theta": 0.5},
+      "detections": [{"class_name": "person", "probability": 0.92}],
+      "extra": {}
+    },
+    {
+      "frame_id": "frame_100_200_ir",
+      "filename": "frame_100_200_ir.jpg",
+      "ros_time": {"sec": 100, "nsec": 200},
+      "wall_time": "2025-06-24T12:00:01Z",
+      "pose": null,
+      "detections": [],
+      "extra": {
+        "modality": "ir",
+        "content_type": "image/jpeg",
+        "rgb_frame_id": "frame_100_200"
+      }
+    },
+    {
+      "frame_id": "frame_100_200_depth",
+      "filename": "frame_100_200_depth.png",
+      "ros_time": {"sec": 100, "nsec": 200},
+      "wall_time": "2025-06-24T12:00:01Z",
+      "pose": null,
+      "detections": [],
+      "extra": {
+        "modality": "depth",
+        "content_type": "image/png",
+        "rgb_frame_id": "frame_100_200"
+      }
+    }
+  ]
+}
+EOF
+
+echo 'fake rgb jpeg' > /tmp/frame_100_200.jpg
+echo 'fake ir jpeg' > /tmp/frame_100_200_ir.jpg
+echo 'fake depth png' > /tmp/frame_100_200_depth.png
+
+curl -s -X POST http://127.0.0.1:8080/api/v1/upload \
+  -H "X-Robot-Id: 2" \
+  -F "manifest=@/tmp/rgb_ir_depth_manifest.json;type=application/json" \
+  -F "files=@/tmp/frame_100_200.jpg;type=image/jpeg" \
+  -F "files=@/tmp/frame_100_200_ir.jpg;type=image/jpeg" \
+  -F "files=@/tmp/frame_100_200_depth.png;type=image/png"
+
+curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures?modality=rgb"
+curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures?modality=ir"
+curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/captures?modality=depth"
+curl -s "http://127.0.0.1:8080/api/v1/sessions/$SESSION_ID/pairs"
+curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+  "http://127.0.0.1:8080/api/v1/files/robot_2/2025-06-24/$SESSION_ID/frame_100_200_depth.png"
 ```
 
 ## Manual upload test (wakeword audio)
