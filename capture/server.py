@@ -472,6 +472,90 @@ async def fetch_session_captures(session_id: str) -> list[asyncpg.Record]:
 
 
 # ---------------------------------------------------------------------------
+# Time-range read API (poses, detections, capture events)
+# ---------------------------------------------------------------------------
+
+REPLAY_DEFAULT_LIMIT = 5000
+REPLAY_MAX_LIMIT = 20000
+
+
+def parse_time_range(from_str: str, to_str: str) -> tuple[datetime, datetime]:
+    """Half-open interval [from, to)."""
+    start = parse_iso8601(from_str)
+    end = parse_iso8601(to_str)
+    if start is None:
+        raise HTTPException(status_code=400, detail="invalid or missing from")
+    if end is None:
+        raise HTTPException(status_code=400, detail="invalid or missing to")
+    if start >= end:
+        raise HTTPException(status_code=400, detail="from must be before to")
+    return start, end
+
+
+def pose_row_to_dict(record: asyncpg.Record) -> dict[str, Any]:
+    return {
+        "wall_time": record["wall_time"].isoformat(),
+        "ros_time_sec": record["ros_time_sec"],
+        "ros_time_nsec": record["ros_time_nsec"],
+        "x": record["x"],
+        "y": record["y"],
+        "theta": record["theta"],
+        "valid": record["valid"],
+        "chunk_id": record["chunk_id"],
+    }
+
+
+def detection_row_to_dict(record: asyncpg.Record) -> dict[str, Any]:
+    return {
+        "wall_time": record["wall_time"].isoformat(),
+        "ros_time_sec": record["ros_time_sec"],
+        "ros_time_nsec": record["ros_time_nsec"],
+        "robot_x": record["robot_x"],
+        "robot_y": record["robot_y"],
+        "robot_theta": record["robot_theta"],
+        "robot_frame": record["robot_frame"],
+        "robot_valid": record["robot_valid"],
+        "object_count": record["object_count"],
+        "objects": json_value(record["objects"]),
+        "chunk_id": record["chunk_id"],
+    }
+
+
+def build_capture_events_from_rows(
+    rows: list[asyncpg.Record],
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Group session captures into RGB/IR/depth events, sorted by wall_time."""
+    by_session: dict[str, list[asyncpg.Record]] = {}
+    session_meta: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        sid = str(row["session_id"])
+        by_session.setdefault(sid, []).append(row)
+        session_meta[sid] = {"trigger": row["trigger"], "session_id": sid}
+
+    events: list[dict[str, Any]] = []
+    for sid, session_rows in by_session.items():
+        captures = [capture_to_dict(r) for r in session_rows]
+        meta = session_meta[sid]
+        for group in build_capture_groups(captures):
+            rgb = group["rgb"]
+            wall_time = rgb.get("wall_time")
+            if not wall_time:
+                continue
+            events.append({
+                "wall_time": wall_time,
+                "trigger": meta["trigger"],
+                "session_id": meta["session_id"],
+                "rgb": group["rgb"],
+                "ir": group["ir"],
+                "depth": group["depth"],
+            })
+
+    events.sort(key=lambda e: e["wall_time"])
+    return events[:limit]
+
+
+# ---------------------------------------------------------------------------
 # Chunk upload ingest (pose + detection)
 # ---------------------------------------------------------------------------
 
@@ -954,10 +1038,132 @@ async def list_robots():
     ]
 
 
+@app.get("/api/v1/robots/{robot_id}/poses", dependencies=[Depends(require_api_key)])
+async def list_robot_poses(
+    robot_id: int,
+    from_time: str = Query(..., alias="from"),
+    to_time: str = Query(..., alias="to"),
+    limit: int = Query(default=REPLAY_DEFAULT_LIMIT, ge=1, le=REPLAY_MAX_LIMIT),
+):
+    start, end = parse_time_range(from_time, to_time)
+    rows = await db_fetch(
+        """
+        SELECT wall_time, ros_time_sec, ros_time_nsec, x, y, theta, valid, chunk_id
+        FROM robot_poses
+        WHERE robot_id = $1 AND wall_time >= $2 AND wall_time < $3
+        ORDER BY wall_time ASC
+        LIMIT $4
+        """,
+        robot_id,
+        start,
+        end,
+        limit,
+    )
+    return {
+        "robot_id": robot_id,
+        "from": from_time,
+        "to": to_time,
+        "count": len(rows),
+        "poses": [pose_row_to_dict(r) for r in rows],
+    }
+
+
+@app.get("/api/v1/robots/{robot_id}/detections", dependencies=[Depends(require_api_key)])
+async def list_robot_detections(
+    robot_id: int,
+    from_time: str = Query(..., alias="from"),
+    to_time: str = Query(..., alias="to"),
+    limit: int = Query(default=REPLAY_DEFAULT_LIMIT, ge=1, le=REPLAY_MAX_LIMIT),
+    min_object_count: int = Query(default=0, ge=0),
+):
+    start, end = parse_time_range(from_time, to_time)
+    rows = await db_fetch(
+        """
+        SELECT wall_time, ros_time_sec, ros_time_nsec,
+               robot_x, robot_y, robot_theta, robot_frame, robot_valid,
+               object_count, objects, chunk_id
+        FROM detection_snapshots
+        WHERE robot_id = $1 AND wall_time >= $2 AND wall_time < $3
+          AND object_count >= $4
+        ORDER BY wall_time ASC
+        LIMIT $5
+        """,
+        robot_id,
+        start,
+        end,
+        min_object_count,
+        limit,
+    )
+    return {
+        "robot_id": robot_id,
+        "from": from_time,
+        "to": to_time,
+        "count": len(rows),
+        "snapshots": [detection_row_to_dict(r) for r in rows],
+    }
+
+
+@app.get("/api/v1/robots/{robot_id}/capture_events", dependencies=[Depends(require_api_key)])
+async def list_robot_capture_events(
+    robot_id: int,
+    from_time: str = Query(..., alias="from"),
+    to_time: str = Query(..., alias="to"),
+    limit: int = Query(default=REPLAY_DEFAULT_LIMIT, ge=1, le=REPLAY_MAX_LIMIT),
+    exclude_trigger: str | None = Query(default="wakeword"),
+):
+    start, end = parse_time_range(from_time, to_time)
+    if exclude_trigger:
+        rows = await db_fetch(
+            """
+            SELECT c.frame_id, c.filename, c.storage_path, c.wall_time,
+                   c.ros_time_sec, c.ros_time_nsec, c.pose_x, c.pose_y, c.pose_theta,
+                   c.detections, c.extra, c.sha256,
+                   s.id AS session_id, s.trigger
+            FROM captures c
+            JOIN sessions s ON s.id = c.session_id
+            WHERE c.robot_id = $1
+              AND c.wall_time >= $2 AND c.wall_time < $3
+              AND s.trigger != $4
+            ORDER BY c.wall_time ASC
+            """,
+            robot_id,
+            start,
+            end,
+            exclude_trigger,
+        )
+    else:
+        rows = await db_fetch(
+            """
+            SELECT c.frame_id, c.filename, c.storage_path, c.wall_time,
+                   c.ros_time_sec, c.ros_time_nsec, c.pose_x, c.pose_y, c.pose_theta,
+                   c.detections, c.extra, c.sha256,
+                   s.id AS session_id, s.trigger
+            FROM captures c
+            JOIN sessions s ON s.id = c.session_id
+            WHERE c.robot_id = $1
+              AND c.wall_time >= $2 AND c.wall_time < $3
+            ORDER BY c.wall_time ASC
+            """,
+            robot_id,
+            start,
+            end,
+        )
+    events = build_capture_events_from_rows(rows, limit)
+    return {
+        "robot_id": robot_id,
+        "from": from_time,
+        "to": to_time,
+        "count": len(events),
+        "events": events,
+    }
+
+
 @app.get("/api/v1/sessions", dependencies=[Depends(require_api_key)])
 async def list_sessions(
     robot_id: int | None = Query(default=None),
     trigger: str | None = Query(default=None),
+    from_time: str | None = Query(default=None, alias="from"),
+    to_time: str | None = Query(default=None, alias="to"),
     limit: int = Query(default=50, ge=1, le=500),
 ):
     conditions: list[str] = []
@@ -970,6 +1176,18 @@ async def list_sessions(
     if trigger is not None:
         conditions.append(f"trigger = ${n}")
         args.append(trigger)
+        n += 1
+    if from_time is not None or to_time is not None:
+        if from_time is None or to_time is None:
+            raise HTTPException(
+                status_code=400, detail="from and to must both be set for time filtering"
+            )
+        start, end = parse_time_range(from_time, to_time)
+        conditions.append(f"started_at >= ${n}")
+        args.append(start)
+        n += 1
+        conditions.append(f"started_at < ${n}")
+        args.append(end)
         n += 1
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     args.append(limit)

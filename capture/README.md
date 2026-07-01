@@ -196,17 +196,55 @@ JOIN robot_poses p ON p.robot_id = d.robot_id AND p.wall_time = d.wall_time
 WHERE d.robot_id = 2;
 ```
 
-Object poses in `objects[].pose.x/y` are already in map frame (meters). Same schema as image capture `frames[].detections[]`.
+Object poses in `objects[].pose.x/y` are already in map frame (meters). Same schema as image capture `frames[].detections[]`. For programmatic access, use `GET /api/v1/robots/{robot_id}/detections` (see Read API below) instead of raw SQL.
 
 ### Read API (operator / future GUI)
 
 | Method | Path |
 |--------|------|
 | `GET` | `/api/v1/robots` |
-| `GET` | `/api/v1/sessions?robot_id=&trigger=&limit=` |
+| `GET` | `/api/v1/robots/{robot_id}/poses?from=&to=&limit=` |
+| `GET` | `/api/v1/robots/{robot_id}/detections?from=&to=&limit=&min_object_count=` |
+| `GET` | `/api/v1/robots/{robot_id}/capture_events?from=&to=&limit=&exclude_trigger=` |
+| `GET` | `/api/v1/sessions?robot_id=&trigger=&from=&to=&limit=` |
 | `GET` | `/api/v1/sessions/{session_id}/captures?modality=all\|rgb\|ir\|depth` |
 | `GET` | `/api/v1/sessions/{session_id}/pairs` |
 | `GET` | `/api/v1/files/{storage_path}` |
+
+Time-range endpoints use a half-open interval **`[from, to)`** (ISO 8601). Default `limit` is 5000 (max 20000). Results are ordered by `wall_time` ascending.
+
+**Robot poses** — continuous trajectory for map replay:
+
+```bash
+curl -s "http://127.0.0.1:8080/api/v1/robots/2/poses?from=2025-06-26T14:00:00Z&to=2025-06-26T15:00:00Z"
+```
+
+**Detection snapshots** — object detections in map frame (`min_object_count` defaults to 0):
+
+```bash
+curl -s "http://127.0.0.1:8080/api/v1/robots/2/detections?from=2025-06-26T14:00:00Z&to=2025-06-26T15:00:00Z&min_object_count=1"
+```
+
+**Capture events** — RGB/IR/depth groups across all image sessions in a window (excludes `wakeword` by default via `exclude_trigger`):
+
+```bash
+curl -s "http://127.0.0.1:8080/api/v1/robots/2/capture_events?from=2025-06-24T00:00:00Z&to=2025-06-25T00:00:00Z"
+```
+
+**Replay client recipe** (map + conditional camera panel):
+
+1. `GET .../poses?from=&to=` — scrub robot position and trail
+2. `GET .../detections?from=&to=` — object markers at scrub time (binary-search by `wall_time`)
+3. `GET .../capture_events?from=&to=` — timeline markers; show images when scrub time is within ~1s of an event `wall_time`
+4. `GET .../files/{storage_path}` — image bytes from event `rgb` / `ir` / `depth` `storage_path`
+
+Session-scoped review (single upload) still uses `/sessions/{session_id}/pairs` instead of `capture_events`.
+
+Filter sessions by `started_at` window (`from` and `to` must be set together):
+
+```bash
+curl -s "http://127.0.0.1:8080/api/v1/sessions?robot_id=2&from=2025-06-24T00:00:00Z&to=2025-06-25T00:00:00Z"
+```
 
 Filter wakeword sessions:
 
