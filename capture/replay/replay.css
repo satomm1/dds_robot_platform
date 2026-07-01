@@ -232,11 +232,6 @@ body {
   pointer-events: none;
 }
 
-.depth-note {
-  margin-top: 0.5rem;
-  font-style: italic;
-}
-
 .detection-list {
   margin: 0.75rem 0 0;
   padding-left: 1.2rem;
@@ -258,6 +253,18 @@ body {
   border: 1px solid #cbd5e1;
   background: #f8fafc;
   border-radius: 4px;
+}
+
+.timeline-event-btn {
+  font-size: 1rem;
+  line-height: 1;
+  min-width: 2.25rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.timeline-event-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .timeline-track-wrap {

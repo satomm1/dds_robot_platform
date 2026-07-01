@@ -58,19 +58,20 @@
           <img id="evidence-img" alt="capture frame" />
           <canvas id="bbox-canvas"></canvas>
         </div>
-        <p class="hint depth-note">Depth PNG (16-bit mm) is not previewed in v1.</p>
         <ul id="detection-list" class="detection-list"></ul>
       </div>
     </aside>
   </main>
 
   <footer class="timeline-bar">
-    <button type="button" id="prev-event-btn" title="Previous capture">◀</button>
+    <button type="button" id="prev-skip-event-btn" class="timeline-event-btn" title="Previous capture session" disabled>⏮</button>
+    <button type="button" id="prev-step-btn" class="timeline-event-btn" title="Previous frame in session" disabled>◀</button>
     <div class="timeline-track-wrap">
       <div id="event-markers" class="event-markers"></div>
       <input type="range" id="scrubber" min="0" max="1000" value="0" disabled />
     </div>
-    <button type="button" id="next-event-btn" title="Next capture">▶</button>
+    <button type="button" id="next-step-btn" class="timeline-event-btn" title="Next frame in session" disabled>▶</button>
+    <button type="button" id="next-skip-event-btn" class="timeline-event-btn" title="Next capture session" disabled>⏭</button>
     <span id="scrub-time-label" class="scrub-label">—</span>
     <button type="button" id="play-btn" disabled>Play 1×</button>
     <button type="button" id="play-fast-btn" disabled>10×</button>

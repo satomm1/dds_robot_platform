@@ -8,6 +8,8 @@
 
   const GRID_CELL_SIZE = 5;
   const IMAGE_EPS_MS = 1000;
+  /** Break trail when consecutive poses are farther apart than this (ms). */
+  const POSE_TRAIL_GAP_MS = 5000;
   const API_KEY_STORAGE = "capture_api_key";
   const CLASS_COLORS = {
     person: "#2563eb",
@@ -48,8 +50,10 @@
   const playBtn = document.getElementById("play-btn");
   const playFastBtn = document.getElementById("play-fast-btn");
   const pauseBtn = document.getElementById("pause-btn");
-  const prevEventBtn = document.getElementById("prev-event-btn");
-  const nextEventBtn = document.getElementById("next-event-btn");
+  const prevSkipEventBtn = document.getElementById("prev-skip-event-btn");
+  const prevStepBtn = document.getElementById("prev-step-btn");
+  const nextStepBtn = document.getElementById("next-step-btn");
+  const nextSkipEventBtn = document.getElementById("next-skip-event-btn");
   const zoomInBtn = document.getElementById("zoom-in-btn");
   const zoomOutBtn = document.getElementById("zoom-out-btn");
   const zoomResetBtn = document.getElementById("zoom-reset-btn");
@@ -125,6 +129,38 @@
     const r = robots.find((x) => String(x.id) === String(robotId));
     if (!r) return "Robot " + robotId;
     return "Robot " + r.id + (r.name ? " (" + r.name + ")" : "");
+  }
+
+  /** Short label for map markers: name if set, otherwise Robot {id}. */
+  function robotMapLabel(robotId) {
+    const r = robots.find((x) => String(x.id) === String(robotId));
+    if (r?.name) return r.name;
+    return "Robot " + robotId;
+  }
+
+  function drawRobotMapLabel(rx, ry, robotId, colors) {
+    const text = robotMapLabel(robotId);
+    mapCtx.font = "bold 11px system-ui, sans-serif";
+    const padX = 5;
+    const padY = 3;
+    const textW = mapCtx.measureText(text).width;
+    const boxW = textW + padX * 2;
+    const boxH = 14 + padY * 2;
+    const x = rx + 12;
+    const y = ry - boxH / 2;
+
+    mapCtx.fillStyle = "rgba(255, 255, 255, 0.94)";
+    mapCtx.strokeStyle = colors.robot;
+    mapCtx.lineWidth = 1.5;
+    mapCtx.beginPath();
+    mapCtx.roundRect(x, y, boxW, boxH, 3);
+    mapCtx.fill();
+    mapCtx.stroke();
+
+    mapCtx.fillStyle = "#0f172a";
+    mapCtx.textBaseline = "middle";
+    mapCtx.fillText(text, x + padX, y + boxH / 2);
+    mapCtx.textBaseline = "alphabetic";
   }
 
   function robotPaletteIndex(robotId) {
@@ -256,6 +292,56 @@
       }
     }
     return best;
+  }
+
+  function findActiveEventAny(targetMs) {
+    let best = null;
+    let bestDiff = IMAGE_EPS_MS + 1;
+    for (const ev of allEventsFlat()) {
+      const diff = Math.abs(parseMs(ev.wall_time) - targetMs);
+      if (diff <= IMAGE_EPS_MS && diff < bestDiff) {
+        best = ev;
+        bestDiff = diff;
+      }
+    }
+    return best;
+  }
+
+  function sortedEvents() {
+    return [...allEventsFlat()].sort(
+      (a, b) => parseMs(a.wall_time) - parseMs(b.wall_time)
+    );
+  }
+
+  /** Capture sessions in timeline order; each session has one or more frame events (◇). */
+  function eventsBySession() {
+    const sorted = sortedEvents();
+    const order = [];
+    const byId = new Map();
+    for (const ev of sorted) {
+      if (!byId.has(ev.session_id)) {
+        byId.set(ev.session_id, []);
+        order.push(ev.session_id);
+      }
+      byId.get(ev.session_id).push(ev);
+    }
+    return order.map((sessionId) => ({ sessionId, events: byId.get(sessionId) }));
+  }
+
+  function sessionIndexForScrub(groups) {
+    const active = findActiveEventAny(scrubMs);
+    if (active) {
+      const idx = groups.findIndex((g) => g.sessionId === active.session_id);
+      if (idx >= 0) return idx;
+    }
+    for (let i = groups.length - 1; i >= 0; i--) {
+      if (parseMs(groups[i].events[0].wall_time) <= scrubMs) return i;
+    }
+    return 0;
+  }
+
+  function eventsInSession(sessionId) {
+    return sortedEvents().filter((ev) => ev.session_id === sessionId);
   }
 
   // --- Map file & coordinates ---
@@ -509,6 +595,35 @@
     mapHint.classList.toggle("hidden", !!(mapData || hasReplayData()));
   }
 
+  function splitTrailSegments(trail) {
+    if (!trail.length) return [];
+    const segments = [[trail[0]]];
+    for (let i = 1; i < trail.length; i++) {
+      const gap = parseMs(trail[i].wall_time) - parseMs(trail[i - 1].wall_time);
+      if (gap > POSE_TRAIL_GAP_MS) {
+        segments.push([trail[i]]);
+      } else {
+        segments[segments.length - 1].push(trail[i]);
+      }
+    }
+    return segments.filter((segment) => segment.length >= 2);
+  }
+
+  function drawTrailSegments(trail, colors) {
+    for (const segment of splitTrailSegments(trail)) {
+      mapCtx.beginPath();
+      const [x0, y0] = worldToDisplay(segment[0].x, segment[0].y);
+      mapCtx.moveTo(x0, y0);
+      for (let i = 1; i < segment.length; i++) {
+        const [x, y] = worldToDisplay(segment[i].x, segment[i].y);
+        mapCtx.lineTo(x, y);
+      }
+      mapCtx.strokeStyle = colors.trail;
+      mapCtx.lineWidth = 2;
+      mapCtx.stroke();
+    }
+  }
+
   function paintRobotOnMap(robotId) {
     const { poses, snapshots } = getRobotReplay(robotId);
     const colors = robotColors(robotId);
@@ -517,18 +632,7 @@
       const t = parseMs(p.wall_time);
       return t <= scrubMs && p.valid && p.x != null && p.y != null;
     });
-    if (trail.length >= 2) {
-      mapCtx.beginPath();
-      const [x0, y0] = worldToDisplay(trail[0].x, trail[0].y);
-      mapCtx.moveTo(x0, y0);
-      for (let i = 1; i < trail.length; i++) {
-        const [x, y] = worldToDisplay(trail[i].x, trail[i].y);
-        mapCtx.lineTo(x, y);
-      }
-      mapCtx.strokeStyle = colors.trail;
-      mapCtx.lineWidth = 2;
-      mapCtx.stroke();
-    }
+    drawTrailSegments(trail, colors);
 
     const pose = nearestByTime(poses, scrubMs);
     if (pose && pose.valid && pose.x != null && pose.y != null) {
@@ -546,9 +650,7 @@
         mapCtx.lineTo(rx + len * Math.cos(pose.theta), ry - len * Math.sin(pose.theta));
         mapCtx.stroke();
       }
-      mapCtx.fillStyle = "#0f172a";
-      mapCtx.font = "bold 11px sans-serif";
-      mapCtx.fillText(String(robotId), rx + 10, ry - 6);
+      drawRobotMapLabel(rx, ry, robotId, colors);
     }
 
     const snap = nearestByTime(snapshots, scrubMs);
@@ -634,63 +736,92 @@
       el.style.left = pct + "%";
       const rid = ev.robot_id != null ? ev.robot_id : "?";
       el.title = "Robot " + rid + " · " + ev.trigger + " @ " + ev.wall_time;
-      el.addEventListener("click", () => {
-        scrubMs = t;
-        if (ev.robot_id != null) {
-          cameraRobotId = ev.robot_id;
-          cameraRobotSelect.value = String(cameraRobotId);
-        }
-        syncScrubberFromMs();
-        onScrub();
-      });
+      el.addEventListener("click", () => jumpToEvent(ev));
       eventMarkers.appendChild(el);
     }
   }
 
-  function jumpEvent(direction) {
-    const events = allEventsFlat();
-    if (!events.length) return;
-    const sorted = [...events].sort((a, b) => parseMs(a.wall_time) - parseMs(b.wall_time));
-    if (direction < 0) {
-      for (let i = sorted.length - 1; i >= 0; i--) {
-        if (parseMs(sorted[i].wall_time) < scrubMs - 100) {
-          scrubMs = parseMs(sorted[i].wall_time);
-          if (sorted[i].robot_id != null) {
-            cameraRobotId = sorted[i].robot_id;
-            cameraRobotSelect.value = String(cameraRobotId);
-          }
-          syncScrubberFromMs();
-          onScrub();
-          return;
-        }
-      }
-      scrubMs = parseMs(sorted[0].wall_time);
-      if (sorted[0].robot_id != null) {
-        cameraRobotId = sorted[0].robot_id;
-        cameraRobotSelect.value = String(cameraRobotId);
-      }
-    } else {
-      for (const ev of sorted) {
-        if (parseMs(ev.wall_time) > scrubMs + 100) {
-          scrubMs = parseMs(ev.wall_time);
-          if (ev.robot_id != null) {
-            cameraRobotId = ev.robot_id;
-            cameraRobotSelect.value = String(cameraRobotId);
-          }
-          syncScrubberFromMs();
-          onScrub();
-          return;
-        }
-      }
-      const last = sorted[sorted.length - 1];
-      scrubMs = parseMs(last.wall_time);
-      if (last.robot_id != null) {
-        cameraRobotId = last.robot_id;
-        cameraRobotSelect.value = String(cameraRobotId);
-      }
+  function jumpToEvent(ev) {
+    scrubMs = parseMs(ev.wall_time);
+    if (ev.robot_id != null) {
+      cameraRobotId = ev.robot_id;
+      cameraRobotSelect.value = String(cameraRobotId);
     }
     syncScrubberFromMs();
     onScrub();
+  }
+
+  function updateEventSkipButtons() {
+    const hasEvents = allEventsFlat().length > 0;
+    prevSkipEventBtn.disabled = !hasEvents;
+    prevStepBtn.disabled = !hasEvents;
+    nextStepBtn.disabled = !hasEvents;
+    nextSkipEventBtn.disabled = !hasEvents;
+  }
+
+  /** Double arrow: jump to the next/previous capture session. */
+  function skipCaptureEvent(direction) {
+    const groups = eventsBySession();
+    if (!groups.length) return;
+
+    const idx = sessionIndexForScrub(groups);
+    const targetIdx = idx + direction;
+    if (targetIdx < 0) {
+      jumpToEvent(groups[0].events[0]);
+      return;
+    }
+    if (targetIdx >= groups.length) {
+      const last = groups[groups.length - 1].events;
+      jumpToEvent(last[last.length - 1]);
+      return;
+    }
+    jumpToEvent(groups[targetIdx].events[0]);
+  }
+
+  /**
+   * Single arrow: move to the previous/next frame (◇) in the current session.
+   * At the first/last frame of a session, jump to the adjacent session.
+   */
+  function stepTimeline(direction) {
+    const groups = eventsBySession();
+    if (!groups.length) return;
+
+    const active = findActiveEventAny(scrubMs);
+    const sessionId = active?.session_id ?? groups[sessionIndexForScrub(groups)].sessionId;
+    const inSession = eventsInSession(sessionId);
+    if (!inSession.length) return;
+
+    if (direction > 0) {
+      const threshold = active ? parseMs(active.wall_time) : scrubMs;
+      const next = inSession.find((ev) => parseMs(ev.wall_time) > threshold + IMAGE_EPS_MS);
+      if (next) {
+        jumpToEvent(next);
+        return;
+      }
+      skipCaptureEvent(1);
+      return;
+    }
+
+    const threshold = active ? parseMs(active.wall_time) : scrubMs;
+    let prev = null;
+    for (let i = inSession.length - 1; i >= 0; i--) {
+      if (parseMs(inSession[i].wall_time) < threshold - IMAGE_EPS_MS) {
+        prev = inSession[i];
+        break;
+      }
+    }
+    if (prev) {
+      jumpToEvent(prev);
+      return;
+    }
+
+    const idx = groups.findIndex((g) => g.sessionId === sessionId);
+    if (idx > 0) {
+      const prevSession = groups[idx - 1].events;
+      jumpToEvent(prevSession[prevSession.length - 1]);
+      return;
+    }
+    jumpToEvent(inSession[0]);
   }
 
   // --- Evidence panel ---
@@ -900,6 +1031,7 @@
 
     syncScrubberFromMs();
     renderEventMarkers();
+    updateEventSkipButtons();
     renderMap();
     updateEvidence();
 
@@ -960,8 +1092,10 @@
   playBtn.addEventListener("click", () => startPlayback(1));
   playFastBtn.addEventListener("click", () => startPlayback(10));
   pauseBtn.addEventListener("click", stopPlayback);
-  prevEventBtn.addEventListener("click", () => jumpEvent(-1));
-  nextEventBtn.addEventListener("click", () => jumpEvent(1));
+  prevSkipEventBtn.addEventListener("click", () => skipCaptureEvent(-1));
+  prevStepBtn.addEventListener("click", () => stepTimeline(-1));
+  nextStepBtn.addEventListener("click", () => stepTimeline(1));
+  nextSkipEventBtn.addEventListener("click", () => skipCaptureEvent(1));
 
   function mapCanvasCoords(evt) {
     const rect = mapCanvas.getBoundingClientRect();
