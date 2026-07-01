@@ -27,6 +27,7 @@ services:
       STORAGE_ROOT: ${STORAGE_ROOT:-/data/captures}
       API_KEYS: ${API_KEYS:-}
       POSE_ARCHIVE: ${POSE_ARCHIVE:-true}
+      DETECTION_ARCHIVE: ${DETECTION_ARCHIVE:-true}
     volumes:
       - .:/home/capture
       - ${CAPTURE_DATA_DIR:-./data/captures}:/data/captures

@@ -26,8 +26,9 @@ STORAGE_ROOT = Path(os.environ.get("STORAGE_ROOT", "/data/captures")).resolve()
 DATABASE_URL = os.environ["DATABASE_URL"]
 API_KEYS = {k.strip() for k in os.environ.get("API_KEYS", "").split(",") if k.strip()}
 POSE_ARCHIVE = os.environ.get("POSE_ARCHIVE", "true").lower() in ("1", "true", "yes")
+DETECTION_ARCHIVE = os.environ.get("DETECTION_ARCHIVE", "true").lower() in ("1", "true", "yes")
 
-POSE_INSERT_BATCH = 1000
+CHUNK_INSERT_BATCH = 1000
 
 pool: asyncpg.Pool | None = None
 
@@ -238,11 +239,36 @@ CREATE TABLE IF NOT EXISTS robot_poses (
 CREATE INDEX IF NOT EXISTS idx_robot_poses_robot_time ON robot_poses (robot_id, wall_time);
 """
 
+DETECTION_SNAPSHOTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS detection_snapshots (
+  id              BIGSERIAL PRIMARY KEY,
+  robot_id        INTEGER NOT NULL,
+  chunk_id        TEXT NOT NULL,
+  wall_time       TIMESTAMPTZ NOT NULL,
+  ros_time_sec    BIGINT,
+  ros_time_nsec   INTEGER,
+  robot_x         DOUBLE PRECISION,
+  robot_y         DOUBLE PRECISION,
+  robot_theta     DOUBLE PRECISION,
+  robot_frame     TEXT,
+  robot_valid     BOOLEAN NOT NULL,
+  object_count    INTEGER NOT NULL,
+  objects         JSONB NOT NULL,
+  uploaded_at     TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (robot_id, wall_time, chunk_id)
+);
+CREATE INDEX IF NOT EXISTS idx_detection_snapshots_robot_time
+  ON detection_snapshots (robot_id, wall_time);
+CREATE INDEX IF NOT EXISTS idx_detection_objects
+  ON detection_snapshots USING GIN (objects);
+"""
+
 
 async def ensure_schema() -> None:
     assert pool is not None
     async with pool.acquire() as conn:
         await conn.execute(ROBOT_POSES_SCHEMA)
+        await conn.execute(DETECTION_SNAPSHOTS_SCHEMA)
 
 
 @asynccontextmanager
@@ -446,7 +472,7 @@ async def fetch_session_captures(session_id: str) -> list[asyncpg.Record]:
 
 
 # ---------------------------------------------------------------------------
-# Pose chunk ingest
+# Chunk upload ingest (pose + detection)
 # ---------------------------------------------------------------------------
 
 def safe_chunk_id(chunk_id: str) -> str:
@@ -455,7 +481,7 @@ def safe_chunk_id(chunk_id: str) -> str:
     return chunk_id
 
 
-def parse_pose_meta(raw: bytes, header_robot_id: int) -> dict[str, Any]:
+def parse_chunk_meta(raw: bytes, header_robot_id: int) -> dict[str, Any]:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -586,8 +612,8 @@ async def persist_pose_chunk(
                 robot_id,
             )
 
-            for i in range(0, len(poses), POSE_INSERT_BATCH):
-                batch = poses[i : i + POSE_INSERT_BATCH]
+            for i in range(0, len(poses), CHUNK_INSERT_BATCH):
+                batch = poses[i : i + CHUNK_INSERT_BATCH]
                 n = len(batch)
                 robot_ids = [robot_id] * n
                 wall_times = [p["wall_time"] for p in batch]
@@ -634,6 +660,154 @@ async def persist_pose_chunk(
                     is_statics,
                     valids,
                     chunk_ids,
+                )
+                rows_accepted += len(inserted)
+
+    return rows_accepted
+
+
+def read_detections_from_sqlite(chunk_bytes: bytes) -> list[dict[str, Any]]:
+    if not chunk_bytes:
+        raise HTTPException(status_code=400, detail="empty SQLite chunk")
+
+    with tempfile.NamedTemporaryFile(suffix=".sqlite") as tmp:
+        tmp.write(chunk_bytes)
+        tmp.flush()
+        try:
+            conn = sqlite3.connect(f"file:{tmp.name}?mode=ro", uri=True)
+        except sqlite3.Error as exc:
+            raise HTTPException(status_code=400, detail="invalid SQLite chunk") from exc
+
+        with conn:
+            table = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='detection_snapshots'"
+            ).fetchone()
+            if not table:
+                raise HTTPException(
+                    status_code=400, detail="SQLite chunk missing detection_snapshots table"
+                )
+
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT wall_time, ros_time_sec, ros_time_nsec,
+                           robot_x, robot_y, robot_theta, robot_frame, robot_valid,
+                           object_count, objects_json
+                    FROM detection_snapshots ORDER BY wall_time
+                    """
+                ).fetchall()
+            except sqlite3.Error as exc:
+                raise HTTPException(
+                    status_code=400, detail="failed to read detection_snapshots table"
+                ) from exc
+
+    snapshots: list[dict[str, Any]] = []
+    for row in rows:
+        wall_time = parse_iso8601(row[0])
+        if wall_time is None:
+            raise HTTPException(status_code=400, detail=f"invalid wall_time: {row[0]!r}")
+        try:
+            objects = json.loads(row[9])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=400, detail=f"invalid objects_json: {row[9]!r}"
+            ) from exc
+        if not isinstance(objects, list):
+            raise HTTPException(status_code=400, detail="objects_json must be a JSON array")
+        snapshots.append({
+            "wall_time": wall_time,
+            "ros_time_sec": row[1],
+            "ros_time_nsec": row[2],
+            "robot_x": row[3],
+            "robot_y": row[4],
+            "robot_theta": row[5],
+            "robot_frame": row[6],
+            "robot_valid": bool(row[7]),
+            "object_count": int(row[8]),
+            "objects": objects,
+        })
+    return snapshots
+
+
+def detection_archive_rel(robot_id: int, started_at: datetime, chunk_id: str) -> str:
+    day = started_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    return f"detections/robot_{robot_id}/{day}/{chunk_id}"
+
+
+def archive_detection_chunk(
+    meta: dict[str, Any], meta_bytes: bytes, chunk_bytes: bytes
+) -> None:
+    rel = detection_archive_rel(meta["robot_id"], meta["started_at"], meta["chunk_id"])
+    archive_dir = resolve_storage_path(rel)
+    try:
+        write_bytes(archive_dir / "chunk.sqlite", chunk_bytes)
+        write_bytes(archive_dir / "meta.json", meta_bytes)
+    except HTTPException as exc:
+        if exc.status_code == 507:
+            raise
+        return
+    except OSError:
+        return
+
+
+async def persist_detection_chunk(
+    meta: dict[str, Any], snapshots: list[dict[str, Any]]
+) -> int:
+    assert pool is not None
+    robot_id = meta["robot_id"]
+    chunk_id = meta["chunk_id"]
+    rows_accepted = 0
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO robots (id) VALUES ($1) ON CONFLICT DO NOTHING",
+                robot_id,
+            )
+
+            for i in range(0, len(snapshots), CHUNK_INSERT_BATCH):
+                batch = snapshots[i : i + CHUNK_INSERT_BATCH]
+                n = len(batch)
+                robot_ids = [robot_id] * n
+                chunk_ids = [chunk_id] * n
+                wall_times = [s["wall_time"] for s in batch]
+                ros_secs = [s["ros_time_sec"] for s in batch]
+                ros_nsecs = [s["ros_time_nsec"] for s in batch]
+                robot_xs = [s["robot_x"] for s in batch]
+                robot_ys = [s["robot_y"] for s in batch]
+                robot_thetas = [s["robot_theta"] for s in batch]
+                robot_frames = [s["robot_frame"] for s in batch]
+                robot_valids = [s["robot_valid"] for s in batch]
+                object_counts = [s["object_count"] for s in batch]
+                objects_json = [json.dumps(s["objects"]) for s in batch]
+
+                inserted = await conn.fetch(
+                    """
+                    INSERT INTO detection_snapshots (
+                        robot_id, chunk_id, wall_time, ros_time_sec, ros_time_nsec,
+                        robot_x, robot_y, robot_theta, robot_frame, robot_valid,
+                        object_count, objects
+                    )
+                    SELECT * FROM unnest(
+                        $1::int[], $2::text[], $3::timestamptz[], $4::bigint[], $5::int[],
+                        $6::float8[], $7::float8[], $8::float8[], $9::text[], $10::bool[],
+                        $11::int[], $12::jsonb[]
+                    )
+                    ON CONFLICT (robot_id, wall_time, chunk_id) DO NOTHING
+                    RETURNING id
+                    """,
+                    robot_ids,
+                    chunk_ids,
+                    wall_times,
+                    ros_secs,
+                    ros_nsecs,
+                    robot_xs,
+                    robot_ys,
+                    robot_thetas,
+                    robot_frames,
+                    robot_valids,
+                    object_counts,
+                    objects_json,
                 )
                 rows_accepted += len(inserted)
 
@@ -713,7 +887,7 @@ async def pose_upload(
 ):
     meta_bytes = await meta.read()
     chunk_bytes = await chunk.read()
-    parsed = parse_pose_meta(meta_bytes, x_robot_id)
+    parsed = parse_chunk_meta(meta_bytes, x_robot_id)
     poses = read_poses_from_sqlite(chunk_bytes)
 
     if parsed["row_count"] != len(poses):
@@ -727,6 +901,39 @@ async def pose_upload(
     if POSE_ARCHIVE:
         try:
             archive_pose_chunk(parsed, meta_bytes, chunk_bytes)
+        except HTTPException as exc:
+            if exc.status_code == 507:
+                raise
+
+    return {
+        "ok": True,
+        "chunk_id": parsed["chunk_id"],
+        "rows_accepted": rows_accepted,
+    }
+
+
+@app.post("/api/v1/detection_upload", status_code=201, dependencies=[Depends(require_api_key)])
+async def detection_upload(
+    meta: UploadFile = File(...),
+    chunk: UploadFile = File(...),
+    x_robot_id: int = Header(..., alias="X-Robot-Id"),
+):
+    meta_bytes = await meta.read()
+    chunk_bytes = await chunk.read()
+    parsed = parse_chunk_meta(meta_bytes, x_robot_id)
+    snapshots = read_detections_from_sqlite(chunk_bytes)
+
+    if parsed["row_count"] != len(snapshots):
+        raise HTTPException(
+            status_code=409,
+            detail=f"row_count mismatch: meta={parsed['row_count']} actual={len(snapshots)}",
+        )
+
+    rows_accepted = await persist_detection_chunk(parsed, snapshots)
+
+    if DETECTION_ARCHIVE:
+        try:
+            archive_detection_chunk(parsed, meta_bytes, chunk_bytes)
         except HTTPException as exc:
             if exc.status_code == 507:
                 raise

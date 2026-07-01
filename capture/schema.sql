@@ -60,3 +60,26 @@ CREATE TABLE robot_poses (
 );
 
 CREATE INDEX idx_robot_poses_robot_time ON robot_poses (robot_id, wall_time);
+
+CREATE TABLE detection_snapshots (
+  id              BIGSERIAL PRIMARY KEY,
+  robot_id        INTEGER NOT NULL,
+  chunk_id        TEXT NOT NULL,
+  wall_time       TIMESTAMPTZ NOT NULL,
+  ros_time_sec    BIGINT,
+  ros_time_nsec   INTEGER,
+  robot_x         DOUBLE PRECISION,
+  robot_y         DOUBLE PRECISION,
+  robot_theta     DOUBLE PRECISION,
+  robot_frame     TEXT,
+  robot_valid     BOOLEAN NOT NULL,
+  object_count    INTEGER NOT NULL,
+  objects         JSONB NOT NULL,
+  uploaded_at     TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (robot_id, wall_time, chunk_id)
+);
+
+CREATE INDEX idx_detection_snapshots_robot_time
+  ON detection_snapshots (robot_id, wall_time);
+CREATE INDEX idx_detection_objects
+  ON detection_snapshots USING GIN (objects);

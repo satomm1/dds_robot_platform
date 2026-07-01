@@ -1,6 +1,6 @@
 # Robot capture ingest (central machine)
 
-Standalone service for receiving image (RGB + IR + depth), wakeword audio, and pose trajectory data from robots (`mattbot_capture`) and storing metadata in PostgreSQL. Separate from the DDS stack in the repo root.
+Standalone service for receiving image (RGB + IR + depth), wakeword audio, pose trajectory, and object detection data from robots (`mattbot_capture`) and storing metadata in PostgreSQL. Separate from the DDS stack in the repo root.
 
 Robots POST completed sessions here; they never connect to the database directly.
 
@@ -55,11 +55,12 @@ Files land on disk at `STORAGE_ROOT` (default `/data/captures`):
 /data/captures/robot_2/2025-06-18/{session_id}/frame_*_depth.png   # depth companion (16-bit mm PNG)
 /data/captures/robot_2/2025-06-24/{session_id}/utterance.wav         # wakeword sessions
 /data/captures/poses/robot_2/2025-06-26/chunk_2025-06-26T14-00-00Z/  # pose chunk archives
+/data/captures/detections/robot_2/2025-06-26/chunk_2025-06-26T14-00-00Z/  # detection chunk archives
 ```
 
 On Astra Pro Plus robots with `capture:=true`, expect up to **3 files per capture tick** (RGB + IR + depth) when depth is enabled, or ~2× (RGB + IR) without depth. `sessions.frame_count` is the total file count (includes IR and depth rows), not the number of capture events.
 
-With `capture:=true`, robots also run `pose_uploader`, which POSTs hourly SQLite pose chunks to `/api/v1/pose_upload` (~24 chunks/robot/day). Pose rows join to captures on `(robot_id, wall_time)`.
+With `capture:=true`, robots also run `pose_uploader` and `detection_uploader`, which POST hourly SQLite chunks to `/api/v1/pose_upload` and `/api/v1/detection_upload` (~24 chunks/robot/day each). At default ~1 Hz, expect ~3,600 detection rows/hour/robot. Pose and detection rows join to image captures on `(robot_id, wall_time)`.
 
 ## Environment
 
@@ -69,6 +70,7 @@ With `capture:=true`, robots also run `pose_uploader`, which POSTs hourly SQLite
 | `STORAGE_ROOT` | `/data/captures` | JPEG/PNG/WAV + manifest + pose archive storage |
 | `API_KEYS` | empty | Comma-separated keys; when set, `X-Api-Key` required on all routes except `/health` |
 | `POSE_ARCHIVE` | `true` | When true, store uploaded pose `.sqlite` + meta under `STORAGE_ROOT/poses/` |
+| `DETECTION_ARCHIVE` | `true` | When true, store uploaded detection `.sqlite` + meta under `STORAGE_ROOT/detections/` |
 | `CAPTURE_DATA_DIR` | `./data/captures` | Host path bind-mounted into ingest container (compose only) |
 
 ## API
@@ -141,6 +143,60 @@ Query trajectory (via Postgres):
 SELECT wall_time, x, y, theta FROM robot_poses
 WHERE robot_id = 2 ORDER BY wall_time;
 ```
+
+### Detection upload
+
+**`POST /api/v1/detection_upload`** — multipart form (used by `detection_uploader` when `capture:=true`):
+
+- Header `X-Robot-Id` (required)
+- Header `X-Api-Key` (optional unless `API_KEYS` is set)
+- Part `meta` — JSON file (`chunk_*.meta.json`)
+- Part `chunk` — SQLite file (`chunk_*.sqlite`)
+
+Meta must include `schema_version: 1`, `status: "ready_for_upload"`, `robot_id`, `chunk_id`, `started_at`, `ended_at`, `row_count`. The SQLite file must contain a `detection_snapshots` table with `objects_json` (JSON array string per row). Rows with `object_count=0` and `objects_json='[]'` are normal. When `robot_valid=0`, robot pose columns may be NULL but object map poses in `objects[].pose` may still be valid.
+
+Returns `201`:
+
+```json
+{"ok": true, "chunk_id": "chunk_2025-06-26T14-00-00Z", "rows_accepted": 3600}
+```
+
+`rows_accepted` is the number of new rows inserted (0 on idempotent retry). Idempotency key: `(robot_id, wall_time, chunk_id)`.
+
+Errors: `400` bad meta or invalid SQLite/JSON, `401` auth, `409` row_count mismatch, `507` disk full (archival).
+
+Query detections (via Postgres — no read API in v1):
+
+```sql
+-- all persons in a time window
+SELECT wall_time, obj
+FROM detection_snapshots d,
+     jsonb_array_elements(d.objects) obj
+WHERE d.robot_id = 2
+  AND d.wall_time >= '2025-06-26T14:00:00Z'
+  AND obj->>'class_name' = 'person';
+
+-- snapshots with any detections
+SELECT * FROM detection_snapshots
+WHERE robot_id = 2 AND object_count > 0;
+
+-- nearest detection snapshot to an image capture frame
+SELECT d.*
+FROM detection_snapshots d
+WHERE d.robot_id = 2
+  AND d.wall_time BETWEEN $frame_wall_time - interval '1 second'
+                      AND $frame_wall_time + interval '1 second'
+ORDER BY abs(extract(epoch from (d.wall_time - $frame_wall_time::timestamptz)))
+LIMIT 1;
+
+-- join to robot pose stream on wall_time
+SELECT d.wall_time, d.object_count, p.x, p.y, p.theta
+FROM detection_snapshots d
+JOIN robot_poses p ON p.robot_id = d.robot_id AND p.wall_time = d.wall_time
+WHERE d.robot_id = 2;
+```
+
+Object poses in `objects[].pose.x/y` are already in map frame (meters). Same schema as image capture `frames[].detections[]`.
 
 ### Read API (operator / future GUI)
 
@@ -465,6 +521,93 @@ docker compose exec postgres psql -U capture -d robot_capture -c \
   "SELECT wall_time, x, y, theta, valid FROM robot_poses WHERE robot_id = 2 ORDER BY wall_time;"
 ```
 
+## Manual upload test (detection chunk)
+
+```bash
+python3 - <<'PY'
+import json
+import sqlite3
+
+chunk_path = "/tmp/detection_chunk_2025-06-26T14-00-00Z.sqlite"
+meta_path = "/tmp/detection_chunk_2025-06-26T14-00-00Z.meta.json"
+
+objects_with_person = json.dumps([
+    {
+        "class_name": "person",
+        "probability": 0.92,
+        "pose": {"x": 12.3, "y": 4.5, "z": 0.0},
+        "width": 0.33,
+        "bbox": [120.0, 80.0, 200.0, 300.0],
+    }
+])
+
+conn = sqlite3.connect(chunk_path)
+conn.execute("""
+CREATE TABLE detection_snapshots (
+  id INTEGER PRIMARY KEY,
+  wall_time TEXT NOT NULL,
+  ros_time_sec INTEGER,
+  ros_time_nsec INTEGER,
+  robot_x REAL,
+  robot_y REAL,
+  robot_theta REAL,
+  robot_frame TEXT,
+  robot_valid INTEGER NOT NULL,
+  object_count INTEGER NOT NULL,
+  objects_json TEXT NOT NULL
+)
+""")
+rows = [
+    (
+        "2025-06-26T14:00:01+00:00", 100, 0,
+        10.2, 3.4, 1.57, "map", 1, 1, objects_with_person,
+    ),
+    (
+        "2025-06-26T14:00:02+00:00", 100, 500000000,
+        None, None, None, "map", 0, 0, "[]",
+    ),
+]
+conn.executemany(
+    "INSERT INTO detection_snapshots (wall_time, ros_time_sec, ros_time_nsec,"
+    " robot_x, robot_y, robot_theta, robot_frame, robot_valid, object_count, objects_json)"
+    " VALUES (?,?,?,?,?,?,?,?,?,?)",
+    rows,
+)
+conn.commit()
+conn.close()
+
+meta = {
+    "schema_version": 1,
+    "robot_id": 2,
+    "chunk_id": "chunk_2025-06-26T14-00-00Z",
+    "started_at": "2025-06-26T14:00:00+00:00",
+    "ended_at": "2025-06-26T15:00:00+00:00",
+    "row_count": len(rows),
+    "status": "ready_for_upload",
+}
+with open(meta_path, "w", encoding="utf-8") as f:
+    json.dump(meta, f)
+PY
+
+curl -s -X POST http://127.0.0.1:8080/api/v1/detection_upload \
+  -H "X-Robot-Id: 2" \
+  -F "meta=@/tmp/detection_chunk_2025-06-26T14-00-00Z.meta.json;type=application/json" \
+  -F "chunk=@/tmp/detection_chunk_2025-06-26T14-00-00Z.sqlite;type=application/x-sqlite3"
+
+# Idempotent retry (expect rows_accepted: 0)
+curl -s -X POST http://127.0.0.1:8080/api/v1/detection_upload \
+  -H "X-Robot-Id: 2" \
+  -F "meta=@/tmp/detection_chunk_2025-06-26T14-00-00Z.meta.json;type=application/json" \
+  -F "chunk=@/tmp/detection_chunk_2025-06-26T14-00-00Z.sqlite;type=application/x-sqlite3"
+```
+
+Verify in Postgres:
+
+```bash
+docker compose exec postgres psql -U capture -d robot_capture -c \
+  "SELECT wall_time, object_count, robot_valid, objects FROM detection_snapshots WHERE robot_id = 2 ORDER BY wall_time;"
+```
+
 ## Pose trajectory preview
 
 Plot an uploaded chunk as a PNG (valid path, invalid TF points, start/end markers). Uses `plot_poses.py` inside the ingest image (matplotlib included). Replace `robot_1`, date, and `chunk_id` with your archived chunk under `data/captures/poses/`:
@@ -517,6 +660,28 @@ CREATE TABLE IF NOT EXISTS robot_poses (
   UNIQUE (robot_id, wall_time)
 );
 CREATE INDEX IF NOT EXISTS idx_robot_poses_robot_time ON robot_poses (robot_id, wall_time);
+
+CREATE TABLE IF NOT EXISTS detection_snapshots (
+  id              BIGSERIAL PRIMARY KEY,
+  robot_id        INTEGER NOT NULL,
+  chunk_id        TEXT NOT NULL,
+  wall_time       TIMESTAMPTZ NOT NULL,
+  ros_time_sec    BIGINT,
+  ros_time_nsec   INTEGER,
+  robot_x         DOUBLE PRECISION,
+  robot_y         DOUBLE PRECISION,
+  robot_theta     DOUBLE PRECISION,
+  robot_frame     TEXT,
+  robot_valid     BOOLEAN NOT NULL,
+  object_count    INTEGER NOT NULL,
+  objects         JSONB NOT NULL,
+  uploaded_at     TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (robot_id, wall_time, chunk_id)
+);
+CREATE INDEX IF NOT EXISTS idx_detection_snapshots_robot_time
+  ON detection_snapshots (robot_id, wall_time);
+CREATE INDEX IF NOT EXISTS idx_detection_objects
+  ON detection_snapshots USING GIN (objects);
 ```
 
 ## Stop
