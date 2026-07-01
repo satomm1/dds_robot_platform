@@ -272,6 +272,21 @@ curl -s "http://127.0.0.1:8080/api/v1/sessions/{session_id}/pairs"
 
 Captures include full `extra` JSON (e.g. `transcript`). Files are served with correct `Content-Type` (`image/jpeg`, `image/png`, or `audio/wav`).
 
+## Replay UI (browser)
+
+Static mission replay at **`http://<capture-host>:8080/replay/`** (served from [`capture/replay/`](capture/replay/)).
+
+1. Open `/replay/` on the central ingest host (same machine as port 8080).
+2. Optionally enter **API key** (stored in browser `localStorage` when `API_KEYS` is set on the server).
+3. **Map JSON:** use the file picker to load `user_map.json` from the platform (`dds/user_map.json` in the repo — same `data.map` shape as the live GUI). Replay works without a map (auto-scaled trajectory).
+4. Set **from** / **to** window and click **Load** — fetches poses, detections, and capture events for **all registered robots** and draws each trajectory on the map (distinct colors per robot).
+5. **Camera panel:** choose which **robot** to preview (one at a time). RGB/IR images and detections follow the selected robot when you scrub near its capture events.
+6. **Scrub** the timeline or use **◀ ▶** to jump between capture events (◇ markers from all robots). Clicking a marker switches the camera to that robot. **Play** advances time.
+7. **Map zoom/pan:** scroll on the map to zoom toward the cursor; drag to pan. Use **+** / **−** / **Fit** in the corner to zoom or reset the view.
+8. **RGB / IR** tabs show authenticated images from `/api/v1/files/...` with bbox overlay from frame `detections`. Depth is not previewed in v1.
+
+No separate build step — vanilla HTML/CSS/JS only.
+
 ## Manual upload test (image)
 
 ```bash

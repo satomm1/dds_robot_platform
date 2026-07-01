@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Capture replay</title>
+  <link rel="stylesheet" href="replay.css" />
+</head>
+<body>
+  <header class="toolbar">
+    <h1>Capture replay</h1>
+    <label>
+      From
+      <input type="datetime-local" id="from-input" />
+    </label>
+    <label>
+      To
+      <input type="datetime-local" id="to-input" />
+    </label>
+    <label>
+      API key
+      <input type="password" id="api-key-input" placeholder="optional" autocomplete="off" />
+    </label>
+    <label class="map-file-label">
+      Map JSON
+      <input type="file" id="map-file-input" accept=".json,application/json" />
+    </label>
+    <button type="button" id="load-btn">Load</button>
+    <span id="status-msg" class="status-msg"></span>
+  </header>
+
+  <main class="main-grid">
+    <section class="map-section">
+      <canvas id="map-canvas"></canvas>
+      <div class="map-zoom-controls" aria-label="Map zoom">
+        <button type="button" id="zoom-in-btn" title="Zoom in">+</button>
+        <button type="button" id="zoom-out-btn" title="Zoom out">−</button>
+        <button type="button" id="zoom-reset-btn" title="Reset zoom and pan">Fit</button>
+        <span id="zoom-level-label" class="zoom-level-label">100%</span>
+      </div>
+      <p id="map-hint" class="hint">Load a window, or pick a map JSON file (user_map.json) for the floor plan. Scroll to zoom; drag to pan.</p>
+    </section>
+
+    <aside class="evidence-panel" id="evidence-panel">
+      <h2>Camera</h2>
+      <label class="camera-robot-label">
+        Robot
+        <select id="camera-robot-select"><option value="">—</option></select>
+      </label>
+      <p id="evidence-placeholder" class="hint">Scrub near a capture event (◇) to see images.</p>
+      <div id="evidence-content" class="evidence-content hidden">
+        <div class="evidence-meta" id="evidence-meta"></div>
+        <div class="tab-bar">
+          <button type="button" class="tab active" data-tab="rgb">RGB</button>
+          <button type="button" class="tab" data-tab="ir">IR</button>
+        </div>
+        <div class="image-stack">
+          <img id="evidence-img" alt="capture frame" />
+          <canvas id="bbox-canvas"></canvas>
+        </div>
+        <p class="hint depth-note">Depth PNG (16-bit mm) is not previewed in v1.</p>
+        <ul id="detection-list" class="detection-list"></ul>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="timeline-bar">
+    <button type="button" id="prev-event-btn" title="Previous capture">◀</button>
+    <div class="timeline-track-wrap">
+      <div id="event-markers" class="event-markers"></div>
+      <input type="range" id="scrubber" min="0" max="1000" value="0" disabled />
+    </div>
+    <button type="button" id="next-event-btn" title="Next capture">▶</button>
+    <span id="scrub-time-label" class="scrub-label">—</span>
+    <button type="button" id="play-btn" disabled>Play 1×</button>
+    <button type="button" id="play-fast-btn" disabled>10×</button>
+    <button type="button" id="pause-btn" disabled>Pause</button>
+  </footer>
+
+  <script src="replay.js"></script>
+</body>
+</html>

@@ -17,6 +17,7 @@ from uuid import UUID
 import asyncpg
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 # ---------------------------------------------------------------------------
 # Settings
@@ -1248,3 +1249,7 @@ async def serve_file(storage_path: str):
         raise HTTPException(status_code=404, detail="file not found")
 
     return FileResponse(full, media_type=media_type_for_path(full))
+
+
+REPLAY_DIR = Path(__file__).resolve().parent / "replay"
+app.mount("/replay", StaticFiles(directory=REPLAY_DIR, html=True), name="replay")
