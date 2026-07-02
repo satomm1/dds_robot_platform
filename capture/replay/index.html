@@ -53,9 +53,11 @@
         <div class="tab-bar">
           <button type="button" class="tab active" data-tab="rgb">RGB</button>
           <button type="button" class="tab" data-tab="ir">IR</button>
+          <button type="button" class="tab" data-tab="depth">Depth</button>
         </div>
         <div class="image-stack">
           <img id="evidence-img" alt="capture frame" />
+          <canvas id="depth-canvas" class="depth-preview hidden" aria-label="depth preview"></canvas>
           <canvas id="bbox-canvas"></canvas>
         </div>
         <ul id="detection-list" class="detection-list"></ul>

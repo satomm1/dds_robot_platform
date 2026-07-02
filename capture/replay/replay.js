@@ -42,6 +42,7 @@
   const evidenceContent = document.getElementById("evidence-content");
   const evidenceMeta = document.getElementById("evidence-meta");
   const evidenceImg = document.getElementById("evidence-img");
+  const depthCanvas = document.getElementById("depth-canvas");
   const bboxCanvas = document.getElementById("bbox-canvas");
   const detectionList = document.getElementById("detection-list");
   const scrubber = document.getElementById("scrubber");
@@ -61,6 +62,7 @@
   const mapSection = document.querySelector(".map-section");
 
   const mapCtx = mapCanvas.getContext("2d");
+  const depthCtx = depthCanvas.getContext("2d");
   const bboxCtx = bboxCanvas.getContext("2d");
 
   // --- State ---
@@ -118,6 +120,265 @@
     const r = await fetch("/api/v1/files/" + storagePath, { headers: apiHeaders() });
     if (!r.ok) throw new Error("Failed to load image");
     return r.blob();
+  }
+
+  async function loadAuthImageBuffer(storagePath) {
+    const r = await fetch("/api/v1/files/" + storagePath, { headers: apiHeaders() });
+    if (!r.ok) throw new Error("Failed to load image");
+    return r.arrayBuffer();
+  }
+
+  function readU32BE(view, offset) {
+    return (
+      (view[offset] << 24) |
+      (view[offset + 1] << 16) |
+      (view[offset + 2] << 8) |
+      view[offset + 3]
+    );
+  }
+
+  function paethPredictor(a, b, c) {
+    const p = a + b - c;
+    const pa = Math.abs(p - a);
+    const pb = Math.abs(p - b);
+    const pc = Math.abs(p - c);
+    if (pa <= pb && pa <= pc) return a;
+    if (pb <= pc) return b;
+    return c;
+  }
+
+  function unfilterPngRows(data, width, height, bpp) {
+    const rowBytes = width * bpp;
+    const out = new Uint8Array(height * rowBytes);
+    let src = 0;
+    for (let y = 0; y < height; y++) {
+      const filter = data[src++];
+      const row = data.subarray(src, src + rowBytes);
+      src += rowBytes;
+      const prev = y > 0 ? out.subarray((y - 1) * rowBytes, y * rowBytes) : null;
+      const dst = out.subarray(y * rowBytes, (y + 1) * rowBytes);
+      for (let i = 0; i < rowBytes; i++) {
+        const left = i >= bpp ? dst[i - bpp] : 0;
+        const up = prev ? prev[i] : 0;
+        const upLeft = prev && i >= bpp ? prev[i - bpp] : 0;
+        let value;
+        switch (filter) {
+          case 0:
+            value = row[i];
+            break;
+          case 1:
+            value = (row[i] + left) & 0xff;
+            break;
+          case 2:
+            value = (row[i] + up) & 0xff;
+            break;
+          case 3:
+            value = (row[i] + Math.floor((left + up) / 2)) & 0xff;
+            break;
+          case 4:
+            value = (row[i] + paethPredictor(left, up, upLeft)) & 0xff;
+            break;
+          default:
+            throw new Error("unsupported PNG filter " + filter);
+        }
+        dst[i] = value;
+      }
+    }
+    return out;
+  }
+
+  async function inflatePngIdat(idatBytes) {
+    if (typeof DecompressionStream === "undefined") {
+      throw new Error("Depth preview requires DecompressionStream (modern browser)");
+    }
+    const attempts = [
+      {
+        bytes: idatBytes,
+        format: "deflate",
+      },
+      {
+        bytes: idatBytes.subarray(2, idatBytes.length - 4),
+        format: "deflate-raw",
+      },
+    ];
+    let lastErr = null;
+    for (const attempt of attempts) {
+      try {
+        const stream = new Blob([attempt.bytes])
+          .stream()
+          .pipeThrough(new DecompressionStream(attempt.format));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr || new Error("failed to inflate depth PNG");
+  }
+
+  async function decodeGrayscalePng(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+    for (let i = 0; i < sig.length; i++) {
+      if (bytes[i] !== sig[i]) throw new Error("not a PNG file");
+    }
+
+    let width = 0;
+    let height = 0;
+    let bitDepth = 0;
+    let colorType = -1;
+    const idatParts = [];
+    let offset = 8;
+    while (offset + 8 <= bytes.length) {
+      const length = readU32BE(bytes, offset);
+      const type = String.fromCharCode(
+        bytes[offset + 4],
+        bytes[offset + 5],
+        bytes[offset + 6],
+        bytes[offset + 7]
+      );
+      const dataStart = offset + 8;
+      const dataEnd = dataStart + length;
+      const chunk = bytes.subarray(dataStart, dataEnd);
+      if (type === "IHDR") {
+        width = readU32BE(chunk, 0);
+        height = readU32BE(chunk, 4);
+        bitDepth = chunk[8];
+        colorType = chunk[9];
+      } else if (type === "IDAT") {
+        idatParts.push(chunk);
+      } else if (type === "IEND") {
+        break;
+      }
+      offset = dataEnd + 4;
+    }
+
+    if (!width || !height) throw new Error("PNG missing IHDR");
+    if (colorType !== 0) throw new Error("depth PNG must be grayscale");
+    if (bitDepth !== 8 && bitDepth !== 16) {
+      throw new Error("depth PNG must be 8- or 16-bit grayscale");
+    }
+
+    const zlib = new Uint8Array(idatParts.reduce((n, part) => n + part.length, 0));
+    let pos = 0;
+    for (const part of idatParts) {
+      zlib.set(part, pos);
+      pos += part.length;
+    }
+    const inflated = await inflatePngIdat(zlib);
+    const bpp = bitDepth === 16 ? 2 : 1;
+    const expectedInflated = height * (1 + width * bpp);
+    if (inflated.length !== expectedInflated) {
+      throw new Error(
+        "depth PNG inflate size mismatch (" + inflated.length + " vs " + expectedInflated + ")"
+      );
+    }
+    const filtered = unfilterPngRows(inflated, width, height, bpp);
+    const mm = new Uint16Array(width * height);
+    if (bitDepth === 16) {
+      for (let i = 0; i < mm.length; i++) {
+        mm[i] = (filtered[i * 2] << 8) | filtered[i * 2 + 1];
+      }
+    } else {
+      for (let i = 0; i < mm.length; i++) {
+        mm[i] = filtered[i];
+      }
+    }
+    return { width, height, mm };
+  }
+
+  function depthMmStats(mm) {
+    let min = Infinity;
+    let max = -Infinity;
+    let valid = 0;
+    for (const v of mm) {
+      if (!v) continue;
+      valid++;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    return { min, max, valid };
+  }
+
+  function depthMmToImageData(mm, width, height) {
+    const stats = depthMmStats(mm);
+    let min = stats.min;
+    let max = stats.max;
+    if (!Number.isFinite(min)) {
+      min = 0;
+      max = 1;
+    }
+    const span = Math.max(max - min, 1);
+    const out = new ImageData(width, height);
+    for (let i = 0; i < mm.length; i++) {
+      const v = mm[i];
+      const o = i * 4;
+      if (!v) {
+        out.data[o] = 20;
+        out.data[o + 1] = 20;
+        out.data[o + 2] = 30;
+        out.data[o + 3] = 255;
+        continue;
+      }
+      const t = (v - min) / span;
+      const hue = 220 - t * 220;
+      const rgb = hslToRgb(hue, 85, 35 + t * 40);
+      out.data[o] = rgb[0];
+      out.data[o + 1] = rgb[1];
+      out.data[o + 2] = rgb[2];
+      out.data[o + 3] = 255;
+    }
+    return out;
+  }
+
+  function hslToRgb(h, s, l) {
+    s /= 100;
+    l /= 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    if (h < 60) [r, g, b] = [c, x, 0];
+    else if (h < 120) [r, g, b] = [x, c, 0];
+    else if (h < 180) [r, g, b] = [0, c, x];
+    else if (h < 240) [r, g, b] = [0, x, c];
+    else if (h < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    return [
+      Math.round((r + m) * 255),
+      Math.round((g + m) * 255),
+      Math.round((b + m) * 255),
+    ];
+  }
+
+  async function renderDepthPreview(storagePath) {
+    const buffer = await loadAuthImageBuffer(storagePath);
+    const { width, height, mm } = await decodeGrayscalePng(buffer);
+    const stats = depthMmStats(mm);
+    depthCanvas.width = width;
+    depthCanvas.height = height;
+    depthCanvas.style.aspectRatio = width + " / " + height;
+    depthCtx.putImageData(depthMmToImageData(mm, width, height), 0, 0);
+    return { width, height, stats };
+  }
+
+  function frameForTab(ev, tab) {
+    if (tab === "ir") return ev.ir;
+    if (tab === "depth") return ev.depth;
+    return ev.rgb;
+  }
+
+  function hasFrameForTab(ev, tab) {
+    const frame = frameForTab(ev, tab);
+    return !!frame?.storage_path;
+  }
+
+  function setEvidenceViewMode(mode) {
+    const isDepth = mode === "depth";
+    evidenceImg.classList.toggle("hidden", isDepth);
+    depthCanvas.classList.toggle("hidden", !isDepth);
+    bboxCanvas.classList.toggle("hidden", isDepth);
   }
 
   function setStatus(msg, isError) {
@@ -852,15 +1113,40 @@
   }
 
   async function showFrameForTab(ev) {
-    const frame = activeTab === "ir" ? ev.ir : ev.rgb;
+    const frame = frameForTab(ev, activeTab);
     if (!frame?.storage_path) {
       evidenceImg.removeAttribute("src");
+      depthCtx.clearRect(0, 0, depthCanvas.width, depthCanvas.height);
+      setEvidenceViewMode(activeTab);
       return;
     }
+
+    if (activeTab === "depth") {
+      revokeImageUrl();
+      evidenceImg.removeAttribute("src");
+      bboxCtx.clearRect(0, 0, bboxCanvas.width, bboxCanvas.height);
+      setEvidenceViewMode("depth");
+      const depthInfo = await renderDepthPreview(frame.storage_path);
+      if (depthInfo.stats.valid) {
+        evidenceMeta.textContent +=
+          " · depth " +
+          depthInfo.width +
+          "×" +
+          depthInfo.height +
+          " · " +
+          Math.round(depthInfo.stats.min) +
+          "–" +
+          Math.round(depthInfo.stats.max) +
+          " mm";
+      }
+      return;
+    }
+
+    setEvidenceViewMode(activeTab);
     revokeImageUrl();
     const blob = await loadAuthImageBlob(frame.storage_path);
     imageObjectUrl = URL.createObjectURL(blob);
-    evidenceImg.onload = () => drawBboxes(frame);
+    evidenceImg.onload = () => drawBboxes(ev.rgb || frame);
     evidenceImg.src = imageObjectUrl;
   }
 
@@ -900,13 +1186,18 @@
 
     document.querySelectorAll(".tab-bar .tab").forEach((btn) => {
       const tab = btn.dataset.tab;
-      const hasFrame = tab === "rgb" ? ev.rgb : ev.ir;
-      btn.disabled = !hasFrame;
+      btn.disabled = !hasFrameForTab(ev, tab);
       btn.classList.toggle("active", tab === activeTab);
     });
 
-    if (activeTab === "ir" && !ev.ir) activeTab = "rgb";
-    if (activeTab === "rgb" && !ev.rgb && ev.ir) activeTab = "ir";
+    if (!hasFrameForTab(ev, activeTab)) {
+      for (const tab of ["rgb", "ir", "depth"]) {
+        if (hasFrameForTab(ev, tab)) {
+          activeTab = tab;
+          break;
+        }
+      }
+    }
 
     try {
       await showFrameForTab(ev);

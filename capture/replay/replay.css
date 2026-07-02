@@ -223,6 +223,13 @@ body {
   background: #0f172a;
 }
 
+.depth-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #0f172a;
+}
+
 #bbox-canvas {
   position: absolute;
   left: 0;
