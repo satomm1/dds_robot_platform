@@ -908,7 +908,8 @@
         mapCtx.lineWidth = 2;
         mapCtx.beginPath();
         mapCtx.moveTo(rx, ry);
-        mapCtx.lineTo(rx + len * Math.cos(pose.theta), ry - len * Math.sin(pose.theta));
+        // Match live GUI RobotMap heading (map Y inverted vs robot frame).
+        mapCtx.lineTo(rx - len * Math.cos(pose.theta), ry + len * Math.sin(pose.theta));
         mapCtx.stroke();
       }
       drawRobotMapLabel(rx, ry, robotId, colors);
