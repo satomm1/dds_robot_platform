@@ -95,6 +95,9 @@ PATH_MUTATION =  """
                     }
                 """
 
+# Fixed Ignite object_num per robot for live person_detected map markers (overwrite).
+PERSON_MAP_OBJECT_NUM = -1
+
 OBJECT_MUTATION =   """
                         mutation($agent_id: Int!, $x: Float!, $y: Float!, $class_name: String!, $object_num: Int!, $timestamp: Float) {
                             setObjects(agent_id: $agent_id, x: $x, y: $y, class_name: $class_name, object_num: $object_num, timestamp: $timestamp)
@@ -224,7 +227,22 @@ class DataListener(Listener):
                 x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
                 det_ts = _detection_timestamp(data, timestamp)
 
-                # Write to InfluxDB if the write API is available
+                requests.post(
+                    self.graphql_server,
+                    json={
+                        "query": OBJECT_MUTATION,
+                        "variables": {
+                            "agent_id": self.topic_id,
+                            "x": x,
+                            "y": y,
+                            "class_name": "person",
+                            "object_num": PERSON_MAP_OBJECT_NUM,
+                            "timestamp": det_ts,
+                        },
+                    },
+                    timeout=1,
+                )
+
                 if self.influx_write_api is not None:
                     point = Point("person_detected") \
                     .tag("robot_id", str(self.topic_id)) \

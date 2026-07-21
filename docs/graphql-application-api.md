@@ -308,7 +308,7 @@ query {
 | `robot_id`  | Int    | Robot / agent that reported the detection                             |
 | `x`, `y`    | Float  | Object position (meters, map frame)                                   |
 | `type`      | String | Class / label (e.g. detector class name)                              |
-| `timestamp` | Float  | Detection time (Unix seconds, fractional OK); may be `null` for older entries. Entries with a timestamp older than **15 seconds** are removed from the store when positions are queried (`OBJECT_STALE_SEC`). |
+| `timestamp` | Float  | Detection time (Unix seconds, fractional OK); may be `null` for older entries. Entries with a timestamp older than **15 seconds** are removed when queried (`OBJECT_STALE_SEC`), except `type: "person"` which expires after **1.5 seconds** (`PERSON_OBJECT_STALE_SEC`). |
 
 
 ---

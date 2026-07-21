@@ -23,6 +23,7 @@ MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 AIR_QUALITY_CACHE = "robot_air_quality"
 # Drop detections older than this (Unix seconds); entries without timestamp are kept.
 OBJECT_STALE_SEC = float(os.environ.get("OBJECT_STALE_SEC", "15"))
+PERSON_OBJECT_STALE_SEC = float(os.environ.get("PERSON_OBJECT_STALE_SEC", "1.5"))
 
 
 def _central_pose_to_global(x, y, theta):
@@ -566,7 +567,12 @@ def _object_positions_from_cache():
             ts = object.get("timestamp")
             if ts is not None:
                 try:
-                    if now - float(ts) > OBJECT_STALE_SEC:
+                    stale_limit = (
+                        PERSON_OBJECT_STALE_SEC
+                        if object.get("class_name") == "person"
+                        else OBJECT_STALE_SEC
+                    )
+                    if now - float(ts) > stale_limit:
                         continue
                 except (TypeError, ValueError):
                     pass
