@@ -84,46 +84,30 @@ def _as_R_t(
     return R_arr, t_arr
 
 
-def _global_heading_to_map_dir(theta: float) -> np.ndarray:
-    """Global conventional yaw → direction in Y-down map coordinates.
+def _heading_to_map_dir(theta: float) -> np.ndarray:
+    """Yaw → direction in a Y-down map frame (0=+X, +π/2=+Y).
 
-    Global: 0 = right (+X), CCW, +90° = up (−Y). So map direction is
-    [cos θ, -sin θ], not [cos θ, sin θ].
-    """
-    return np.array([float(np.cos(theta)), float(-np.sin(theta))], dtype=float)
-
-
-def _map_dir_to_global_heading(v: np.ndarray) -> float:
-    """Y-down map direction → global conventional yaw."""
-    return float(np.arctan2(-v[1], v[0]))
-
-
-def _central_heading_to_map_dir(theta: float) -> np.ndarray:
-    """Central yaw → direction in Y-down map coordinates.
-
-    Central: 0 = left (+X), CCW, +90° = down (+Y). Axis-aligned: [cos θ, sin θ].
+    Used for both frames:
+    - Central: 0=left (+X), +π/2=down (+Y)
+    - Global:  0=East (+X), +π/2=South (+Y), −π/2=North (−Y)
     """
     return np.array([float(np.cos(theta)), float(np.sin(theta))], dtype=float)
 
 
-def _map_dir_to_central_heading(v: np.ndarray) -> float:
-    """Y-down map direction → central yaw."""
+def _map_dir_to_heading(v: np.ndarray) -> float:
+    """Y-down map direction → yaw (0=+X, +π/2=+Y)."""
     return float(np.arctan2(v[1], v[0]))
 
 
 def _transform_heading(R_arr: np.ndarray, theta: float, forward: bool) -> float:
-    """Convert yaw between global (conventional) and central (axis-aligned) frames.
+    """Convert yaw between global and central map frames via R.
 
-    forward=True:  global θ → central θ  (apply R to global map-direction)
-    forward=False: central θ → global θ  (apply R.T, then decode conventional yaw)
+    Both frames use the same axis-aligned convention (0 along +X, CCW toward +Y).
+    Only the axes differ (global +X east/right vs central +X left), which R captures.
     """
-    if forward:
-        v_g = _global_heading_to_map_dir(theta)
-        v_c = R_arr @ v_g
-        return _map_dir_to_central_heading(v_c)
-    v_c = _central_heading_to_map_dir(theta)
-    v_g = R_arr.T @ v_c
-    return _map_dir_to_global_heading(v_g)
+    v_in = _heading_to_map_dir(theta)
+    v_out = R_arr @ v_in if forward else R_arr.T @ v_in
+    return _map_dir_to_heading(v_out)
 
 
 def transform_pose(
@@ -140,9 +124,9 @@ def transform_pose(
     forward=True:  p' = s * R @ p + t  (global → central)
     forward=False: p = (1/s) * R^T @ (p' - t)  (central → global)
 
-    Heading conventions differ:
-    - Central: 0 = +X (left), CCW, +90° = +Y (down)
-    - Global:  0 = +X (right), CCW, +90° = up (−Y)  [conventional]
+    Heading (both frames, radians): 0 along +X, CCW toward +Y
+    - Global:  0=East, +π/2=South, ±π=West, −π/2=North
+    - Central: 0=left (+X), +π/2=down (+Y)
     """
     scale = float(s)
     if scale <= 0:

@@ -435,14 +435,14 @@ query {
 
 Field meanings match the central `robotPositions` API, but `x` / `y` / `theta` are in the **global map**.
 
-**Heading conventions** (server converts automatically):
+**Heading conventions** (server converts automatically; radians):
 
-| Frame | `theta = 0` | Positive sense | `+π/2` |
-| ----- | ----------- | -------------- | ------ |
-| Global (`globalRobot*`) | right (+X) | counterclockwise | up |
-| Central (GUI / `robotPositions`) | left (+X) | counterclockwise | down |
+| Frame | `theta = 0` | `+π/2` | `±π` | `−π/2` |
+| ----- | ----------- | ------ | ---- | ------ |
+| Global (`globalRobot*`) | East (+X) | South (+Y) | West (−X) | North (−Y) |
+| Central (GUI / `robotPositions`) | left (+X) | down (+Y) | right (−X) | up (−Y) |
 
-Use **radians** in both APIs.
+Both increase counterclockwise in their own map axes; the X-mirror between maps is handled by `R`.
 
 ### Query goals (global frame)
 
