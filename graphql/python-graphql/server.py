@@ -1,6 +1,13 @@
+import logging
 import os
 
 from ignite import connect_ignite, is_ignite_connected
+
+logging.basicConfig(
+    level=os.environ.get("GRAPHQL_LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 connect_ignite()
 
@@ -13,9 +20,18 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
+from global_transform import init_global_transform_from_file
 from queries import query
 from mutations import mutation
 from subscriptions import subscription
+
+# Precompute global↔central SE(2) from common-points file into Ignite.
+if init_global_transform_from_file():
+    logger.info("global_transform initialized from common points file")
+else:
+    logger.warning(
+        "global_transform not initialized; globalRobot* / setGlobalRobotGoal unavailable"
+    )
 
 # Load schema from schema.graphql file
 type_defs = gql(load_schema_from_path("schema.graphql"))

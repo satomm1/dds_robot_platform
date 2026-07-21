@@ -3,7 +3,9 @@ import json
 import logging
 import numpy as np
 
+from global_transform import get_global_transform_doc, require_global_transform
 from ignite import ignite_client
+from se2 import transform_pose
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,22 @@ SHUTDOWN_REQUEST_CACHE = "robot_shutdown_request"
 MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
 MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 AIR_QUALITY_CACHE = "robot_air_quality"
+
+
+def _central_pose_to_global(x, y, theta):
+    """Convert central-frame pose to global frame. Raises if transform missing."""
+    if x is None or y is None or theta is None:
+        return None, None, None
+    doc = require_global_transform()
+    return transform_pose(
+        doc["R"],
+        doc["t"],
+        float(x),
+        float(y),
+        float(theta),
+        forward=False,
+        s=float(doc.get("s", 1.0)),
+    )
 
 
 def _air_quality_from_cache_row(robot_id, raw):
@@ -206,6 +224,125 @@ def resolve_data(*_):
     return all_goals
 
 
+@query.field("globalRobotPosition")
+def resolve_global_robot_position(*_, robot_id: int):
+    # Ensure transform exists before reading (clear error if misconfigured)
+    require_global_transform()
+    position_cache = ignite_client.get_or_create_cache('robot_position')
+    robot = position_cache.get(robot_id)
+    pos = _robot_position_from_cache(robot_id, robot)
+    gx, gy, gtheta = _central_pose_to_global(pos["x"], pos["y"], pos["theta"])
+    return {
+        "x": gx,
+        "y": gy,
+        "theta": gtheta,
+        "position_timestamp": pos["position_timestamp"],
+    }
+
+
+@query.field("globalRobotPositions")
+def resolve_global_robot_positions(*_):
+    require_global_transform()
+    position_cache = ignite_client.get_or_create_cache('robot_position')
+    robots = position_cache.scan()
+    all_robots = []
+    for robot in robots:
+        robot_id = robot[0]
+        pos = _robot_position_from_cache(robot_id, robot[1])
+        gx, gy, gtheta = _central_pose_to_global(pos["x"], pos["y"], pos["theta"])
+        all_robots.append({
+            "id": robot_id,
+            "x": gx,
+            "y": gy,
+            "theta": gtheta,
+            "position_timestamp": pos["position_timestamp"],
+        })
+    return all_robots
+
+
+def _robot_goal_from_cache(raw):
+    if raw is None:
+        return {
+            "x_goal": None,
+            "y_goal": None,
+            "theta_goal": None,
+            "goal_timestamp": None,
+            "goal_from_bot": 0,
+            "goal_valid": True,
+        }
+    robot = json.loads(raw)
+    from_bot = 0
+    if "from_bot" in robot and robot["from_bot"]:
+        from_bot = 1
+    return {
+        "x_goal": robot["x"],
+        "y_goal": robot["y"],
+        "theta_goal": robot["theta"],
+        "goal_timestamp": robot["timestamp"],
+        "goal_from_bot": from_bot,
+        "goal_valid": robot.get("valid", True),
+    }
+
+
+@query.field("globalRobotGoal")
+def resolve_global_robot_goal(*_, robot_id: int):
+    require_global_transform()
+    goal_cache = ignite_client.get_or_create_cache('robot_goal')
+    goal = _robot_goal_from_cache(goal_cache.get(robot_id))
+    gx, gy, gtheta = _central_pose_to_global(
+        goal["x_goal"], goal["y_goal"], goal["theta_goal"]
+    )
+    return {
+        "x_goal": gx,
+        "y_goal": gy,
+        "theta_goal": gtheta,
+        "goal_timestamp": goal["goal_timestamp"],
+        "goal_from_bot": goal["goal_from_bot"],
+        "goal_valid": goal["goal_valid"],
+    }
+
+
+@query.field("globalRobotGoals")
+def resolve_global_robot_goals(*_):
+    require_global_transform()
+    goal_cache = ignite_client.get_or_create_cache('robot_goal')
+    goals = goal_cache.scan()
+    all_goals = []
+    for entry in goals:
+        robot_id = entry[0]
+        goal = _robot_goal_from_cache(entry[1])
+        gx, gy, gtheta = _central_pose_to_global(
+            goal["x_goal"], goal["y_goal"], goal["theta_goal"]
+        )
+        all_goals.append({
+            "id": robot_id,
+            "x_goal": gx,
+            "y_goal": gy,
+            "theta_goal": gtheta,
+            "goal_timestamp": goal["goal_timestamp"],
+            "goal_valid": goal["goal_valid"],
+        })
+    return all_goals
+
+
+@query.field("globalTransform")
+def resolve_global_transform(*_):
+    doc = get_global_transform_doc()
+    if doc is None:
+        return {
+            "R": [0],
+            "t": [0],
+            "s": 1.0,
+            "timestamp": 0,
+        }
+    return {
+        "R": doc["R"],
+        "t": doc["t"],
+        "s": float(doc.get("s", 1.0)),
+        "timestamp": doc.get("timestamp", 0),
+    }
+
+
 @query.field("activeMultiRobotGoalPlan")
 def resolve_active_multi_robot_goal_plan(*_):
     plan_cache = ignite_client.get_or_create_cache(MULTI_ROBOT_GOAL_PLAN_CACHE)
@@ -218,6 +355,7 @@ def resolve_active_multi_robot_goal_plan(*_):
         logger.warning("activeMultiRobotGoalPlan invalid JSON: %s", exc)
         return None
     goals_out = []
+
     for e in doc.get("goals") or []:
         goals_out.append(
             {
@@ -403,8 +541,7 @@ def resolve_data(*_):
             })
     return all_robots
 
-@query.field("objectPositions")
-def resolve_data(*_):
+def _object_positions_from_cache():
     position_cache = ignite_client.get_or_create_cache('detected_objects')
     objects = position_cache.scan()
     all_objects = []
@@ -429,6 +566,27 @@ def resolve_data(*_):
             id += 1
     return all_objects
 
+
+@query.field("objectPositions")
+def resolve_data(*_):
+    return _object_positions_from_cache()
+
+
+@query.field("globalObjectPositions")
+def resolve_global_object_positions(*_):
+    require_global_transform()
+    all_objects = []
+    for obj in _object_positions_from_cache():
+        gx, gy, _gtheta = _central_pose_to_global(obj["x"], obj["y"], 0.0)
+        all_objects.append({
+            "id": obj["id"],
+            "x": gx,
+            "y": gy,
+            "type": obj["type"],
+        })
+    return all_objects
+
+
 @query.field("transform")
 def resolve_data(*_):
     transform_cache = ignite_client.get_or_create_cache('transform')
@@ -437,6 +595,7 @@ def resolve_data(*_):
         return {
             "R": [0],
             "t": [0],
+            "s": 1.0,
             "timestamp": 0
         }
     
@@ -444,6 +603,7 @@ def resolve_data(*_):
     return {
         "R": transform["R"],
         "t": transform["t"],
+        "s": 1.0,
         "timestamp": transform["timestamp"]
     }
 

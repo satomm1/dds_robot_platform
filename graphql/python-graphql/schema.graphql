@@ -67,6 +67,7 @@ type Objects {
 type Transform {
     R: [Float]
     t: [Float]
+    s: Float
     timestamp: Int
 }
 
@@ -122,6 +123,11 @@ type Query {
     robotInitialPositions: [Robot]
     robotGoal(robot_id: Int): Robot
     robotGoals: [Robot]
+    globalRobotPosition(robot_id: Int): Robot
+    globalRobotPositions: [Robot]
+    globalRobotGoal(robot_id: Int): Robot
+    globalRobotGoals: [Robot]
+    globalTransform: Transform
     activeMultiRobotGoalPlan: MultiRobotGoalPlan
     pendingRobotStops: [PendingRobotStop]
     pendingRobotShutdowns: [PendingRobotShutdown]
@@ -134,6 +140,7 @@ type Query {
     robotStatus(robot_id: Int): Robot
     stoppedRobotPositions: [Robot]
     objectPositions: [Objects]
+    globalObjectPositions: [Objects]
     transform: Transform
     subscribed_agents: Agents
     exitedAgents: Agents
@@ -149,6 +156,7 @@ type Mutation {
     consumeRobotStopRequest(robot_id: Int!): Boolean
     consumeRobotShutdownRequest(robot_id: Int!): Boolean
     setRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float, from_bot: Boolean, goal_valid: Boolean): Boolean
+    setGlobalRobotGoal(robot_id: Int, x_goal: Float, y_goal: Float, theta_goal: Float, goal_timestamp: Float, goal_valid: Boolean): Boolean
     setMultiRobotGoalPlan(plan_id: String!, coordinated: Boolean!, plan_timestamp: Float!, goals: [MultiRobotGoalInput!]!): Boolean
     consumeMultiRobotGoalPlan: Boolean
     setRobotPosition(robot_id: Int, x: Float, y: Float, theta: Float, position_timestamp: Float): Boolean

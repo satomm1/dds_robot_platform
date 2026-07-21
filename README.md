@@ -91,6 +91,10 @@ docker push ghcr.io/satomm1/matt_python:latest
 
 Users on the pinned tag run `docker compose pull` before `docker compose up -d` to get the update.
 
+## Application GraphQL API
+
+For external application code that needs robot positions, goals, map, object positions, set goals, or (planned) latest camera images over HTTP, see [`docs/graphql-application-api.md`](docs/graphql-application-api.md).
+
 ## GUI
 
 The GUI can be used either as a **pre-built desktop app** (no Node.js) or from **source** (for development).

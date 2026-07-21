@@ -5,7 +5,9 @@ import time
 import numpy as np
 import base64
 
+from global_transform import require_global_transform
 from ignite import ignite_client
+from se2 import transform_pose
 
 mutation = MutationType()
 logger = logging.getLogger(__name__)
@@ -172,7 +174,47 @@ def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_t
     except Exception as exc:
         logger.exception("setRobotGoal failed for robot_id=%s: %s", robot_id, exc)
         return False
-    
+
+
+@mutation.field("setGlobalRobotGoal")
+def resolve_set_global_robot_goal(
+    _,
+    info,
+    robot_id,
+    x_goal,
+    y_goal,
+    theta_goal,
+    goal_timestamp,
+    goal_valid=True,
+):
+    """Accept a goal in the global map frame; store it in central Ignite coordinates."""
+    try:
+        doc = require_global_transform()
+        cx, cy, ctheta = transform_pose(
+            doc["R"],
+            doc["t"],
+            float(x_goal),
+            float(y_goal),
+            float(theta_goal),
+            forward=True,
+            s=float(doc.get("s", 1.0)),
+        )
+    except Exception as exc:
+        logger.exception("setGlobalRobotGoal transform failed for robot_id=%s: %s", robot_id, exc)
+        raise
+
+    return resolve_set_robot_goal(
+        _,
+        info,
+        robot_id,
+        cx,
+        cy,
+        ctheta,
+        goal_timestamp,
+        from_bot=False,
+        goal_valid=goal_valid,
+    )
+
 @mutation.field("setRobotPosition")
 def resolve_set_robot_position(_, info, robot_id, x, y, theta, position_timestamp=None):
     position_cache = ignite_client.get_or_create_cache('robot_position')
@@ -188,8 +230,7 @@ def resolve_set_robot_position(_, info, robot_id, x, y, theta, position_timestam
         return True
     except Exception as exc:
         logger.exception("setRobotPosition failed for robot_id=%s: %s", robot_id, exc)
-        return False
-    
+        return False    
 @mutation.field("setRobotInitialPosition")
 def resolve_set_robot_initial_position(_, info, robot_id, x_init, y_init, theta_init, init_timestamp):
     position_cache = ignite_client.get_or_create_cache('robot_initial_position')
