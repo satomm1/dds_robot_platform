@@ -5,6 +5,7 @@ import numpy as np
 
 from global_transform import get_global_transform_doc, require_global_transform
 from ignite import ignite_client
+from robot_images import has_image, image_url, read_meta
 from se2 import transform_pose
 
 logger = logging.getLogger(__name__)
@@ -672,3 +673,17 @@ def resolve_air_qualities(*_):
         if entry is not None:
             result.append(entry)
     return result
+
+
+@query.field("robotImageMeta")
+def resolve_robot_image_meta(*_, robot_id: int):
+    if not has_image(robot_id):
+        return None
+    meta = read_meta(robot_id) or {}
+    return {
+        "robot_id": int(robot_id),
+        "timestamp": meta.get("timestamp"),
+        "width": meta.get("width"),
+        "height": meta.get("height"),
+        "url": image_url(robot_id),
+    }

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Robot latest images</title>
+  <style>
+    :root {
+      color-scheme: dark light;
+      font-family: system-ui, sans-serif;
+    }
+    body {
+      margin: 1rem;
+      background: #111;
+      color: #eee;
+    }
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0 0 0.75rem;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      align-items: end;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    input {
+      padding: 0.35rem 0.5rem;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background: #1a1a1a;
+      color: inherit;
+      min-width: 12rem;
+    }
+    input[type="number"] {
+      min-width: 4.5rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+    .cell {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      overflow: hidden;
+      min-height: 12rem;
+    }
+    .cell header {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.85rem;
+      background: #222;
+      border-bottom: 1px solid #333;
+    }
+    .cell header .status {
+      opacity: 0.75;
+      font-variant-numeric: tabular-nums;
+    }
+    .cell img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 45vh;
+      object-fit: contain;
+      background: #000;
+      min-height: 10rem;
+    }
+    .cell.missing img {
+      opacity: 0.25;
+    }
+  </style>
+</head>
+<body>
+  <h1>Latest robot images (2×2)</h1>
+  <div class="controls">
+    <label>
+      API base
+      <input id="base" type="text" value="http://127.0.0.1:8000" />
+    </label>
+    <label>
+      Robot A
+      <input id="id0" type="number" value="1" />
+    </label>
+    <label>
+      Robot B
+      <input id="id1" type="number" value="6" />
+    </label>
+    <label>
+      Robot C
+      <input id="id2" type="number" value="4" />
+    </label>
+    <label>
+      Robot D
+      <input id="id3" type="number" value="5" />
+    </label>
+    <label>
+      Poll ms
+      <input id="interval" type="number" value="100" min="100" step="100" />
+    </label>
+  </div>
+  <div class="grid" id="grid"></div>
+
+  <script>
+    const slots = [0, 1, 2, 3].map((i) => {
+      const cell = document.createElement("div");
+      cell.className = "cell missing";
+      cell.innerHTML =
+        `<header><span class="title">Robot —</span><span class="status">waiting</span></header>` +
+        `<img alt="robot ${i}" />`;
+      document.getElementById("grid").appendChild(cell);
+      return {
+        cell,
+        title: cell.querySelector(".title"),
+        status: cell.querySelector(".status"),
+        img: cell.querySelector("img"),
+      };
+    });
+
+    function robotIds() {
+      return [0, 1, 2, 3].map((i) => Number(document.getElementById(`id${i}`).value));
+    }
+
+    function apiBase() {
+      return document.getElementById("base").value.replace(/\/+$/, "");
+    }
+
+    async function refreshSlot(slot, robotId) {
+      slot.title.textContent = `Robot ${robotId}`;
+      const url = `${apiBase()}/robots/${robotId}/image/latest?t=${Date.now()}`;
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) {
+          slot.cell.classList.add("missing");
+          slot.status.textContent = res.status === 404 ? "no frame" : `HTTP ${res.status}`;
+          return;
+        }
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const prev = slot.img.dataset.objectUrl;
+        slot.img.onload = () => {
+          if (prev) URL.revokeObjectURL(prev);
+        };
+        slot.img.src = objectUrl;
+        slot.img.dataset.objectUrl = objectUrl;
+        slot.cell.classList.remove("missing");
+        const ts = res.headers.get("X-Capture-Timestamp");
+        slot.status.textContent = ts ? `ts ${Number(ts).toFixed(1)}` : "ok";
+      } catch (err) {
+        slot.cell.classList.add("missing");
+        slot.status.textContent = "unreachable";
+      }
+    }
+
+    let timer = null;
+    function restart() {
+      if (timer) clearInterval(timer);
+      const ms = Math.max(100, Number(document.getElementById("interval").value) || 500);
+      const tick = () => {
+        const ids = robotIds();
+        slots.forEach((slot, i) => refreshSlot(slot, ids[i]));
+      };
+      tick();
+      timer = setInterval(tick, ms);
+    }
+
+    document.querySelectorAll(".controls input").forEach((el) => {
+      el.addEventListener("change", restart);
+    });
+    restart();
+  </script>
+</body>
+</html>

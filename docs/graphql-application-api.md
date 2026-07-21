@@ -1,6 +1,6 @@
 # Application data API
 
-This note is for application developers who need **live robot state**, the ability to **set goals**, and (when available) **latest camera images**.
+This note is for application developers who need **live robot state**, the ability to **set goals**, and **latest camera images**.
 
 - **Positions, goals, map, objects, goals (write):** GraphQL over HTTP (latest snapshots from Ignite). Poll for updates; there is no supported push/subscription API for these fields today.
 - **Camera images:** separate HTTP endpoints that return **JPEG bytes** (latest frame per robot). Images are **not** delivered through GraphQL.
@@ -521,11 +521,11 @@ Optional ops checks:
 
 
 
-## 6. Robot images (latest frame) — planned
+## 6. Robot images (latest frame)
 
-> **Status:** Contract for application code. The HTTP image API is **not implemented yet**; paths and headers below are the intended interface. Until it ships, these URLs will not respond.
+Live camera frames are kept as a **single latest JPEG per robot** on the central machine (overwritten when a newer frame arrives from the DDS `image_subscriber` bridge). Application code should fetch that JPEG over **HTTP** — not via GraphQL pixel arrays, Ignite, or a shared filesystem path.
 
-Live camera frames are kept as a **single latest JPEG per robot** on the central machine (overwritten when a newer frame arrives, e.g. from the DDS bridge). Application code should fetch that JPEG over **HTTP** — not via GraphQL pixel arrays, Ignite, or a shared filesystem path.
+Requires the Docker GraphQL stack and host DDS scripts (including `image_subscriber.py`) to be running.
 
 This works whether your Python runs on **Windows**, **WSL2**, or in **Docker**: you only need a reachable URL. Inside a Docker container, use `host.docker.internal` (Docker Desktop) or the host’s LAN IP instead of `localhost`.
 
@@ -538,10 +538,10 @@ Base URL (same host as GraphQL unless noted otherwise): `http://localhost:8000`
 | -------------- | ------------------------------------------------------------------------------------- |
 | Latest frame   | `GET /robots/{robot_id}/image/latest`                                                 |
 | Success body   | Raw **JPEG** bytes (`Content-Type: image/jpeg`)                                       |
-| Typical errors | `404` if that robot has no frame yet; `404`/`503` if the image service is not running |
+| Typical errors | `404` if that robot has no frame yet                                                  |
 
 
-Optional metadata (intended response headers):
+Response headers:
 
 
 | Header                | Meaning                                 |
@@ -550,6 +550,8 @@ Optional metadata (intended response headers):
 | `X-Capture-Timestamp` | Frame time (Unix seconds, float string) |
 | `X-Image-Width`       | Width in pixels (if known)              |
 | `X-Image-Height`      | Height in pixels (if known)             |
+
+`POST /robots/{robot_id}/image/latest` is **internal** (used by the DDS image bridge to upload frames). Application code should only use **GET**.
 
 
 
@@ -590,9 +592,7 @@ Poll `GET /robots/{robot_id}/image/latest` at the rate your pipeline needs (ofte
 
 For multiple robots, request each `robot_id` separately (one latest slot per robot).
 
-### Optional GraphQL metadata (planned)
-
-If exposed later, metadata-only discovery may look like:
+### GraphQL metadata
 
 ```graphql
 query {
@@ -622,7 +622,7 @@ Example response shape:
 }
 ```
 
-Pixels still come from the **HTTP JPEG** URL, not from GraphQL.
+Returns `null` if no frame is stored yet. Pixels still come from the **HTTP JPEG** URL, not from GraphQL.
 
 ---
 
@@ -679,7 +679,7 @@ gql(
     },
 )
 
-# Latest camera frame (HTTP JPEG) — available once the image API is implemented
+# Latest camera frame (HTTP JPEG)
 def fetch_latest_image(robot_id: int):
     r = requests.get(f"{IMAGE_BASE}/robots/{robot_id}/image/latest", timeout=5)
     r.raise_for_status()

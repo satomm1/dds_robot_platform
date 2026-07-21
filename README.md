@@ -93,7 +93,7 @@ Users on the pinned tag run `docker compose pull` before `docker compose up -d` 
 
 ## Application GraphQL API
 
-For external application code that needs robot positions, goals, map, object positions, set goals, or (planned) latest camera images over HTTP, see [`docs/graphql-application-api.md`](docs/graphql-application-api.md).
+For external application code that needs robot positions, goals, map, object positions, set goals, or latest camera images over HTTP, see [`docs/graphql-application-api.md`](docs/graphql-application-api.md).
 
 ## GUI
 

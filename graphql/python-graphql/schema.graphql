@@ -57,6 +57,14 @@ type Image {
     data: [Int]
 }
 
+type RobotImageMeta {
+    robot_id: Int!
+    timestamp: Float
+    width: Int
+    height: Int
+    url: String!
+}
+
 type Objects {
     id: Int
     x: Float
@@ -147,6 +155,7 @@ type Query {
     subscribedAndExitedAgents: [Agents]
     airQuality(robot_id: Int!): AirQuality
     airQualities: [AirQuality!]!
+    robotImageMeta(robot_id: Int!): RobotImageMeta
 }
 
 type Mutation {
