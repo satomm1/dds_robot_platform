@@ -1,6 +1,8 @@
 from ariadne import load_schema_from_path, make_executable_schema, gql, QueryType
 import json
 import logging
+import os
+import time
 import numpy as np
 
 from global_transform import get_global_transform_doc, require_global_transform
@@ -19,6 +21,8 @@ SHUTDOWN_REQUEST_CACHE = "robot_shutdown_request"
 MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
 MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 AIR_QUALITY_CACHE = "robot_air_quality"
+# Drop detections older than this (Unix seconds); entries without timestamp are kept.
+OBJECT_STALE_SEC = float(os.environ.get("OBJECT_STALE_SEC", "15"))
 
 
 def _central_pose_to_global(x, y, theta):
@@ -546,25 +550,47 @@ def _object_positions_from_cache():
     position_cache = ignite_client.get_or_create_cache('detected_objects')
     objects = position_cache.scan()
     all_objects = []
+    now = time.time()
 
     id = 0
-    for obj in objects:
-        obj_id = int(obj[0])
+    for row in objects:
+        robot_id = int(row[0])
         try:
-            obj = json.loads(obj[1])
+            by_num = json.loads(row[1])
         except (TypeError, json.JSONDecodeError) as exc:
-            logger.warning("objectPositions bad JSON for agent_id=%s: %s", obj_id, exc)
+            logger.warning("objectPositions bad JSON for agent_id=%s: %s", robot_id, exc)
             continue
 
-        for key in obj.keys():
-            object = obj[key]
+        kept = {}
+        for key, object in by_num.items():
+            ts = object.get("timestamp")
+            if ts is not None:
+                try:
+                    if now - float(ts) > OBJECT_STALE_SEC:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+            kept[key] = object
             all_objects.append({
                 "id": id,
+                "robot_id": robot_id,
                 "x": object["x"],
                 "y": object["y"],
-                "type": object["class_name"]
+                "type": object["class_name"],
+                "timestamp": object.get("timestamp"),
             })
             id += 1
+
+        # Persist prune so Ignite does not keep stale detections forever
+        if len(kept) != len(by_num):
+            try:
+                if kept:
+                    position_cache.put(robot_id, json.dumps(kept))
+                else:
+                    position_cache.remove(robot_id)
+            except Exception as exc:
+                logger.warning("objectPositions prune failed agent_id=%s: %s", robot_id, exc)
+
     return all_objects
 
 
@@ -581,9 +607,11 @@ def resolve_global_object_positions(*_):
         gx, gy, _gtheta = _central_pose_to_global(obj["x"], obj["y"], 0.0)
         all_objects.append({
             "id": obj["id"],
+            "robot_id": obj.get("robot_id"),
             "x": gx,
             "y": gy,
             "type": obj["type"],
+            "timestamp": obj.get("timestamp"),
         })
     return all_objects
 

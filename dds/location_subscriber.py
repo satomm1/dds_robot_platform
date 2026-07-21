@@ -155,7 +155,7 @@ class LocationListener(Listener):
                         .field("x", x) \
                         .field("y", y) \
                         .field("theta", theta) \
-                        .time(sample.timestamp, WritePrecision.S)
+                        .time(int(round(float(sample.timestamp) * 1000)), WritePrecision.MS)
                     self.influx_write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point)
 
     def get_locations(self):

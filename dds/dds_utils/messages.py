@@ -70,13 +70,13 @@ class Location(IdlStruct):
 
     Attributes:
         agent_id (int): The ID of the agent.
-        timestamp (int): The timestamp of the location message.
+        timestamp (float): Unix time in seconds (fractional OK) when the pose was captured.
         x (float): The x-coordinate of the agent.
         y (float): The y-coordinate of the agent.
         theta (float): The orientation of the agent.
     """
     agent_id: int
-    timestamp: int
+    timestamp: float
     x: float
     y: float
     theta: float
@@ -90,14 +90,14 @@ class ImageMessage(IdlStruct):
 
     Attributes:
         agent_id (int): The ID of the agent sending the image.
-        timestamp (int): The timestamp of the image message.
+        timestamp (float): Unix time in seconds (fractional OK) when the frame was captured.
         data (bytes): The image data in bytes.
         width (int): The width of the image.
         height (int): The height of the image.
         encoding (str): The encoding format of the image.
     """
     agent_id: int
-    timestamp: int
+    timestamp: float
     data: sequence[int]  # Using sequence for byte array
     width: int
     height: int

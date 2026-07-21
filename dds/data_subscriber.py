@@ -40,6 +40,15 @@ from dds_utils.message_types import MSG_AIR_QUALITY
 from dds_utils.topics import data_topic_name
 
 
+def _detection_timestamp(data, envelope_timestamp):
+    """Prefer JSON data.timestamp (fractional); fall back to DataMessage envelope."""
+    raw = data.get("timestamp", envelope_timestamp)
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return float(envelope_timestamp)
+
+
 def fetch_fresh_robot_position(graphql_server, robot_id):
     """
     Return (x, y, theta) if Ignite pose has a recent position_timestamp, else None.
@@ -87,8 +96,8 @@ PATH_MUTATION =  """
                 """
 
 OBJECT_MUTATION =   """
-                        mutation($agent_id: Int!, $x: Float!, $y: Float!, $class_name: String!, $object_num: Int!) {
-                            setObjects(agent_id: $agent_id, x: $x, y: $y, class_name: $class_name, object_num: $object_num)
+                        mutation($agent_id: Int!, $x: Float!, $y: Float!, $class_name: String!, $object_num: Int!, $timestamp: Float) {
+                            setObjects(agent_id: $agent_id, x: $x, y: $y, class_name: $class_name, object_num: $object_num, timestamp: $timestamp)
                         }
                     """
 
@@ -179,11 +188,12 @@ class DataListener(Listener):
                 class_name = data['class_name']
                 pose = data['pose']
                 x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
-                width = data['width']
+                det_ts = _detection_timestamp(data, timestamp)
 
-                self.object_dict[self.detected_object_num] = {'x': x, 'y': y, 'class_name': class_name}
+                self.object_dict[self.detected_object_num] = {
+                    'x': x, 'y': y, 'class_name': class_name, 'timestamp': det_ts,
+                }
 
-                # Write object to database
                 response =  requests.post(
                                 self.graphql_server,
                                 json={
@@ -193,7 +203,8 @@ class DataListener(Listener):
                                         'x': x,
                                         'y': y,
                                         'class_name': class_name,
-                                        'object_num': self.detected_object_num
+                                        'object_num': self.detected_object_num,
+                                        'timestamp': det_ts,
                                     }
                                 },
                                 timeout=1
@@ -202,21 +213,24 @@ class DataListener(Listener):
                 self.detected_object_num += 1
 
                 dds_log("data_sub", f"detected object: {class_name}")
+            elif message_type == "llm_detected_object":
+                # Intentionally ignored for central map / Ignite (same as before).
+                continue
             elif message_type == "person_detected":
 
                 dds_log("data_sub", "person_detected")
 
                 pose = data['pose']
                 x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
+                det_ts = _detection_timestamp(data, timestamp)
 
                 # Write to InfluxDB if the write API is available
                 if self.influx_write_api is not None:
-                    # Write the data to InfluxDB
                     point = Point("person_detected") \
                     .tag("robot_id", str(self.topic_id)) \
                     .field("x", x) \
                     .field("y", y) \
-                    .time(timestamp, WritePrecision.S)
+                    .time(int(round(det_ts * 1000)), WritePrecision.MS)
                     self.influx_write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point)
 
             elif message_type == MSG_AIR_QUALITY:

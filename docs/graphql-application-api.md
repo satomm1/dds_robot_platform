@@ -41,7 +41,7 @@ Errors appear under `"errors"` (GraphQL) in addition to or instead of `"data"`.
 - The default position/goal/map/object fields use the **central / map frame** (meters). This is what the desktop GUI uses.
 - Global-map clients should use the **`globalRobot*` / `setGlobalRobotGoal`** APIs instead (see [Global map client](#global-map-client)); those return and accept coordinates in the **global map** frame (meters). Conversion is handled by the server.
 - `theta` / `theta_goal` are angles in **radians**.
-- Timestamps are **Unix time in seconds** (floating point), e.g. `Date.now() / 1000` in JavaScript.
+- Timestamps are **Unix time in seconds** as GraphQL `Float` (fractional seconds supported), e.g. `time.time()` / `Date.now() / 1000`. Pose and image stamps come from the robot DDS message (`Location.timestamp` / `ImageMessage.timestamp`, both `float` on the wire).
 
 ---
 
@@ -111,7 +111,7 @@ Note: `robotPosition` does not return `id`; use the `robot_id` you passed in.
 | `id`                 | Int   | Robot / agent ID                        |
 | `x`, `y`             | Float | Position (meters, map frame)            |
 | `theta`              | Float | Heading (radians)                       |
-| `position_timestamp` | Float | Pose time (Unix seconds); may be `null` |
+| `position_timestamp` | Float | Pose capture time (Unix seconds, fractional OK); may be `null` |
 
 
 Missing / unknown poses may appear as `null` fields.
@@ -263,9 +263,11 @@ Detected objects currently stored in the platform.
 query {
   objectPositions {
     id
+    robot_id
     x
     y
     type
+    timestamp
   }
 }
 ```
@@ -280,15 +282,19 @@ query {
     "objectPositions": [
       {
         "id": 0,
+        "robot_id": 3,
         "x": 3.2,
         "y": 1.1,
-        "type": "person"
+        "type": "person",
+        "timestamp": 1721280000.789
       },
       {
         "id": 1,
+        "robot_id": 4,
         "x": 0.5,
         "y": -2.0,
-        "type": "chair"
+        "type": "chair",
+        "timestamp": 1721280001.2
       }
     ]
   }
@@ -296,11 +302,13 @@ query {
 ```
 
 
-| Field    | Type   | Meaning                                                               |
-| -------- | ------ | --------------------------------------------------------------------- |
-| `id`     | Int    | Index in this result list (not necessarily a stable global object ID) |
-| `x`, `y` | Float  | Object position (meters, map frame)                                   |
-| `type`   | String | Class / label (e.g. detector class name)                              |
+| Field       | Type   | Meaning                                                               |
+| ----------- | ------ | --------------------------------------------------------------------- |
+| `id`        | Int    | Index in this result list (not necessarily a stable global object ID) |
+| `robot_id`  | Int    | Robot / agent that reported the detection                             |
+| `x`, `y`    | Float  | Object position (meters, map frame)                                   |
+| `type`      | String | Class / label (e.g. detector class name)                              |
+| `timestamp` | Float  | Detection time (Unix seconds, fractional OK); may be `null` for older entries. Entries with a timestamp older than **15 seconds** are removed from the store when positions are queried (`OBJECT_STALE_SEC`). |
 
 
 ---
@@ -465,9 +473,11 @@ query {
 query {
   globalObjectPositions {
     id
+    robot_id
     x
     y
     type
+    timestamp
   }
 }
 ```
@@ -547,7 +557,7 @@ Response headers:
 | Header                | Meaning                                 |
 | --------------------- | --------------------------------------- |
 | `X-Robot-Id`          | Robot / agent ID                        |
-| `X-Capture-Timestamp` | Frame time (Unix seconds, float string) |
+| `X-Capture-Timestamp` | Frame capture time (Unix seconds, float string; fractional OK) |
 | `X-Image-Width`       | Width in pixels (if known)              |
 | `X-Image-Height`      | Height in pixels (if known)             |
 
@@ -654,7 +664,7 @@ def gql(query, variables=None):
 positions = gql("{ robotPositions { id x y theta position_timestamp } }")
 goals = gql("{ robotGoals { id x_goal y_goal theta_goal goal_timestamp goal_valid } }")
 omap = gql("{ map { width height resolution occupancy origin_x origin_y } }")
-objects = gql("{ objectPositions { id x y type } }")
+objects = gql("{ objectPositions { id robot_id x y type timestamp } }")
 
 # Write goal (GraphQL)
 gql(

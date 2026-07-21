@@ -51,10 +51,10 @@ class ImageLogThrottle:
         self.summary_interval_sec = summary_interval_sec
         self._window_count = 0
         self._window_start = time.time()
-        self._last_ts: int | None = None
+        self._last_ts: float | None = None
         self._logged_first = False
 
-    def record(self, component: str, timestamp: int) -> None:
+    def record(self, component: str, timestamp: float) -> None:
         self._last_ts = timestamp
         now = time.time()
         if is_dds_verbose():
