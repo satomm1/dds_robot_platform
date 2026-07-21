@@ -127,6 +127,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    # So browser JS (e.g. docs/watch_robot_images.html) can read image meta headers
+    expose_headers=[
+        "X-Robot-Id",
+        "X-Capture-Timestamp",
+        "X-Image-Width",
+        "X-Image-Height",
+    ],
 )
 
 if __name__ == "__main__":

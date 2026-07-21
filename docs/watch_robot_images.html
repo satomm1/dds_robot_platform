@@ -57,6 +57,7 @@
     .cell header {
       display: flex;
       justify-content: space-between;
+      align-items: flex-start;
       gap: 0.5rem;
       padding: 0.4rem 0.6rem;
       font-size: 0.85rem;
@@ -64,8 +65,17 @@
       border-bottom: 1px solid #333;
     }
     .cell header .status {
-      opacity: 0.75;
+      opacity: 0.85;
       font-variant-numeric: tabular-nums;
+      text-align: right;
+      line-height: 1.35;
+      white-space: pre-line;
+    }
+    .cell.stale header .status {
+      color: #f0a020;
+    }
+    .cell.very-stale header .status {
+      color: #f06060;
     }
     .cell img {
       display: block;
@@ -135,6 +145,28 @@
       return document.getElementById("base").value.replace(/\/+$/, "");
     }
 
+    /** X-Capture-Timestamp is Unix seconds (float). */
+    function formatCaptureStatus(tsSec) {
+      const age = Math.max(0, Date.now() / 1000 - tsSec);
+      const when = new Date(tsSec * 1000).toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      let ageLabel;
+      if (age < 60) ageLabel = `${age.toFixed(1)}s ago`;
+      else if (age < 3600) ageLabel = `${Math.floor(age / 60)}m ${Math.floor(age % 60)}s ago`;
+      else ageLabel = `${(age / 3600).toFixed(1)}h ago`;
+      return { text: `${when}\n${ageLabel}`, age };
+    }
+
+    function setStaleClass(cell, age) {
+      cell.classList.remove("stale", "very-stale");
+      if (age == null) return;
+      if (age >= 30) cell.classList.add("very-stale");
+      else if (age >= 5) cell.classList.add("stale");
+    }
+
     async function refreshSlot(slot, robotId) {
       slot.title.textContent = `Robot ${robotId}`;
       const url = `${apiBase()}/robots/${robotId}/image/latest?t=${Date.now()}`;
@@ -142,6 +174,7 @@
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) {
           slot.cell.classList.add("missing");
+          slot.cell.classList.remove("stale", "very-stale");
           slot.status.textContent = res.status === 404 ? "no frame" : `HTTP ${res.status}`;
           return;
         }
@@ -154,10 +187,19 @@
         slot.img.src = objectUrl;
         slot.img.dataset.objectUrl = objectUrl;
         slot.cell.classList.remove("missing");
-        const ts = res.headers.get("X-Capture-Timestamp");
-        slot.status.textContent = ts ? `ts ${Number(ts).toFixed(1)}` : "ok";
+
+        const tsHeader = res.headers.get("X-Capture-Timestamp");
+        if (tsHeader == null || Number.isNaN(Number(tsHeader))) {
+          slot.status.textContent = "ok (no timestamp)";
+          setStaleClass(slot.cell, null);
+          return;
+        }
+        const { text, age } = formatCaptureStatus(Number(tsHeader));
+        slot.status.textContent = text;
+        setStaleClass(slot.cell, age);
       } catch (err) {
         slot.cell.classList.add("missing");
+        slot.cell.classList.remove("stale", "very-stale");
         slot.status.textContent = "unreachable";
       }
     }
