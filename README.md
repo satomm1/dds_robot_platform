@@ -23,10 +23,10 @@ conda activate dds
 
 `start_scripts.sh` activates the `dds` conda env automatically when `cyclonedds` is not already on `PATH`.
 
-Before connecting to mobile robots, edit **`dds/cyclonedds.xml`** for your network:
+Before connecting to mobile robots, configure **`dds/cyclonedds.xml`** for your network:
 
-- **Network interface** — set `<NetworkInterface name="…"/>` to the interface that reaches the robot fleet (run `ifconfig` or `ip link`; common names include `wlan0`, `wlp2s0`, `eth0`).
-- **Peer addresses** — replace the placeholder `<Peer Address="…"/>` entries with the IP address of each robot (or other DDS participant) on that network.
+- **Peer addresses** — from `dds/`, run [`./update_wifi_ips.sh`](dds/update_wifi_ips.sh). Enter the central machine IP and each robot IP when prompted; the script rewrites the `<Peers>` list. Prefer this over editing the file by hand when the Wi-Fi network changes. If DDS scripts are already running, restart them afterward with `./stop_scripts.sh` then `./start_scripts.sh`.
+- **Network interface** — if needed, set `<NetworkInterface name="…"/>` to the interface that reaches the robot fleet (run `ifconfig` or `ip link`; common names include `wlan0`, `wlp2s0`, `eth0`). The default uses `autodetermine="true"`.
 
 > [!NOTE]
 > I run this on a Windows machine with WSL (Windows Subsystem for Linux). Docker Compose and DDS commands should be run via WSL; the GUI can be run from Windows (desktop app) or from source.
