@@ -1,10 +1,13 @@
 name: Update KAIST page last-commit time
 
-# On every push to main, write this commit's timestamp into
-# satomm1.github.io/mattbot/kaist.html (One Time Updates dropdown title).
+# On push to main (when anything outside gui/ changes), write this commit's
+# timestamp into satomm1.github.io/mattbot/kaist.html (One Time Updates dropdown).
+# Pushes that only touch gui/** are skipped — operators do not need a platform pull for those.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "gui/**"
   workflow_dispatch:
 
 jobs:
