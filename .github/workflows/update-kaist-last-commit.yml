@@ -1,0 +1,104 @@
+name: Update KAIST page last-commit time
+
+# On every push to main, write this commit's timestamp into
+# satomm1.github.io/mattbot/kaist.html (One Time Updates dropdown title).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  update-site:
+    runs-on: ubuntu-latest
+    # Skip the bot's own follow-up pushes if any; this workflow only touches the site repo.
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Check required secret
+        env:
+          SITE_REPO_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+        run: |
+          if [ -z "$SITE_REPO_TOKEN" ]; then
+            echo "::error::Missing secret SITE_REPO_TOKEN. Create a fine-grained PAT with Contents: Read and write on satomm1/satomm1.github.io, then add it as a repository secret named SITE_REPO_TOKEN."
+            exit 1
+          fi
+
+      - name: Checkout website repo
+        uses: actions/checkout@v6
+        with:
+          repository: satomm1/satomm1.github.io
+          token: ${{ secrets.SITE_REPO_TOKEN }}
+          path: site
+
+      - name: Update last-commit markers in kaist.html
+        env:
+          # Present on push events; empty on workflow_dispatch (Python falls back to API).
+          COMMIT_ISO: ${{ github.event.head_commit.timestamp }}
+          FALLBACK_SHA: ${{ github.sha }}
+        run: |
+          python3 <<'PY'
+          import os
+          import re
+          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+          from urllib.request import urlopen
+          import json
+
+          path = Path("site/mattbot/kaist.html")
+          text = path.read_text(encoding="utf-8")
+
+          # Prefer the push event commit timestamp; fall back to API for workflow_dispatch.
+          raw = os.environ.get("COMMIT_ISO") or ""
+          if not raw.strip():
+              sha = os.environ["FALLBACK_SHA"]
+              repo = os.environ.get("GITHUB_REPOSITORY", "satomm1/dds_robot_platform")
+              with urlopen(f"https://api.github.com/repos/{repo}/commits/{sha}") as resp:
+                  payload = json.load(resp)
+              raw = payload["commit"]["committer"]["date"]
+
+          # Normalize to Korean Standard Time (KST, UTC+9), e.g. 2026-07-23 08:09 KST
+          kst = timezone(timedelta(hours=9), name="KST")
+          dt = datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(kst)
+          stamp = dt.strftime("%Y-%m-%d %H:%M KST")
+          day = dt.strftime("%Y-%m-%d")
+
+          def replace_marked(src: str, start: str, end: str, value: str) -> str:
+              pattern = re.compile(
+                  re.escape(start) + r".*?" + re.escape(end),
+                  re.DOTALL,
+              )
+              replacement = f"{start}{value}{end}"
+              new_src, n = pattern.subn(replacement, src, count=1)
+              if n != 1:
+                  raise SystemExit(
+                      f"Expected exactly one {start}…{end} marker in {path}, found {n}"
+                  )
+              return new_src
+
+          text = replace_marked(
+              text,
+              "<!--DDS_RP_LAST_COMMIT-->",
+              "<!--/DDS_RP_LAST_COMMIT-->",
+              stamp,
+          )
+          text = replace_marked(
+              text,
+              "<!--DDS_RP_LAST_DATE-->",
+              "<!--/DDS_RP_LAST_DATE-->",
+              day,
+          )
+          path.write_text(text, encoding="utf-8")
+          print(f"Updated kaist.html → last commit {stamp} (KST)")
+          PY
+
+      - name: Commit and push website change
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mattbot/kaist.html
+          if git diff --staged --quiet; then
+            echo "No change (timestamp already up to date)."
+            exit 0
+          fi
+          git commit -m "chore: sync dds_robot_platform last-commit time on KAIST page"
+          git push
