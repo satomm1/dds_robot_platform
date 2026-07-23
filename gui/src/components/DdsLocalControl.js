@@ -5,8 +5,11 @@ import {
   validateDdsLocalSettings,
 } from '../utils/ddsLocalApi';
 import {
+  captureDockerComposeDown,
+  captureDockerComposeUp,
   dockerComposeDown,
   dockerComposeUp,
+  fetchCaptureDockerComposeStatus,
   fetchDockerComposeStatus,
   hasDockerBridge,
 } from '../utils/dockerComposeApi';
@@ -82,6 +85,7 @@ const DdsLocalControl = () => {
   const [settingsOpen, setSettingsOpen] = useState(() => !loadDdsLocalSettings().platformDir);
   const [pathValidated, setPathValidated] = useState(false);
   const [dockerReach, setDockerReach] = useState(DDS_STATUS.CHECKING);
+  const [captureReach, setCaptureReach] = useState(DDS_STATUS.CHECKING);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
   const startupCheckDoneRef = useRef(false);
@@ -121,11 +125,13 @@ const DdsLocalControl = () => {
   const pollDockerStatus = useCallback(async () => {
     if (!bridgeAvailable) {
       setReachIfChanged(setDockerReach, DDS_STATUS.UNSUPPORTED);
+      setReachIfChanged(setCaptureReach, DDS_STATUS.UNSUPPORTED);
       return;
     }
 
     if (!pathValidated) {
       setReachIfChanged(setDockerReach, DDS_STATUS.UNCONFIGURED);
+      setReachIfChanged(setCaptureReach, DDS_STATUS.UNCONFIGURED);
       return;
     }
 
@@ -135,10 +141,15 @@ const DdsLocalControl = () => {
     pollInFlightRef.current = true;
 
     try {
-      const dockerPayload = await fetchDockerComposeStatus(settings);
+      const [dockerPayload, capturePayload] = await Promise.all([
+        fetchDockerComposeStatus(settings),
+        fetchCaptureDockerComposeStatus(settings),
+      ]);
       setReachIfChanged(setDockerReach, reachFromPayload(dockerPayload, true));
+      setReachIfChanged(setCaptureReach, reachFromPayload(capturePayload, true));
     } catch {
       setReachIfChanged(setDockerReach, DDS_STATUS.STOPPED);
+      setReachIfChanged(setCaptureReach, DDS_STATUS.STOPPED);
     } finally {
       pollInFlightRef.current = false;
     }
@@ -147,6 +158,7 @@ const DdsLocalControl = () => {
   useEffect(() => {
     if (!pathValidated) {
       setReachIfChanged(setDockerReach, DDS_STATUS.UNCONFIGURED);
+      setReachIfChanged(setCaptureReach, DDS_STATUS.UNCONFIGURED);
       return undefined;
     }
 
@@ -190,6 +202,7 @@ const DdsLocalControl = () => {
           setSettingsOpen(false);
           setPathValidated(true);
           setDockerReach(DDS_STATUS.STOPPED);
+          setCaptureReach(DDS_STATUS.STOPPED);
           pollDockerStatus();
           return true;
         }
@@ -298,6 +311,50 @@ const DdsLocalControl = () => {
     }
   };
 
+  const handleCaptureStart = async () => {
+    setBusy(true);
+    setStatus({ type: '', message: '' });
+    try {
+      const result = await captureDockerComposeUp(settings);
+      if (result.ok) {
+        setStatus({ type: '', message: '' });
+        setCaptureReach(DDS_STATUS.RUNNING);
+        setTimeout(pollDockerStatus, 2000);
+      } else {
+        setStatus({
+          type: 'error',
+          message: result.error || 'Capture start failed.',
+        });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: err.message || 'Capture start failed.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCaptureStop = async () => {
+    setBusy(true);
+    setStatus({ type: '', message: '' });
+    try {
+      const result = await captureDockerComposeDown(settings);
+      if (result.ok) {
+        setStatus({ type: '', message: '' });
+        setCaptureReach(DDS_STATUS.STOPPED);
+        pollDockerStatus();
+      } else {
+        setStatus({
+          type: 'error',
+          message: result.error || 'Capture stop failed.',
+        });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', message: err.message || 'Capture stop failed.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="dds-local" aria-label="Local Stack">
       <div className="dds-local__head">
@@ -332,6 +389,29 @@ const DdsLocalControl = () => {
             onStop={handleDockerStop}
             startTitle="Start Docker Compose"
             stopTitle="Stop Docker Compose"
+          />
+        </div>
+      </div>
+
+      <div className="dds-local__stack-row">
+        <span className="dds-local__row-label">
+          <span
+            className={`dds-local__reach dds-local__reach--${captureReach}`}
+            title={DDS_STATUS_LABELS[captureReach]}
+            aria-label={`Capture: ${DDS_STATUS_LABELS[captureReach]}`}
+          />
+          Capture
+        </span>
+        <div className="dds-local__row-actions">
+          <StackRowActions
+            reach={captureReach}
+            pathValidated={pathValidated}
+            bridgeAvailable={bridgeAvailable}
+            busy={busy}
+            onStart={handleCaptureStart}
+            onStop={handleCaptureStop}
+            startTitle="Start Capture Docker Compose"
+            stopTitle="Stop Capture Docker Compose"
           />
         </div>
       </div>

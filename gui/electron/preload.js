@@ -22,4 +22,9 @@ contextBridge.exposeInMainWorld('dockerCompose', {
   status: (settings) => ipcRenderer.invoke('docker-compose-status', settings),
   up: (settings) => ipcRenderer.invoke('docker-compose-up', settings),
   down: (settings) => ipcRenderer.invoke('docker-compose-down', settings),
+  captureStatus: (settings) =>
+    ipcRenderer.invoke('docker-compose-capture-status', settings),
+  captureUp: (settings) => ipcRenderer.invoke('docker-compose-capture-up', settings),
+  captureDown: (settings) =>
+    ipcRenderer.invoke('docker-compose-capture-down', settings),
 });

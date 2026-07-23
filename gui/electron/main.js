@@ -120,6 +120,18 @@ ipcMain.handle('docker-compose-down', (_event, settings) =>
   dockerComposeRunner.dockerComposeDown(settings || {}),
 );
 
+ipcMain.handle('docker-compose-capture-status', (_event, settings) =>
+  dockerComposeRunner.getCaptureDockerStatus(settings || {}),
+);
+
+ipcMain.handle('docker-compose-capture-up', (_event, settings) =>
+  dockerComposeRunner.captureDockerComposeUp(settings || {}),
+);
+
+ipcMain.handle('docker-compose-capture-down', (_event, settings) =>
+  dockerComposeRunner.captureDockerComposeDown(settings || {}),
+);
+
 ipcMain.handle('robot-launcher-request', (_event, options = {}) => {
   const {
     host,

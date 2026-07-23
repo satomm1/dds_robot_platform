@@ -178,6 +178,45 @@ module.exports = function setupRobotLauncherProxy(app) {
     }
   });
 
+  app.get('/api/docker-compose/capture/status', async (req, res) => {
+    try {
+      const payload = await dockerComposeRunner.getCaptureDockerStatus(
+        settingsFromQuery(req.query),
+      );
+      res.json(payload);
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Capture Docker status check failed' });
+    }
+  });
+
+  app.post('/api/docker-compose/capture/up', async (req, res) => {
+    try {
+      const body = await parseJsonBody(req);
+      const result = await dockerComposeRunner.captureDockerComposeUp(body);
+      if (result.ok) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message || 'Capture Docker up failed' });
+    }
+  });
+
+  app.post('/api/docker-compose/capture/down', async (req, res) => {
+    try {
+      const body = await parseJsonBody(req);
+      const result = await dockerComposeRunner.captureDockerComposeDown(body);
+      if (result.ok) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message || 'Capture Docker down failed' });
+    }
+  });
+
   app.get('/api/robot-launcher', (req, res) => {
     const host = (req.query.host || '').trim();
     const port = Number(req.query.port) || 8080;

@@ -87,4 +87,66 @@ export async function dockerComposeDown(settings) {
   throw new Error('Docker Compose control requires the Electron app or npm start.');
 }
 
+/**
+ * @param {{ platformDir?: string, wslDistro?: string }} settings
+ */
+export async function fetchCaptureDockerComposeStatus(settings) {
+  if (!hasDockerBridge()) {
+    return { running: false, configured: false, platform: '' };
+  }
+  if (window.dockerCompose?.captureStatus) {
+    return window.dockerCompose.captureStatus(settings);
+  }
+  if (process.env.NODE_ENV === 'development') {
+    const params = new URLSearchParams({
+      platformDir: settings.platformDir || '',
+      wslDistro: settings.wslDistro || '',
+    });
+    return devFetch(`/api/docker-compose/capture/status?${params}`);
+  }
+  return { running: false, configured: false, platform: '' };
+}
+
+/**
+ * @param {{ platformDir?: string, wslDistro?: string }} settings
+ */
+export async function captureDockerComposeUp(settings) {
+  if (window.dockerCompose?.captureUp) {
+    return window.dockerCompose.captureUp(settings);
+  }
+  if (process.env.NODE_ENV === 'development') {
+    return devFetch(
+      '/api/docker-compose/capture/up',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      },
+      UP_TIMEOUT_MS,
+    );
+  }
+  throw new Error('Docker Compose control requires the Electron app or npm start.');
+}
+
+/**
+ * @param {{ platformDir?: string, wslDistro?: string }} settings
+ */
+export async function captureDockerComposeDown(settings) {
+  if (window.dockerCompose?.captureDown) {
+    return window.dockerCompose.captureDown(settings);
+  }
+  if (process.env.NODE_ENV === 'development') {
+    return devFetch(
+      '/api/docker-compose/capture/down',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      },
+      REQUEST_TIMEOUT_MS,
+    );
+  }
+  throw new Error('Docker Compose control requires the Electron app or npm start.');
+}
+
 export { hasDockerBridge };

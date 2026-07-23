@@ -102,9 +102,14 @@ const HelpModal = ({ onClose }) => {
           <HelpSubheading>Docker</HelpSubheading>
           <ul className="help-modal__list">
             <li>
-              <strong>Start</strong> / <strong>Stop</strong> runs{' '}
+              <strong>Docker Start</strong> / <strong>Stop</strong> runs{' '}
               <code>docker compose up -d</code> / <code>docker compose down</code> in the repo root
               (where <code>compose.yaml</code> lives).
+            </li>
+            <li>
+              <strong>Capture Start</strong> / <strong>Stop</strong> runs the same commands in{' '}
+              <code>capture/</code> (ingest + Postgres). Configure <code>capture/.env</code> from{' '}
+              <code>.env.example</code> first.
             </li>
           </ul>
           <HelpSubheading>DDS scripts</HelpSubheading>
