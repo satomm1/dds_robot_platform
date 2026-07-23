@@ -1,6 +1,7 @@
 from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
 from cyclonedds.core import Listener
+from cyclonedds.internal import InvalidSample
 
 import influxdb_client
 from influxdb_client import InfluxDBClient, Point, WritePrecision
@@ -115,6 +116,8 @@ class LocationListener(Listener):
             None
         """
         for sample in reader.read():
+            if isinstance(sample, InvalidSample):
+                continue
 
             # Skip messages from self
             if sample.agent_id == int(self.my_id):

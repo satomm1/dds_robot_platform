@@ -2,6 +2,7 @@ from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
 from cyclonedds.pub import Publisher, DataWriter
 from cyclonedds.core import Listener
+from cyclonedds.internal import InvalidSample
 
 import time
 import os
@@ -83,6 +84,8 @@ class EntryExitHeartbeatListener(Listener):
 
     def on_data_available(self, reader):
         for sample in reader.read():
+            if isinstance(sample, InvalidSample):
+                continue
             if sample.agent_id == self.my_id_int:
                 continue
             self.new_heartbeats[sample.agent_id] = sample.timestamp
@@ -157,6 +160,8 @@ class EntryExitListener(Listener):
         - None
         """
         for sample in reader.read():
+            if isinstance(sample, InvalidSample):
+                continue
 
             # Skip messages from self
             if sample.agent_id == self.my_id_int:
@@ -289,6 +294,8 @@ class InitializationListener(Listener):
             init_reader: Reader object for reading initialization data.
         """
         for sample in init_reader.read():
+            if isinstance(sample, InvalidSample):
+                continue
 
             sending_agent = sample.sending_agent
             if sending_agent == self.my_id_int:

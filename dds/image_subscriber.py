@@ -1,6 +1,7 @@
 from cyclonedds.topic import Topic
 from cyclonedds.sub import Subscriber, DataReader
 from cyclonedds.core import Listener
+from cyclonedds.internal import InvalidSample
 
 import io
 import os
@@ -83,7 +84,8 @@ class ImageListener(Listener):
         samples = [
             sample
             for sample in reader.take()
-            if sample.agent_id != int(self.my_id)
+            if not isinstance(sample, InvalidSample)
+            and sample.agent_id != int(self.my_id)
         ]
         if not samples:
             return
