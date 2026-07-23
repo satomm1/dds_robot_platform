@@ -22,7 +22,7 @@ from dds_utils import (
     dds_log,
     fetch_subscribed_agent_ids_set,
     get_ip,
-    reliable_qos,
+    image_qos,
     require_agent_id_int,
 )
 from dds_utils.config import resolve_graphql_http_url
@@ -79,37 +79,43 @@ class ImageListener(Listener):
         self._image_throttle = image_throttle
 
     def on_data_available(self, reader):
-        for sample in reader.read():
-            if sample.agent_id == int(self.my_id):
-                continue
+        # Latest-only: take samples and upload the newest frame (do not queue).
+        samples = [
+            sample
+            for sample in reader.take()
+            if sample.agent_id != int(self.my_id)
+        ]
+        if not samples:
+            return
+        sample = samples[-1]
 
-            timestamp = sample.timestamp
-            if self._image_throttle is not None:
-                self._image_throttle.record("img_sub", timestamp)
+        timestamp = sample.timestamp
+        if self._image_throttle is not None:
+            self._image_throttle.record("img_sub", timestamp)
 
-            try:
-                jpeg_bytes = _jpeg_bytes_from_sample(sample)
-            except Exception as exc:
-                dds_log("img_sub", f"encode failed agent={self.topic_id}: {exc}")
-                continue
+        try:
+            jpeg_bytes = _jpeg_bytes_from_sample(sample)
+        except Exception as exc:
+            dds_log("img_sub", f"encode failed agent={self.topic_id}: {exc}")
+            return
 
-            url = f"{self.upload_base}/robots/{int(self.topic_id)}/image/latest"
-            headers = {
-                "Content-Type": "image/jpeg",
-                "X-Robot-Id": str(int(self.topic_id)),
-                "X-Capture-Timestamp": str(float(timestamp)),
-                "X-Image-Width": str(int(sample.width)),
-                "X-Image-Height": str(int(sample.height)),
-            }
-            try:
-                _post_jpeg_with_retries(
-                    url,
-                    jpeg_bytes,
-                    headers=headers,
-                    context=f"image upload agent={self.topic_id}",
-                )
-            except Exception as exc:
-                dds_log("img_sub", f"upload failed agent={self.topic_id}: {exc}")
+        url = f"{self.upload_base}/robots/{int(self.topic_id)}/image/latest"
+        headers = {
+            "Content-Type": "image/jpeg",
+            "X-Robot-Id": str(int(self.topic_id)),
+            "X-Capture-Timestamp": str(float(timestamp)),
+            "X-Image-Width": str(int(sample.width)),
+            "X-Image-Height": str(int(sample.height)),
+        }
+        try:
+            _post_jpeg_with_retries(
+                url,
+                jpeg_bytes,
+                headers=headers,
+                context=f"image upload agent={self.topic_id}",
+            )
+        except Exception as exc:
+            dds_log("img_sub", f"upload failed agent={self.topic_id}: {exc}")
 
 
 class ImageSubscriber:
@@ -148,7 +154,7 @@ class ImageSubscriber:
             self.subscriber,
             topic,
             listener=self.image_listeners[agent_id],
-            qos=reliable_qos,
+            qos=image_qos,
         )
 
     def run(self):
