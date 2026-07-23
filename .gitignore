@@ -9,7 +9,6 @@ dds/user_map_*.json
 dds/saved_maps/
 
 capture/data/
-capture/.env
 
 # Python bytecode
 __pycache__/

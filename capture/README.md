@@ -36,13 +36,33 @@ Wakeword audio on the robot (for reference):
 roslaunch mattbot_bringup tall.launch capture:=true save_wakeword_audio:=true
 ```
 
+## Replay UI quick start
+
+Mission replay is a static browser app served by the same ingest container — no separate build or process.
+
+1. Start the stack (see Quick start above) and confirm health:
+   ```bash
+   curl -s http://127.0.0.1:8080/health
+   ```
+2. Open the UI:
+   - Local: [http://127.0.0.1:8080/replay/](http://127.0.0.1:8080/replay/)
+   - Remote: `http://<capture-host>:8080/replay/`
+3. Optionally pick **Map JSON** → load [`dds/user_map.json`](../dds/user_map.json) from the repo (same floor-plan shape as the live GUI). Replay also works without a map.
+4. Set **From** / **To**, then click **Load**. Trajectories, detections, and capture markers load for all registered robots.
+5. Scrub the timeline, use **Play 1×** / **10×**, or jump with **◀ ▶** (frame) and **⏮ ⏭** (session). Pick a robot in the camera panel for RGB / IR / Depth.
+
+If `API_KEYS` is set in `.env`, paste a key in the toolbar (stored in browser `localStorage`).
+
+Prerequisite data: robots must have uploaded poses (`pose_uploader`) and optionally image sessions + detections while `capture:=true`. Empty windows show an empty map.
+
 ## Layout
 
 ```
 capture/
-├── server.py       # FastAPI app (upload + read API)
+├── server.py       # FastAPI app (upload + read API + /replay static)
 ├── schema.sql      # Postgres tables
 ├── compose.yaml    # postgres + ingest (uses ghcr.io/satomm1/matt_python:1.1.0)
+├── replay/         # browser mission replay (index.html, replay.js, replay.css)
 └── .env.example
 ```
 
@@ -274,18 +294,23 @@ Captures include full `extra` JSON (e.g. `transcript`). Files are served with co
 
 ## Replay UI (browser)
 
-Static mission replay at **`http://<capture-host>:8080/replay/`** (served from [`capture/replay/`](capture/replay/)).
+See **[Replay UI quick start](#replay-ui-quick-start)** above. Details:
 
-1. Open `/replay/` on the central ingest host (same machine as port 8080).
-2. Optionally enter **API key** (stored in browser `localStorage` when `API_KEYS` is set on the server).
-3. **Map JSON:** use the file picker to load `user_map.json` from the platform (`dds/user_map.json` in the repo — same `data.map` shape as the live GUI). Replay works without a map (auto-scaled trajectory).
-4. Set **from** / **to** window and click **Load** — fetches poses, detections, and capture events for **all registered robots** and draws each trajectory on the map (distinct colors per robot).
-5. **Camera panel:** choose which **robot** to preview (one at a time). RGB, IR, and depth images follow the selected robot when you scrub near its capture events.
-6. **Scrub** the timeline or use **◀ ▶** to jump between capture events (◇ markers from all robots). Clicking a marker switches the camera to that robot. **Play** advances time.
-7. **Map zoom/pan:** scroll on the map to zoom toward the cursor; drag to pan. Use **+** / **−** / **Fit** in the corner to zoom or reset the view.
-8. **RGB / IR / Depth** tabs show authenticated images from `/api/v1/files/...`. RGB includes bbox overlay from frame `detections`; depth PNGs are decoded as 16-bit millimeters and shown as a false-color preview in the browser.
+Static mission replay at **`http://<capture-host>:8080/replay/`** (served from [`replay/`](replay/) via FastAPI `StaticFiles`).
 
-No separate build step — vanilla HTML/CSS/JS only.
+| Control | Behavior |
+|---------|----------|
+| Map JSON | File picker for `user_map.json`; without it, trajectories auto-scale |
+| From / To + Load | Fetches poses, detections, and capture events for **all** robots |
+| Camera → Robot | One robot at a time for RGB / IR / Depth preview |
+| Timeline scrubber | Seek wall time; ◇ markers are capture events (all robots) |
+| ◀ ▶ / ⏮ ⏭ | Step frame within a session / skip to previous or next session |
+| Play 1× / 10× / Pause | Advance scrub time |
+| Map + / − / Fit | Zoom toward cursor (scroll), pan (drag), or reset |
+
+Clicking a ◇ marker switches the camera to that robot. RGB shows bbox overlays from frame detections; depth is decoded as 16-bit mm and false-colored in-browser. Images load from `/api/v1/files/...` (same origin; send API key when configured).
+
+No separate build step — vanilla HTML/CSS/JS only. Edits under `replay/` are live after refresh (compose bind-mounts the `capture/` directory into the container).
 
 ## Manual upload test (image)
 
