@@ -12,7 +12,7 @@ PARTICIPANT_LEASE_DURATION_MS = 30000
 DEFAULT_GRAPHQL_PORT = 8000
 
 INFLUX_ORG = "eig"
-INFLUX_BUCKET = "first_bucket"
+INFLUX_BUCKET = "home"  # must match DOCKER_INFLUXDB_INIT_BUCKET in compose.yaml
 INFLUX_URL = "http://localhost:8086"
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
