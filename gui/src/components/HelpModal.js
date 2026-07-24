@@ -174,7 +174,9 @@ const HelpModal = ({ onClose }) => {
             </li>
             <li>
               Optionally check <strong>KAIST</strong> (<code>kaist.launch</code> for KAIST
-              collaborator robots) or <strong>Audio</strong> (<code>audio:=true</code> at launch).
+              collaborator robots), <strong>Audio</strong> (<code>audio:=true</code>),{' '}
+              <strong>Capture</strong> (<code>capture:=true</code>), or{' '}
+              <strong>Patrol</strong> (<code>patrol:=true</code>) at launch.
             </li>
             <li>
               When the host is on but Docker is not running, the main button is{' '}

@@ -23,8 +23,10 @@ import {
 } from '../utils/robotHostStatus';
 import {
   createHostId,
+  loadLaunchOptions,
   loadSavedHosts,
   normalizeHostInput,
+  saveLaunchOptions,
   saveSavedHosts,
 } from '../utils/robotLauncherStorage';
 import {
@@ -296,17 +298,46 @@ const RobotStartup = () => {
   const [hostInput, setHostInput] = useState('');
   const [status, setStatus] = useState({ type: '', message: '' });
   const [busy, setBusy] = useState(false);
-  const [useSocialPlanner, setUseSocialPlanner] = useState(false);
-  const [useMultiRobotPlanner, setUseMultiRobotPlanner] = useState(false);
-  const [useKaist, setUseKaist] = useState(false);
-  const [useAudio, setUseAudio] = useState(false);
-  const [plannerSettingsOpen, setPlannerSettingsOpen] = useState(false);
+  const [launchOptions] = useState(() => loadLaunchOptions());
+  const [useSocialPlanner, setUseSocialPlanner] = useState(
+    () => launchOptions.useSocialPlanner,
+  );
+  const [useMultiRobotPlanner, setUseMultiRobotPlanner] = useState(
+    () => launchOptions.useMultiRobotPlanner,
+  );
+  const [useKaist, setUseKaist] = useState(() => launchOptions.useKaist);
+  const [useAudio, setUseAudio] = useState(() => launchOptions.useAudio);
+  const [useCapture, setUseCapture] = useState(() => launchOptions.useCapture);
+  const [usePatrol, setUsePatrol] = useState(() => launchOptions.usePatrol);
+  const [plannerSettingsOpen, setPlannerSettingsOpen] = useState(
+    () => launchOptions.plannerSettingsOpen,
+  );
   const [launcherStatus, setLauncherStatus] = useState({});
   const [hostReachability, setHostReachability] = useState({});
   const [dockerStatus, setDockerStatus] = useState({});
   const [powerOffOpen, setPowerOffOpen] = useState(false);
   const hostFailCountRef = useRef({});
   const launcherFailCountRef = useRef({});
+
+  useEffect(() => {
+    saveLaunchOptions({
+      useKaist,
+      useAudio,
+      useCapture,
+      usePatrol,
+      useSocialPlanner,
+      useMultiRobotPlanner,
+      plannerSettingsOpen,
+    });
+  }, [
+    useKaist,
+    useAudio,
+    useCapture,
+    usePatrol,
+    useSocialPlanner,
+    useMultiRobotPlanner,
+    plannerSettingsOpen,
+  ]);
 
   const activeHost = useMemo(() => normalizeHostInput(hostInput), [hostInput]);
 
@@ -837,6 +868,8 @@ const RobotStartup = () => {
         multi: useMultiRobotPlanner,
         kaist: useKaist,
         audio: useAudio,
+        capture: useCapture,
+        patrol: usePatrol,
       });
       const detail = result.body ? `: ${result.body}` : '';
       if (result.ok) {
@@ -994,6 +1027,30 @@ const RobotStartup = () => {
               disabled={busy || usePrimaryDockerStart}
             />
             Audio
+          </label>
+          <label
+            className="robot-startup__planner-option"
+            title="Pass capture:=true to roslaunch at startup"
+          >
+            <input
+              type="checkbox"
+              checked={useCapture}
+              onChange={(e) => setUseCapture(e.target.checked)}
+              disabled={busy || usePrimaryDockerStart}
+            />
+            Capture
+          </label>
+          <label
+            className="robot-startup__planner-option"
+            title="Pass patrol:=true to roslaunch at startup"
+          >
+            <input
+              type="checkbox"
+              checked={usePatrol}
+              onChange={(e) => setUsePatrol(e.target.checked)}
+              disabled={busy || usePrimaryDockerStart}
+            />
+            Patrol
           </label>
         </div>
       </div>

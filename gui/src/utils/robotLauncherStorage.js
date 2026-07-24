@@ -1,7 +1,18 @@
 const STORAGE_KEY = 'dds_robot_launcher_hosts';
+const LAUNCH_OPTIONS_KEY = 'dds_robot_launcher_options';
 
 const DEFAULT_PORT = 8080;
 const HOST_SERVICE_PORT = 8081;
+
+const DEFAULT_LAUNCH_OPTIONS = {
+  useKaist: false,
+  useAudio: false,
+  useCapture: false,
+  usePatrol: false,
+  useSocialPlanner: false,
+  useMultiRobotPlanner: false,
+  plannerSettingsOpen: false,
+};
 
 export function normalizeHostInput(raw) {
   if (!raw || typeof raw !== 'string') return '';
@@ -64,6 +75,49 @@ export function saveSavedHosts({ hosts, lastSelectedId }) {
   );
 }
 
+export function loadLaunchOptions() {
+  try {
+    const raw = localStorage.getItem(LAUNCH_OPTIONS_KEY);
+    if (!raw) return { ...DEFAULT_LAUNCH_OPTIONS };
+    const parsed = JSON.parse(raw);
+    const useKaist = Boolean(parsed?.useKaist);
+    // KAIST is mutually exclusive with the beta planner options.
+    const useSocialPlanner = useKaist ? false : Boolean(parsed?.useSocialPlanner);
+    const useMultiRobotPlanner = useKaist
+      ? false
+      : Boolean(parsed?.useMultiRobotPlanner);
+    return {
+      useKaist,
+      useAudio: Boolean(parsed?.useAudio),
+      useCapture: Boolean(parsed?.useCapture),
+      usePatrol: Boolean(parsed?.usePatrol),
+      useSocialPlanner,
+      useMultiRobotPlanner,
+      plannerSettingsOpen: Boolean(parsed?.plannerSettingsOpen),
+    };
+  } catch {
+    return { ...DEFAULT_LAUNCH_OPTIONS };
+  }
+}
+
+export function saveLaunchOptions(options) {
+  const useKaist = Boolean(options?.useKaist);
+  localStorage.setItem(
+    LAUNCH_OPTIONS_KEY,
+    JSON.stringify({
+      useKaist,
+      useAudio: Boolean(options?.useAudio),
+      useCapture: Boolean(options?.useCapture),
+      usePatrol: Boolean(options?.usePatrol),
+      useSocialPlanner: useKaist ? false : Boolean(options?.useSocialPlanner),
+      useMultiRobotPlanner: useKaist
+        ? false
+        : Boolean(options?.useMultiRobotPlanner),
+      plannerSettingsOpen: Boolean(options?.plannerSettingsOpen),
+    }),
+  );
+}
+
 export function createHostId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -71,4 +125,4 @@ export function createHostId() {
   return `host-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export { DEFAULT_PORT, HOST_SERVICE_PORT };
+export { DEFAULT_PORT, HOST_SERVICE_PORT, DEFAULT_LAUNCH_OPTIONS };

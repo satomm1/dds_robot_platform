@@ -1970,7 +1970,8 @@
 .robot-startup__planner-settings-row {
   display: flex;
   align-items: center;
-  gap: 16px;
+  column-gap: 16px;
+  row-gap: 4px;
   flex-wrap: wrap;
 }
 
