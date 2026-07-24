@@ -303,9 +303,146 @@ def _stop_ros_launch():
     launch_process = None
 
 
+def _patrol_txt_path():
+    """patrol.txt next to this script under mattbot_navigation/scripts/."""
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "mattbot_navigation",
+        "scripts",
+        "patrol.txt",
+    )
+
+
+def _is_finite_number(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return number == number and number not in (float("inf"), float("-inf"))
+
+
+def _read_patrol_points():
+    """Return { ok, path, points, error? } from patrol.txt (missing file → empty)."""
+    path = _patrol_txt_path()
+    if not os.path.isfile(path):
+        return {"ok": True, "path": path, "points": [], "count": 0}
+
+    points = []
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line_num, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                parts = [p.strip() for p in line.strip().split(",")]
+                if len(parts) != 4:
+                    return {
+                        "ok": False,
+                        "path": path,
+                        "points": [],
+                        "count": 0,
+                        "error": (
+                            f"line {line_num}: expected 4 values "
+                            f"(x, y, theta, wait_sec), got {len(parts)}"
+                        ),
+                    }
+                if not all(_is_finite_number(p) for p in parts):
+                    return {
+                        "ok": False,
+                        "path": path,
+                        "points": [],
+                        "count": 0,
+                        "error": f"line {line_num}: values must be finite numbers",
+                    }
+                x, y, theta, wait_sec = (float(p) for p in parts)
+                points.append(
+                    {"x": x, "y": y, "theta": theta, "wait_sec": wait_sec}
+                )
+    except OSError as exc:
+        return {
+            "ok": False,
+            "path": path,
+            "points": [],
+            "count": 0,
+            "error": str(exc),
+        }
+
+    return {"ok": True, "path": path, "points": points, "count": len(points)}
+
+
+def _write_patrol_points(points):
+    """Validate and write patrol.txt. Returns { ok, path, count, error? }."""
+    path = _patrol_txt_path()
+    if not isinstance(points, list) or len(points) == 0:
+        return {
+            "ok": False,
+            "path": path,
+            "count": 0,
+            "error": "points must be a non-empty list",
+        }
+
+    rows = []
+    for index, entry in enumerate(points):
+        if not isinstance(entry, dict):
+            return {
+                "ok": False,
+                "path": path,
+                "count": 0,
+                "error": f"points[{index}] must be an object",
+            }
+        values = []
+        for key in ("x", "y", "theta", "wait_sec"):
+            if key not in entry or not _is_finite_number(entry[key]):
+                return {
+                    "ok": False,
+                    "path": path,
+                    "count": 0,
+                    "error": f"points[{index}].{key} must be a finite number",
+                }
+            values.append(float(entry[key]))
+        rows.append(
+            f"{values[0]}, {values[1]}, {values[2]}, {values[3]}\n"
+        )
+
+    parent = os.path.dirname(path)
+    try:
+        os.makedirs(parent, exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.writelines(rows)
+    except OSError as exc:
+        return {
+            "ok": False,
+            "path": path,
+            "count": 0,
+            "error": str(exc),
+        }
+
+    return {"ok": True, "path": path, "count": len(rows)}
+
+
 class LaunchServer(BaseHTTPRequestHandler):
     def _ros_running(self):
         return launch_process is not None and launch_process.poll() is None
+
+    def _send_json(self, status, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_json_body(self):
+        length_header = self.headers.get("Content-Length", "0")
+        try:
+            length = int(length_header)
+        except (TypeError, ValueError):
+            length = 0
+        if length < 0:
+            length = 0
+        raw = self.rfile.read(length) if length else b""
+        if not raw:
+            return {}
+        return json.loads(raw.decode("utf-8"))
 
     def log_message(self, format, *args):
         """Suppress access-log lines for GET (e.g. /status polling from the GUI)."""
@@ -326,12 +463,13 @@ class LaunchServer(BaseHTTPRequestHandler):
                 "ros_running": ros_running,
                 "available": not ros_running,
             }
-            body = json.dumps(payload).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send_json(200, payload)
+            return
+
+        if pathname == "/patrol":
+            payload = _read_patrol_points()
+            status = 200 if payload.get("ok") else 500
+            self._send_json(status, payload)
             return
 
         if pathname == "/start":
@@ -419,8 +557,8 @@ class LaunchServer(BaseHTTPRequestHandler):
             stop_ros = _parse_bool_query(parsed.query, "stop")
             run_build = _parse_bool_query(parsed.query, "build")
             payload = _run_software_update(stop_ros=stop_ros, run_catkin_make=run_build)
-            body = json.dumps(payload, indent=2).encode("utf-8")
             status = 200 if payload.get("ok") else 500
+            body = json.dumps(payload, indent=2).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -432,11 +570,40 @@ class LaunchServer(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Invalid request.")
 
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        pathname = parsed.path
+
+        if pathname == "/patrol":
+            try:
+                payload = self._read_json_body()
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                self._send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "path": _patrol_txt_path(),
+                        "count": 0,
+                        "error": f"Invalid JSON body: {exc}",
+                    },
+                )
+                return
+
+            points = payload.get("points") if isinstance(payload, dict) else None
+            result = _write_patrol_points(points)
+            status = 200 if result.get("ok") else 400
+            self._send_json(status, result)
+            return
+
+        self.send_response(404)
+        self.end_headers()
+        self.wfile.write(b"Invalid request.")
+
 
 if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", 8080), LaunchServer)
     print(
         "Robot launcher (startup_script) listening on port 8080 "
-        "(GET /status, /start, /stop, /software-update)..."
+        "(GET /status, /start, /stop, /software-update, /patrol; POST /patrol)..."
     )
     server.serve_forever()
