@@ -38,6 +38,7 @@ from dds_utils.config import (
 )
 from dds_utils.gql_queries import ROBOT_POSITION_QUERY
 from dds_utils.message_types import MSG_AIR_QUALITY
+from dds_utils.person_detections import iter_person_detections, person_map_object_num
 from dds_utils.topics import data_topic_name
 
 
@@ -96,9 +97,6 @@ PATH_MUTATION =  """
                     }
                 """
 
-# Fixed Ignite object_num per robot for live person_detected map markers (overwrite).
-PERSON_MAP_OBJECT_NUM = -1
-
 OBJECT_MUTATION =   """
                         mutation($agent_id: Int!, $x: Float!, $y: Float!, $class_name: String!, $object_num: Int!, $timestamp: Float) {
                             setObjects(agent_id: $agent_id, x: $x, y: $y, class_name: $class_name, object_num: $object_num, timestamp: $timestamp)
@@ -140,6 +138,8 @@ class DataListener(Listener):
         self.graphql_server = graphql_server
         self.detected_object_num = 0
         self.object_dict = dict()
+        # How many negative person slots (-1,-2,...) are currently in Ignite for this agent.
+        self._person_map_count = 0
 
         self.R = None
         self.t = None
@@ -223,38 +223,75 @@ class DataListener(Listener):
                 # Intentionally ignored for central map / Ignite (same as before).
                 continue
             elif message_type == "person_detected":
-
-                pose = data['pose']
-                x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
-                det_ts = _detection_timestamp(data, timestamp)
+                # Batched (preferred) or legacy single DetectedObject payload.
+                persons = list(iter_person_detections(data, envelope_timestamp=timestamp))
+                det_ts = persons[0][0] if persons else _detection_timestamp(data, timestamp)
                 dds_log(
                     "data_sub",
-                    f"person_detected {time.strftime('%H:%M:%S', time.localtime(det_ts))}",
+                    f"person_detected n={len(persons)} "
+                    f"{time.strftime('%H:%M:%S', time.localtime(det_ts))}",
                 )
 
-                requests.post(
-                    self.graphql_server,
-                    json={
-                        "query": OBJECT_MUTATION,
-                        "variables": {
-                            "agent_id": self.topic_id,
-                            "x": x,
-                            "y": y,
-                            "class_name": "person",
-                            "object_num": PERSON_MAP_OBJECT_NUM,
-                            "timestamp": det_ts,
+                written = 0
+                for person_ts, person in persons:
+                    pose = person.get("pose") or {}
+                    position = pose.get("position") or {}
+                    try:
+                        px = float(position["x"])
+                        py = float(position["y"])
+                    except (KeyError, TypeError, ValueError):
+                        dds_log(
+                            "data_sub",
+                            f"person_detected skip: missing pose.position",
+                        )
+                        continue
+                    x, y, _ = self.transform_point([px, py, 0], forward=False)
+                    class_name = person.get("class_name") or "person"
+                    object_num = person_map_object_num(written)
+
+                    requests.post(
+                        self.graphql_server,
+                        json={
+                            "query": OBJECT_MUTATION,
+                            "variables": {
+                                "agent_id": self.topic_id,
+                                "x": x,
+                                "y": y,
+                                "class_name": class_name,
+                                "object_num": object_num,
+                                "timestamp": float(person_ts),
+                            },
                         },
-                    },
-                    timeout=1,
-                )
+                        timeout=1,
+                    )
 
-                if self.influx_write_api is not None:
-                    point = Point("person_detected") \
-                    .tag("robot_id", str(self.topic_id)) \
-                    .field("x", x) \
-                    .field("y", y) \
-                    .time(int(round(det_ts * 1000)), WritePrecision.MS)
-                    self.influx_write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point)
+                    if self.influx_write_api is not None:
+                        point = (
+                            Point("person_detected")
+                            .tag("robot_id", str(self.topic_id))
+                            .field("x", x)
+                            .field("y", y)
+                            .time(int(round(float(person_ts) * 1000)), WritePrecision.MS)
+                        )
+                        self.influx_write_api.write(
+                            bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point
+                        )
+                    written += 1
+
+                # Clear leftover person slots if this frame has fewer people than before.
+                for i in range(written, self._person_map_count):
+                    requests.post(
+                        self.graphql_server,
+                        json={
+                            "query": CLEAR_OBJECT_MUTATION,
+                            "variables": {
+                                "agent_id": self.topic_id,
+                                "object_num": person_map_object_num(i),
+                            },
+                        },
+                        timeout=1,
+                    )
+                self._person_map_count = written
 
             elif message_type == MSG_AIR_QUALITY:
                 required = (
