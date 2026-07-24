@@ -35,6 +35,7 @@ from dds_utils.message_types import (
 
 INTER_DDS_WRITE_SLEEP_S = 0.02
 
+
 ROBOT_GOALS_QUERY = """
                     query {
                         robotGoals {
@@ -60,7 +61,15 @@ ROBOT_INITIAL_POSITIONS_QUERY = """
                             }
                             """
 
-TRANSFORMATION_MATRIX_QUERY = """
+ROBOT_MCU_STATE_QUERY = """
+query RobotMcuState($robotId: Int!) {
+    robotMcuState(robot_id: $robotId) {
+        mcu_connected
+    }
+}
+"""
+
+TRANSFORM_MATRIX_QUERY = """
                             query {
                                 transform {
                                     R
@@ -133,6 +142,7 @@ class GoalWriter:
 
         self.robot_goal_history = dict()
         self.robot_init_history = dict()
+        self._mcu_block_logged = set()
 
         # Create a DomainParticipant, Subscriber, and Publisher
         self.participant = create_domain_participant(domain_qos=True)
@@ -167,6 +177,21 @@ class GoalWriter:
                 self.publisher, message_topic, qos=reliable_qos
             )
         return self._target_data_writers[robot_id]
+
+    def _is_mcu_connected(self, robot_id: int) -> bool:
+        """Quick Ignite/GraphQL check before sending position_init."""
+        try:
+            response = post_graphql(
+                self.graphql_server,
+                ROBOT_MCU_STATE_QUERY,
+                variables={"robotId": int(robot_id)},
+                timeout=5,
+            )
+            data = parse_graphql_response(response)
+            state = data.get("robotMcuState")
+            return bool(state and state.get("mcu_connected"))
+        except Exception:
+            return False
 
     def _maybe_publish_multi_robot_plan(self, current_time: int):
         try:
@@ -242,7 +267,7 @@ class GoalWriter:
         # First make sure we have the transformation matrix
         while self.R is None:
             try:
-                response = post_graphql(self.graphql_server, TRANSFORMATION_MATRIX_QUERY, timeout=5)
+                response = post_graphql(self.graphql_server, TRANSFORM_MATRIX_QUERY, timeout=5)
                 data = parse_graphql_response(response)
                 transform = data.get("transform", {})
                 timestamp = transform.get("timestamp", 0)
@@ -407,40 +432,42 @@ class GoalWriter:
                     robot_timestamp = robot['init_timestamp']
 
                     # Transform the initial position to the reference map
-                    robot_x, robot_y, robot_theta = self.transform_point([robot_x, robot_y, robot_theta], forward=True)
+                    robot_x, robot_y, robot_theta = self.transform_point(
+                        [robot_x, robot_y, robot_theta], forward=True
+                    )
+                    desired = (robot_x, robot_y, robot_theta, robot_timestamp)
 
                     if robot_id not in self.robot_init_history:
-                        # Store initial position in history
-                        self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
+                        if abs(current_time - robot_timestamp) >= 10:
+                            continue
+                    elif self.robot_init_history[robot_id] == desired:
+                        continue
 
-                        # Check if the initial position is recent
-                        if abs(current_time - robot_timestamp) < 10:
-
-                            # Send the initial position to the robot
-                            init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
-                            command_message = DataMessage(MSG_POSITION_INIT, int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
-                            message_topic = Topic(self.participant, data_topic_name(robot_id), DataMessage)
-                            message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
-                            message_writer.write(command_message)
+                    if not self._is_mcu_connected(robot_id):
+                        if robot_id not in self._mcu_block_logged:
+                            self._mcu_block_logged.add(robot_id)
                             dds_log(
                                 "goal_pub",
-                                f"initial position set for robot {robot_id} "
-                                f"(x={robot_x:.3f}, y={robot_y:.3f}, θ={robot_theta:.3f})",
+                                f"position_init blocked for robot {robot_id}: MCU not connected",
                             )
-                    elif self.robot_init_history[robot_id] != (robot_x, robot_y, robot_theta, robot_timestamp):
-                        # Store initial position in history
-                        self.robot_init_history[robot_id] = (robot_x, robot_y, robot_theta, robot_timestamp)
-                        init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
-                        command_message = DataMessage(MSG_POSITION_INIT, int(self.my_id), int(robot_timestamp), json.dumps(init_dict))
-                        message_topic = Topic(self.participant, data_topic_name(robot_id), DataMessage)
-                        message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
+                        continue
 
-                        message_writer.write(command_message)
-                        dds_log(
-                            "goal_pub",
-                            f"initial position updated for robot {robot_id} "
-                            f"(x={robot_x:.3f}, y={robot_y:.3f}, θ={robot_theta:.3f})",
-                        )
+                    init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
+                    command_message = DataMessage(
+                        MSG_POSITION_INIT,
+                        int(self.my_id),
+                        int(robot_timestamp),
+                        json.dumps(init_dict),
+                    )
+                    self._get_data_writer(robot_id).write(command_message)
+                    action = "updated" if robot_id in self.robot_init_history else "set"
+                    self.robot_init_history[robot_id] = desired
+                    self._mcu_block_logged.discard(robot_id)
+                    dds_log(
+                        "goal_pub",
+                        f"initial position {action} for robot {robot_id} "
+                        f"(x={robot_x:.3f}, y={robot_y:.3f}, θ={robot_theta:.3f})",
+                    )
 
             except Exception:
                 # print("No goals yet...", e)

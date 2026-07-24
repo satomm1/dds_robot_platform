@@ -13,11 +13,15 @@ class Heartbeat(IdlStruct):
         agent_id (int): The ID of the agent sending the heartbeat.
         timestamp (int): The timestamp of the heartbeat message.
         agent_type (str): The type of the agent sending the heartbeat.
+        ip_address (str): The IP address of the agent.
         location_valid (bool): Indicates if the agent's location is valid.
         x (float): The x-coordinate of the agent's location.
         y (float): The y-coordinate of the agent's location.
         theta (float): The orientation of the agent.
-        topics (sequence[str]): A sequence of topics the agent is publishing to
+        topics (sequence[str]): A sequence of topics the agent is publishing to.
+        mcu_connected (bool): True when the robot MCU handshake is complete.
+            Do not use location_valid alone to infer MCU power; gate
+            position_init on mcu_connected instead.
     """
     agent_id: int
     timestamp: int
@@ -28,6 +32,7 @@ class Heartbeat(IdlStruct):
     y: float
     theta: float
     topics: sequence[str]
+    mcu_connected: bool
 
 
 @dataclass

@@ -21,6 +21,7 @@ SHUTDOWN_REQUEST_CACHE = "robot_shutdown_request"
 MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
 MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 AIR_QUALITY_CACHE = "robot_air_quality"
+MCU_STATE_CACHE = "robot_mcu_state"
 # Drop detections older than this (Unix seconds); entries without timestamp are kept.
 OBJECT_STALE_SEC = float(os.environ.get("OBJECT_STALE_SEC", "15"))
 PERSON_OBJECT_STALE_SEC = float(os.environ.get("PERSON_OBJECT_STALE_SEC", "1.5"))
@@ -53,6 +54,18 @@ def _air_quality_from_cache_row(robot_id, raw):
         "voc_index": doc["voc_index"],
         "nox_index": doc["nox_index"],
         "timestamp": doc["timestamp"],
+    }
+
+
+def _mcu_state_from_cache_row(robot_id, raw):
+    if raw is None:
+        return None
+    doc = json.loads(raw)
+    return {
+        "robot_id": robot_id,
+        "mcu_connected": bool(doc.get("mcu_connected", False)),
+        "location_valid": bool(doc.get("location_valid", False)),
+        "timestamp": float(doc.get("timestamp", 0)),
     }
 
 
@@ -704,6 +717,25 @@ def resolve_air_qualities(*_):
     result = []
     for robot_id, raw in rows:
         entry = _air_quality_from_cache_row(robot_id, raw)
+        if entry is not None:
+            result.append(entry)
+    return result
+
+
+@query.field("robotMcuState")
+def resolve_robot_mcu_state(*_, robot_id: int):
+    mcu_cache = ignite_client.get_or_create_cache(MCU_STATE_CACHE)
+    raw = mcu_cache.get(robot_id)
+    return _mcu_state_from_cache_row(robot_id, raw)
+
+
+@query.field("robotMcuStates")
+def resolve_robot_mcu_states(*_):
+    mcu_cache = ignite_client.get_or_create_cache(MCU_STATE_CACHE)
+    rows = mcu_cache.scan()
+    result = []
+    for robot_id, raw in rows:
+        entry = _mcu_state_from_cache_row(robot_id, raw)
         if entry is not None:
             result.append(entry)
     return result

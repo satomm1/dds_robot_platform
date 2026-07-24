@@ -94,6 +94,15 @@ type AirQuality {
     timestamp: Float!
 }
 
+# Heartbeat-derived MCU / location flags (written by entry_exit from HeartbeatTopic).
+# GUI can poll robotMcuState(s) later to warn when MCU is not connected.
+type RobotMcuState {
+    robot_id: Int!
+    mcu_connected: Boolean!
+    location_valid: Boolean!
+    timestamp: Float!
+}
+
 type PendingRobotStop {
     id: Int
     requested_at: Float
@@ -157,6 +166,8 @@ type Query {
     subscribedAndExitedAgents: [Agents]
     airQuality(robot_id: Int!): AirQuality
     airQualities: [AirQuality!]!
+    robotMcuState(robot_id: Int!): RobotMcuState
+    robotMcuStates: [RobotMcuState!]!
     robotImageMeta(robot_id: Int!): RobotImageMeta
 }
 
@@ -186,6 +197,7 @@ type Mutation {
     clearObject(agent_id: Int, object_num: Int): Boolean
     clearAllObjects: Boolean
     setAirQuality(robot_id: Int!, temperature: Float!, relative_humidity: Float!, voc_index: Float!, nox_index: Float!, timestamp: Float!): Boolean
+    setRobotMcuState(robot_id: Int!, mcu_connected: Boolean!, location_valid: Boolean!, timestamp: Float!): Boolean
 }
 
 type Subscription {

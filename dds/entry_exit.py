@@ -61,6 +61,22 @@ PLACEHOLDER_POSITION_MUTATION = """
     }
 """
 
+SET_ROBOT_MCU_STATE_MUTATION = """
+    mutation(
+        $robot_id: Int!,
+        $mcu_connected: Boolean!,
+        $location_valid: Boolean!,
+        $timestamp: Float!
+    ) {
+        setRobotMcuState(
+            robot_id: $robot_id,
+            mcu_connected: $mcu_connected,
+            location_valid: $location_valid,
+            timestamp: $timestamp
+        )
+    }
+"""
+
 ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC = float(os.environ.get("ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC", "5"))
 ENTRY_EXIT_AGENTS_QUERY_TIMEOUT_SEC = float(
     os.environ.get("ENTRY_EXIT_AGENTS_QUERY_TIMEOUT_SEC", "15")
@@ -80,6 +96,7 @@ class EntryExitHeartbeatListener(Listener):
     def __init__(self, my_id_int):
         super().__init__()
         self.my_id_int = my_id_int
+        # agent_id -> {timestamp, mcu_connected, location_valid}
         self.new_heartbeats = dict()
 
     def on_data_available(self, reader):
@@ -88,7 +105,11 @@ class EntryExitHeartbeatListener(Listener):
                 continue
             if sample.agent_id == self.my_id_int:
                 continue
-            self.new_heartbeats[sample.agent_id] = sample.timestamp
+            self.new_heartbeats[sample.agent_id] = {
+                "timestamp": int(sample.timestamp),
+                "mcu_connected": bool(sample.mcu_connected),
+                "location_valid": bool(sample.location_valid),
+            }
 
     def get_heartbeats(self):
         out = self.new_heartbeats.copy()
@@ -698,6 +719,41 @@ class EntryExitCommunication:
         except Exception as exc:
             dds_log("entry_exit", f"placeholder position failed for robot_id={robot_id}: {exc}")
 
+    def _publish_mcu_state(self, robot_id, hb):
+        """Mirror Heartbeat MCU / location flags into Ignite via GraphQL."""
+        try:
+            requests.post(
+                self.graphql_server,
+                json={
+                    "query": SET_ROBOT_MCU_STATE_MUTATION,
+                    "variables": {
+                        "robot_id": int(robot_id),
+                        "mcu_connected": bool(hb["mcu_connected"]),
+                        "location_valid": bool(hb["location_valid"]),
+                        "timestamp": float(hb["timestamp"]),
+                    },
+                },
+                timeout=ENTRY_EXIT_GRAPHQL_LIGHT_TIMEOUT_SEC,
+            )
+        except Exception as exc:
+            dds_log(
+                "entry_exit",
+                f"setRobotMcuState failed for robot_id={robot_id}: {exc}",
+            )
+
+    def _apply_heartbeats(self, current_time):
+        """Drain HeartbeatTopic samples: update liveness and Ignite MCU state."""
+        if self.heartbeat_listener is None:
+            return
+        for agent_id, hb in self.heartbeat_listener.get_heartbeats().items():
+            if agent_id in self.agents:
+                self.agents[agent_id]["heartbeat_ts"] = hb["timestamp"]
+                self.agents[agent_id]["mcu_connected"] = hb["mcu_connected"]
+                self.agents[agent_id]["location_valid"] = hb["location_valid"]
+            self._publish_mcu_state(agent_id, hb)
+        if self.my_id_int in self.agents:
+            self.agents[self.my_id_int]["heartbeat_ts"] = current_time
+
     def _handle_immediate_entry_exit_events(self, exited_agents, current_time):
         """
         Apply DDS entry/exit listener updates to GraphQL without waiting for
@@ -728,12 +784,7 @@ class EntryExitCommunication:
         for _aid, info in self.agents.items():
             info.setdefault('heartbeat_ts', current_time)
 
-        if self.heartbeat_listener is not None:
-            for agent_id, ts in self.heartbeat_listener.get_heartbeats().items():
-                if agent_id in self.agents:
-                    self.agents[agent_id]['heartbeat_ts'] = ts
-        if self.my_id_int in self.agents:
-            self.agents[self.my_id_int]['heartbeat_ts'] = current_time
+        self._apply_heartbeats(current_time)
 
         self.update_agents(exited_agents=exited_agents)
 
@@ -755,12 +806,7 @@ class EntryExitCommunication:
                 for _aid, info in self.agents.items():
                     info.setdefault('heartbeat_ts', current_time)
 
-                if self.heartbeat_listener is not None:
-                    for agent_id, ts in self.heartbeat_listener.get_heartbeats().items():
-                        if agent_id in self.agents:
-                            self.agents[agent_id]['heartbeat_ts'] = ts
-                if self.my_id_int in self.agents:
-                    self.agents[self.my_id_int]['heartbeat_ts'] = current_time
+                self._apply_heartbeats(current_time)
 
                 hb_dead = []
                 for agent_id, agent_info in list(self.agents.items()):

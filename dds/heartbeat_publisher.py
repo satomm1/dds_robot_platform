@@ -37,6 +37,7 @@ class HeartbeatPublisher:
 
         if self.agent_type == 'human':
             self.location_valid = False
+            self.mcu_connected = False
 
         self.my_ip = get_ip()
 
@@ -57,7 +58,18 @@ class HeartbeatPublisher:
         # Start the heartbeat publishing loop
         while True:
             current_time = int(time.time())
-            heartbeat_message = Heartbeat(self.agent_id, current_time, self.agent_type, self.my_ip, self.location_valid, 0.0, 0.0, 0.0, [])
+            heartbeat_message = Heartbeat(
+                self.agent_id,
+                current_time,
+                self.agent_type,
+                self.my_ip,
+                self.location_valid,
+                0.0,
+                0.0,
+                0.0,
+                [],
+                self.mcu_connected,
+            )
             self.heartbeat_writer.write(heartbeat_message)
             if is_dds_verbose():
                 dds_log("hb_pub", "heartbeat sent")
