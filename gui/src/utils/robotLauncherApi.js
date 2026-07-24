@@ -3,6 +3,7 @@ import { DEFAULT_PORT, normalizeHostInput } from './robotLauncherStorage';
 const REQUEST_TIMEOUT_MS = 20000;
 const SOFTWARE_UPDATE_TIMEOUT_MS = 660000;
 const STATUS_REQUEST_TIMEOUT_MS = 5000;
+const PATROL_REQUEST_TIMEOUT_MS = 20000;
 
 function launchUrl(host, port, path) {
   const h = normalizeHostInput(host);
@@ -25,13 +26,21 @@ async function parseResponse(res) {
   };
 }
 
-async function requestRobotLauncherRaw(host, path, timeoutMs) {
+/**
+ * @param {string} host
+ * @param {string} path
+ * @param {number} timeoutMs
+ * @param {{ method?: string, body?: string|object|null }} [options]
+ */
+async function requestRobotLauncherRaw(host, path, timeoutMs, options = {}) {
   const cleanHost = normalizeHostInput(host);
   if (!cleanHost) {
     throw new Error('Enter a robot IP address or hostname.');
   }
   const portNum = DEFAULT_PORT;
   const route = path.startsWith('/') ? path : `/${path}`;
+  const method = String(options.method || 'GET').toUpperCase();
+  const body = options.body ?? null;
 
   if (window.robotLauncher?.request) {
     return window.robotLauncher.request({
@@ -39,6 +48,8 @@ async function requestRobotLauncherRaw(host, path, timeoutMs) {
       port: portNum,
       path: route,
       timeoutMs,
+      method,
+      body,
     });
   }
 
@@ -51,9 +62,14 @@ async function requestRobotLauncherRaw(host, path, timeoutMs) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(`/api/robot-launcher?${params}`, {
-        signal: controller.signal,
-      });
+      const fetchOptions = { signal: controller.signal };
+      if (method === 'POST') {
+        fetchOptions.method = 'POST';
+        fetchOptions.headers = { 'Content-Type': 'application/json' };
+        fetchOptions.body =
+          body == null ? '' : typeof body === 'string' ? body : JSON.stringify(body);
+      }
+      const res = await fetch(`/api/robot-launcher?${params}`, fetchOptions);
       const data = await res.json();
       if (!res.ok && data?.error) {
         throw new Error(data.error);
@@ -67,10 +83,16 @@ async function requestRobotLauncherRaw(host, path, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(launchUrl(cleanHost, portNum, route), {
-      method: 'GET',
+    const fetchOptions = {
+      method,
       signal: controller.signal,
-    });
+    };
+    if (method === 'POST') {
+      fetchOptions.headers = { 'Content-Type': 'application/json' };
+      fetchOptions.body =
+        body == null ? '' : typeof body === 'string' ? body : JSON.stringify(body);
+    }
+    const res = await fetch(launchUrl(cleanHost, portNum, route), fetchOptions);
     return parseResponse(res);
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -195,4 +217,64 @@ export async function fetchRobotLauncherStatus(host) {
   } catch {
     return { ok: false, body: '' };
   }
+}
+
+function parsePatrolBody(body) {
+  if (!body) {
+    return { ok: false, points: [], count: 0, error: 'Empty response from robot.' };
+  }
+  try {
+    const data = typeof body === 'string' ? JSON.parse(body) : body;
+    if (!data || typeof data !== 'object') {
+      return { ok: false, points: [], count: 0, error: 'Invalid patrol response.' };
+    }
+    const points = Array.isArray(data.points) ? data.points : [];
+    return {
+      ok: Boolean(data.ok),
+      path: data.path || '',
+      points,
+      count: typeof data.count === 'number' ? data.count : points.length,
+      error: data.error || '',
+    };
+  } catch {
+    return { ok: false, points: [], count: 0, error: 'Invalid JSON from robot.' };
+  }
+}
+
+/** GET /patrol — load existing patrol points from the robot. */
+export async function fetchRobotPatrol(host) {
+  const result = await requestRobotLauncherRaw(
+    host,
+    '/patrol',
+    PATROL_REQUEST_TIMEOUT_MS,
+  );
+  const parsed = parsePatrolBody(result.body);
+  if (!result.ok && !parsed.error) {
+    parsed.ok = false;
+    parsed.error = `Robot returned HTTP ${result.status || '?'}`.trim();
+  }
+  return parsed;
+}
+
+/**
+ * POST /patrol — write patrol.txt on the robot.
+ * @param {string} host
+ * @param {Array<{ x: number, y: number, theta: number, wait_sec: number }>} points
+ */
+export async function postRobotPatrol(host, points) {
+  const result = await requestRobotLauncherRaw(host, '/patrol', PATROL_REQUEST_TIMEOUT_MS, {
+    method: 'POST',
+    body: { points },
+  });
+  const parsed = parsePatrolBody(result.body);
+  if (!result.ok) {
+    parsed.ok = false;
+    if (!parsed.error) {
+      parsed.error =
+        result.error ||
+        `Robot returned HTTP ${result.status || '?'}`.trim() ||
+        'Failed to write patrol points.';
+    }
+  }
+  return parsed;
 }

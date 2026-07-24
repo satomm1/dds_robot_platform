@@ -179,6 +179,16 @@ const HelpModal = ({ onClose }) => {
               <strong>Patrol</strong> (<code>patrol:=true</code>) at launch.
             </li>
             <li>
+              With <strong>Patrol</strong> checked, expand <strong>Patrol points</strong> and use{' '}
+              <HelpChip className="robot-startup__btn robot-startup__btn--patrol">
+                Set Patrol
+              </HelpChip>{' '}
+              (requires the Docker launcher on port <code>8080</code>) to click-and-drag poses on
+              the map, set a global or per-point wait time, then save. This writes{' '}
+              <code>mattbot_navigation/scripts/patrol.txt</code> on the robot. Changes take effect
+              on the next patrol / ROS start.
+            </li>
+            <li>
               When the host is on but Docker is not running, the main button is{' '}
               <HelpChip className="robot-startup__btn robot-startup__btn--start robot-startup__btn--start-ready">
                 Docker Start

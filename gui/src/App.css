@@ -18,12 +18,46 @@
   min-height: 3.25rem;
 }
 
+.App-header--patrol-mode {
+  background-color: #12518f;
+  box-shadow: inset 0 -3px 0 #4dabf7;
+}
+
+.App-header--patrol-mode .App-header__toolbar-btn {
+  background: #1c6ec0;
+  border-color: #4dabf7;
+}
+
+.App-header--patrol-mode .App-header__toolbar-btn:hover {
+  background: #2680d8;
+}
+
+.App-header--patrol-mode .App-header__credit {
+  color: #cfe4fa;
+}
+
 .App-header__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   margin: 0;
   font-size: 1.35rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-align: center;
+}
+
+.App-header__mode-badge {
+  padding: 2px 8px;
+  border: 1px solid #a5d8ff;
+  border-radius: 10px;
+  background: #4dabf7;
+  color: #0b2d4d;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .App-header__title-link {
@@ -1496,6 +1530,240 @@
 .multi-robot-planner__muted {
   color: #888;
   font-size: 11px;
+}
+
+.patrol-points-editor {
+  padding: 8px 10px 10px;
+  font-size: 12px;
+}
+
+.patrol-points-editor__title {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #1b4332;
+}
+
+.patrol-points-editor__hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #495057;
+  line-height: 1.35;
+}
+
+.patrol-points-editor__wait-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.patrol-points-editor__radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.patrol-points-editor__field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #495057;
+}
+
+.patrol-points-editor__field input {
+  width: 26px;
+  max-width: 26px;
+  flex: 0 0 26px;
+  padding: 3px 4px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.patrol-points-editor input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.patrol-points-editor input[type='number']::-webkit-inner-spin-button,
+.patrol-points-editor input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.patrol-points-editor__list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.patrol-points-editor__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.patrol-points-editor__item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.patrol-points-editor__item-wait {
+  box-sizing: border-box;
+  flex: 0 0 26px;
+  width: 26px;
+  max-width: 26px;
+  height: 1.2em;
+  margin: 0;
+  padding: 0 2px;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.patrol-points-editor__item-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #b71c1c;
+  border-radius: 3px;
+  background: #fff5f5;
+  color: #b71c1c;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.patrol-points-editor__item-remove:hover:not(:disabled) {
+  background: #ffe3e3;
+  border-color: #a01818;
+  color: #a01818;
+}
+
+.patrol-points-editor__item-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.patrol-points-editor__empty {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #6c757d;
+}
+
+.patrol-points-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.patrol-points-editor__btn {
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fff;
+  cursor: pointer;
+}
+
+.patrol-points-editor__btn--primary {
+  border-color: #0d6e4f;
+  background: #0d6e4f;
+  color: #fff;
+}
+
+.patrol-points-editor__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.patrol-points-editor__error {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #b71c1c;
+  line-height: 1.35;
+}
+
+.patrol-points-editor__success {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #0d6e4f;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.robot-map__patrol-banner {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 6px 12px;
+  border-radius: 4px;
+  background: rgba(13, 110, 79, 0.92);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}
+
+.robot-startup__patrol-option {
+  gap: 6px;
+}
+
+.robot-startup__btn--patrol {
+  margin-left: 6px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+  border: 1px solid #0d6e4f;
+  color: #0d6e4f;
+  background: #ffffff;
+}
+
+.robot-startup__btn--patrol:hover:not(:disabled) {
+  background: #e8f5ef;
+}
+
+.robot-startup__btn--patrol:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.robot-startup__btn--patrol-active {
+  border-color: #0d6e4f;
+  background: #0d6e4f;
+  color: #ffffff;
 }
 
 /* Local stack (right sidebar footer) */

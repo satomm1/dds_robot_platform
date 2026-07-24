@@ -78,6 +78,8 @@ const RobotMap = forwardRef(({
   multiPlanFleetIds = [],
   stagedMultiGoals = {},
   onStageMultiGoal = () => {},
+  stagedPatrolPoints = [],
+  onStagePatrolPoint = () => {},
   pathDisplayDismissed = {},
   dismissPathForRobot = () => {},
   clearPathDismissalForRobot = () => {},
@@ -459,19 +461,24 @@ const RobotMap = forwardRef(({
   const isPosePlacementMode =
     positionMode === 'goal' ||
     positionMode === 'initial' ||
-    positionMode === 'multiPlan';
+    positionMode === 'multiPlan' ||
+    positionMode === 'patrol';
 
   const canStartPoseDrag =
-    Boolean(selectedRobotId) &&
     isPosePlacementMode &&
-    (positionMode !== 'multiPlan' || multiPlanFleetIds.includes(selectedRobotId));
+    (positionMode === 'patrol' ||
+      (Boolean(selectedRobotId) &&
+        (positionMode !== 'multiPlan' || multiPlanFleetIds.includes(selectedRobotId))));
 
   const commitPoseDrag = useCallback(
     (drag) => {
       const { anchorWorld, pointerWorld, mapX, mapY } = drag;
       const thetaRad = mapDragToRobotThetaRad(anchorWorld, pointerWorld);
 
-      if (positionMode === 'multiPlan') {
+      if (positionMode === 'patrol') {
+        devLog(`Staging patrol point at`, mapX, mapY, thetaRad);
+        onStagePatrolPoint(mapX, mapY, thetaRad);
+      } else if (positionMode === 'multiPlan') {
         devLog(`Staging multi goal for robot ${selectedRobotId} at`, mapX, mapY, thetaRad);
         onStageMultiGoal(selectedRobotId, mapX, mapY, thetaRad);
       } else if (positionMode === 'goal') {
@@ -532,6 +539,7 @@ const RobotMap = forwardRef(({
       positionMode,
       selectedRobotId,
       onStageMultiGoal,
+      onStagePatrolPoint,
       onSetGoal,
       onSetInitialPosition,
       getRobotColor,
@@ -965,15 +973,19 @@ const RobotMap = forwardRef(({
     .join(' ');
 
   const mapHostTitle = canStartPoseDrag
-    ? 'Click and drag to set pose and heading. Hold Space or Shift and drag, or middle-mouse drag, to pan.'
+    ? positionMode === 'patrol'
+      ? 'Click and drag to add a patrol pose and heading. Hold Space or Shift and drag, or middle-mouse drag, to pan.'
+      : 'Click and drag to set pose and heading. Hold Space or Shift and drag, or middle-mouse drag, to pan.'
     : 'Drag to pan. Scroll to zoom.';
 
   const posePreviewColor =
     positionMode === 'initial'
       ? '#2196F3'
-      : selectedRobotId != null
-        ? getRobotColor(selectedRobotId)
-        : '#333';
+      : positionMode === 'patrol'
+        ? '#0d6e4f'
+        : selectedRobotId != null
+          ? getRobotColor(selectedRobotId)
+          : '#333';
 
   const poseDragScreenDist = poseDrag
     ? Math.hypot(
@@ -985,6 +997,11 @@ const RobotMap = forwardRef(({
 
   return (
     <div ref={containerRef} className={hostClass} title={mapHostTitle}>
+      {positionMode === 'patrol' && (
+        <div className="robot-map__patrol-banner" role="status">
+          Setting patrol points — click and drag on the map to add poses
+        </div>
+      )}
       {mapSize.width > 0 && mapSize.height > 0 && (
       <Stage 
         ref={stageRef}
@@ -1225,6 +1242,91 @@ const RobotMap = forwardRef(({
                     opacity={0.85}
                   />
                 )}
+              </React.Fragment>
+            );
+          })}
+          {stagedPatrolPoints.map((pt, index) => {
+            if (!pt || typeof pt.mapX !== 'number') return null;
+            const px = (occGridWidth - pt.mapX / occGridResolution) * gridCellSize;
+            const py = (pt.mapY * gridCellSize) / occGridResolution;
+            const arrowLen = robotMarkerRadius * 1.25;
+            const labelSize = Math.max(8, Math.round(robotMarkerRadius * 0.95));
+            const labelOffset = robotMarkerRadius * 0.28;
+            const color = '#0d6e4f';
+            // Patrol loops back to the first point, so close the polygon on the last leg.
+            const isClosingLeg = index === stagedPatrolPoints.length - 1;
+            const prev = index > 0 ? stagedPatrolPoints[index - 1] : null;
+            const prevPx =
+              prev && typeof prev.mapX === 'number'
+                ? (occGridWidth - prev.mapX / occGridResolution) * gridCellSize
+                : null;
+            const prevPy =
+              prev && typeof prev.mapY === 'number'
+                ? (prev.mapY * gridCellSize) / occGridResolution
+                : null;
+            const first = stagedPatrolPoints[0];
+            const showClosingLeg =
+              isClosingLeg &&
+              stagedPatrolPoints.length > 2 &&
+              first &&
+              typeof first.mapX === 'number' &&
+              typeof first.mapY === 'number';
+            const firstPx = showClosingLeg
+              ? (occGridWidth - first.mapX / occGridResolution) * gridCellSize
+              : null;
+            const firstPy = showClosingLeg
+              ? (first.mapY * gridCellSize) / occGridResolution
+              : null;
+            return (
+              <React.Fragment key={`patrol-${pt.id}`}>
+                {prevPx != null && prevPy != null && (
+                  <Line
+                    points={[prevPx, prevPy, px, py]}
+                    stroke={color}
+                    strokeWidth={2}
+                    dash={[6, 4]}
+                    opacity={0.85}
+                  />
+                )}
+                {showClosingLeg && (
+                  <Line
+                    points={[px, py, firstPx, firstPy]}
+                    stroke={color}
+                    strokeWidth={2}
+                    dash={[6, 4]}
+                    opacity={0.85}
+                  />
+                )}
+                <Circle
+                  x={px}
+                  y={py}
+                  radius={robotMarkerRadius}
+                  stroke={color}
+                  strokeWidth={3}
+                  fill="rgba(13,110,79,0.35)"
+                />
+                <Arrow
+                  points={[
+                    px,
+                    py,
+                    px - Math.cos(pt.theta) * arrowLen,
+                    py + Math.sin(pt.theta) * arrowLen,
+                  ]}
+                  stroke={color}
+                  fill={color}
+                  strokeWidth={2}
+                  pointerAtEnding
+                  pointerLength={10}
+                  pointerWidth={8}
+                />
+                <Text
+                  x={px - labelOffset}
+                  y={py - labelOffset}
+                  text={String(index + 1)}
+                  fontSize={labelSize}
+                  fill="#fff"
+                  fontStyle="bold"
+                />
               </React.Fragment>
             );
           })}

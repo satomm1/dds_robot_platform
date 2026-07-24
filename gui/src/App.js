@@ -13,6 +13,7 @@ import AirQualityPanel from './components/AirQualityPanel';
 import ColumnResizeHandle from './components/ColumnResizeHandle';
 import { useResizableColumnWidth } from './hooks/useResizableColumnWidth';
 import MultiRobotGoalPlanner from './components/MultiRobotGoalPlanner';
+import PatrolPointsEditor from './components/PatrolPointsEditor';
 import HelpModal from './components/HelpModal';
 import MapSettingsModal from './components/MapSettingsModal';
 import SystemHealthBar from './components/SystemHealthBar';
@@ -37,6 +38,7 @@ import {
 import { RobotColorProvider } from './hooks/useRobotColors';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
 import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS, GET_AIR_QUALITIES, GET_ROBOT_MCU_STATE } from './queries';
+import { fetchRobotPatrol, postRobotPatrol } from './utils/robotLauncherApi';
 
 const ROBOT_POSITIONS_POLL_MS = 2000;
 const POSITION_STALE_SEC = 31;
@@ -162,8 +164,8 @@ function AppContent() {
   // Now this hook is inside the ApolloProvider context
   const [setRobotGoal] = useMutation(SET_ROBOT_GOAL);
 
-  // State to manage position mode (goal, initial, or coordinated multi-robot plan)
-  const [positionMode, setPositionMode] = useState('goal'); // 'goal' | 'initial' | 'multiPlan'
+  // State to manage position mode (goal, initial, coordinated multi-robot plan, or patrol)
+  const [positionMode, setPositionMode] = useState('goal'); // 'goal' | 'initial' | 'multiPlan' | 'patrol'
   const prevRobotCountRef = useRef(null);
 
   const [multiFleet, setMultiFleet] = useState({});
@@ -172,6 +174,18 @@ function AppContent() {
   const nextMultiPlanSuffixRef = useRef(2);
   const [multiCoordinated, setMultiCoordinated] = useState(true);
   const [multiSubmitError, setMultiSubmitError] = useState('');
+
+  const [patrolHost, setPatrolHost] = useState('');
+  const [patrolHostLabel, setPatrolHostLabel] = useState('');
+  const [stagedPatrolPoints, setStagedPatrolPoints] = useState([]);
+  const nextPatrolPointIdRef = useRef(1);
+  const [patrolWaitMode, setPatrolWaitMode] = useState('global'); // 'global' | 'perPoint'
+  const [patrolGlobalWaitSec, setPatrolGlobalWaitSec] = useState('10');
+  const [patrolDefaultWaitSec, setPatrolDefaultWaitSec] = useState('10');
+  const [patrolSaving, setPatrolSaving] = useState(false);
+  const [patrolSaveError, setPatrolSaveError] = useState('');
+  const [patrolLoadError, setPatrolLoadError] = useState('');
+  const [patrolSuccessMessage, setPatrolSuccessMessage] = useState('');
 
   const [setMultiRobotGoalPlan, { loading: multiSubmitting }] = useMutation(SET_MULTI_ROBOT_GOAL_PLAN);
 
@@ -218,26 +232,195 @@ function AppContent() {
     if (positionsError) return;
     const n = robotPositions.length;
     const prev = prevRobotCountRef.current;
-    if (prev === 0 && n > 0) {
+    if (prev === 0 && n > 0 && positionMode !== 'patrol') {
       setPositionMode('initial');
     }
     prevRobotCountRef.current = n;
-  }, [robotPositions, positionsError]);
+  }, [robotPositions, positionsError, positionMode]);
+
+  const exitPatrolMode = useCallback((nextMode = 'goal') => {
+    setPositionMode(nextMode);
+    setPatrolHost('');
+    setPatrolHostLabel('');
+    setStagedPatrolPoints([]);
+    setPatrolSaveError('');
+    setPatrolLoadError('');
+    setPatrolSaving(false);
+    setPatrolSuccessMessage('');
+  }, []);
+
+  const dismissPatrolSuccess = useCallback(() => {
+    exitPatrolMode('goal');
+  }, [exitPatrolMode]);
+
+  useEffect(() => {
+    if (!patrolSuccessMessage) return undefined;
+    const timer = setTimeout(() => {
+      exitPatrolMode('goal');
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [patrolSuccessMessage, exitPatrolMode]);
 
   const selectGoalMode = useCallback(() => {
+    if (positionMode === 'patrol' || patrolSuccessMessage) {
+      exitPatrolMode('goal');
+      return;
+    }
     setPositionMode('goal');
     setMultiSubmitError('');
-  }, []);
+  }, [positionMode, patrolSuccessMessage, exitPatrolMode]);
 
   const selectInitialMode = useCallback(() => {
+    if (positionMode === 'patrol' || patrolSuccessMessage) {
+      exitPatrolMode('initial');
+      return;
+    }
     setPositionMode('initial');
     setMultiSubmitError('');
-  }, []);
+  }, [positionMode, patrolSuccessMessage, exitPatrolMode]);
 
   const selectMultiPlanMode = useCallback(() => {
+    if (positionMode === 'patrol' || patrolSuccessMessage) {
+      exitPatrolMode('multiPlan');
+      return;
+    }
     setPositionMode('multiPlan');
     setMultiSubmitError('');
+  }, [positionMode, patrolSuccessMessage, exitPatrolMode]);
+
+  const parseWaitSec = (value, fallback = 10) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return fallback;
+    return n;
+  };
+
+  const handleBeginSetPatrolPoints = useCallback(
+    async ({ host, label }) => {
+      const cleanHost = String(host || '').trim();
+      if (!cleanHost) return;
+      setMultiSubmitError('');
+      setPositionMode('patrol');
+      setPatrolHost(cleanHost);
+      setPatrolHostLabel(String(label || cleanHost).trim());
+      setStagedPatrolPoints([]);
+      setPatrolSaveError('');
+      setPatrolLoadError('');
+      setPatrolSaving(false);
+      setPatrolSuccessMessage('');
+      try {
+        const result = await fetchRobotPatrol(cleanHost);
+        if (result.ok && Array.isArray(result.points) && result.points.length > 0) {
+          const loaded = result.points.map((pt) => {
+            const id = nextPatrolPointIdRef.current;
+            nextPatrolPointIdRef.current += 1;
+            return {
+              id,
+              mapX: Number(pt.x),
+              mapY: Number(pt.y),
+              theta: Number(pt.theta),
+              waitSec: String(
+                Number.isFinite(Number(pt.wait_sec)) ? Number(pt.wait_sec) : 10,
+              ),
+            };
+          });
+          setStagedPatrolPoints(loaded);
+          const waits = loaded.map((p) => Number(p.waitSec));
+          const allSame = waits.every((w) => w === waits[0]);
+          if (allSame) {
+            setPatrolWaitMode('global');
+            setPatrolGlobalWaitSec(String(waits[0]));
+          } else {
+            setPatrolWaitMode('perPoint');
+            setPatrolDefaultWaitSec(String(waits[0] ?? 10));
+          }
+        } else if (!result.ok && result.error) {
+          setPatrolLoadError(result.error);
+        }
+      } catch (err) {
+        setPatrolLoadError(err.message || 'Could not load existing patrol points.');
+      }
+    },
+    [],
+  );
+
+  const handleStagePatrolPoint = useCallback(
+    (mapX, mapY, thetaRad) => {
+      const waitSeed =
+        patrolWaitMode === 'global' ? patrolGlobalWaitSec : patrolDefaultWaitSec;
+      const id = nextPatrolPointIdRef.current;
+      nextPatrolPointIdRef.current += 1;
+      setStagedPatrolPoints((prev) => [
+        ...prev,
+        {
+          id,
+          mapX,
+          mapY,
+          theta: thetaRad,
+          waitSec: String(parseWaitSec(waitSeed, 10)),
+        },
+      ]);
+      setPatrolSaveError('');
+    },
+    [patrolWaitMode, patrolGlobalWaitSec, patrolDefaultWaitSec],
+  );
+
+  const handlePatrolWaitSecChange = useCallback((pointId, value) => {
+    setStagedPatrolPoints((prev) =>
+      prev.map((pt) => (pt.id === pointId ? { ...pt, waitSec: value } : pt)),
+    );
   }, []);
+
+  const handleRemovePatrolPoint = useCallback((pointId) => {
+    setStagedPatrolPoints((prev) => prev.filter((pt) => pt.id !== pointId));
+  }, []);
+
+  const handleClearPatrolPoints = useCallback(() => {
+    setStagedPatrolPoints([]);
+    setPatrolSaveError('');
+  }, []);
+
+  const handleCancelPatrolPoints = useCallback(() => {
+    exitPatrolMode('goal');
+  }, [exitPatrolMode]);
+
+  const handleSavePatrolPoints = useCallback(async () => {
+    if (!patrolHost || stagedPatrolPoints.length === 0 || patrolSaving) return;
+    const globalWait = parseWaitSec(patrolGlobalWaitSec, 10);
+    const points = stagedPatrolPoints.map((pt) => ({
+      x: pt.mapX,
+      y: pt.mapY,
+      theta: pt.theta,
+      wait_sec:
+        patrolWaitMode === 'global' ? globalWait : parseWaitSec(pt.waitSec, globalWait),
+    }));
+    setPatrolSaving(true);
+    setPatrolSaveError('');
+    try {
+      const result = await postRobotPatrol(patrolHost, points);
+      if (!result.ok) {
+        setPatrolSaveError(result.error || 'Failed to write patrol points.');
+        setPatrolSaving(false);
+        return;
+      }
+      const count = result.count || points.length;
+      setStagedPatrolPoints([]);
+      setPatrolSaving(false);
+      setPatrolSaveError('');
+      setPositionMode('goal');
+      setPatrolSuccessMessage(
+        `Wrote ${count} patrol point${count === 1 ? '' : 's'} to the robot. Takes effect on the next patrol start.`,
+      );
+    } catch (err) {
+      setPatrolSaveError(err.message || 'Failed to write patrol points.');
+      setPatrolSaving(false);
+    }
+  }, [
+    patrolHost,
+    stagedPatrolPoints,
+    patrolSaving,
+    patrolGlobalWaitSec,
+    patrolWaitMode,
+  ]);
 
   useEffect(() => {
     const isTypingTarget = (el) =>
@@ -273,7 +456,12 @@ function AppContent() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [helpOpen, selectGoalMode, selectInitialMode, selectMultiPlanMode]);
+  }, [
+    helpOpen,
+    selectGoalMode,
+    selectInitialMode,
+    selectMultiPlanMode,
+  ]);
 
   // Mutation for setting the robot's initial position
   const [setRobotInitialPosition] = useMutation(SET_ROBOT_INITIAL_POSITION);
@@ -419,7 +607,11 @@ function AppContent() {
 
   return (
     <div className="App">
-      <header className="App-header">
+      <header
+        className={`App-header${
+          positionMode === 'patrol' ? ' App-header--patrol-mode' : ''
+        }`}
+      >
         <div className="App-header__left-actions">
           <button
             type="button"
@@ -445,6 +637,9 @@ function AppContent() {
           >
             Robot Controller
           </a>
+          {positionMode === 'patrol' && (
+            <span className="App-header__mode-badge">Set Patrol Mode</span>
+          )}
         </h1>
         <div className="App-header__credit">
           <a
@@ -548,6 +743,30 @@ function AppContent() {
               />
             </div>
           )}
+          {(positionMode === 'patrol' || Boolean(patrolSuccessMessage)) && (
+            <div className="sidebar__multi-plan-dock">
+              <PatrolPointsEditor
+                hostLabel={patrolHostLabel || patrolHost}
+                waitMode={patrolWaitMode}
+                onWaitModeChange={setPatrolWaitMode}
+                globalWaitSec={patrolGlobalWaitSec}
+                onGlobalWaitSecChange={setPatrolGlobalWaitSec}
+                defaultWaitSec={patrolDefaultWaitSec}
+                onDefaultWaitSecChange={setPatrolDefaultWaitSec}
+                stagedPoints={stagedPatrolPoints}
+                onWaitSecChange={handlePatrolWaitSecChange}
+                onRemovePoint={handleRemovePatrolPoint}
+                onClear={handleClearPatrolPoints}
+                onCancel={handleCancelPatrolPoints}
+                onSave={handleSavePatrolPoints}
+                saving={patrolSaving}
+                saveError={patrolSaveError}
+                loadError={patrolLoadError}
+                successMessage={patrolSuccessMessage}
+                onDismissSuccess={dismissPatrolSuccess}
+              />
+            </div>
+          )}
           <div className="sidebar__left-footer">
             <div className="sidebar__fleet-actions">
               <StopAllButton
@@ -591,6 +810,8 @@ function AppContent() {
               .filter((id) => multiFleet[id])}
             stagedMultiGoals={stagedMultiGoals}
             onStageMultiGoal={handleStageMultiGoal}
+            stagedPatrolPoints={stagedPatrolPoints}
+            onStagePatrolPoint={handleStagePatrolPoint}
             pathDisplayDismissed={pathDisplayDismissed}
             dismissPathForRobot={dismissPathForRobot}
             clearPathDismissalForRobot={clearPathDismissalForRobot}
@@ -633,7 +854,11 @@ function AppContent() {
               style={{ width: rightSidebarWidth }}
             >
               <div className="sidebar-right__top">
-                <RobotStartup />
+                <RobotStartup
+                  onBeginSetPatrolPoints={handleBeginSetPatrolPoints}
+                  onCancelSetPatrolPoints={handleCancelPatrolPoints}
+                  patrolModeActive={positionMode === 'patrol'}
+                />
               </div>
               <div className="sidebar-right__footer">
                 <DdsLocalControl />

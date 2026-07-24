@@ -290,7 +290,11 @@ function RobotActionsMenu({
   );
 }
 
-const RobotStartup = () => {
+const RobotStartup = ({
+  onBeginSetPatrolPoints = null,
+  onCancelSetPatrolPoints = null,
+  patrolModeActive = false,
+}) => {
   const apolloClient = useApolloClient();
   const [saved, setSaved] = useState(() => loadSavedHosts());
   const [selectedId, setSelectedId] = useState(saved.lastSelectedId || '');
@@ -637,6 +641,24 @@ const RobotStartup = () => {
           ? 'Robot launcher not reachable (start Docker first)'
           : '';
 
+  const canSetPatrolPoints =
+    Boolean(activeHost) &&
+    launcherReachable &&
+    !busy &&
+    !patrolModeActive &&
+    typeof onBeginSetPatrolPoints === 'function';
+  const canCancelPatrolPoints =
+    patrolModeActive && typeof onCancelSetPatrolPoints === 'function';
+  const setPatrolPointsDisabledReason = !activeHost
+    ? 'Enter a robot IP'
+    : activeLauncherReach === HOST_STATUS.CHECKING || activeReach === HOST_STATUS.CHECKING
+      ? 'Checking robot…'
+      : !launcherReachable
+        ? 'Robot launcher not reachable (start Docker first)'
+        : busy
+          ? 'Busy…'
+          : '';
+
   const canSyncMap =
     Boolean(activeHost) && activeHostReach === HOST_REACHABILITY.ONLINE && !busy;
 
@@ -652,6 +674,20 @@ const RobotStartup = () => {
     const entry = saved.hosts.find((h) => h.id === selectedId);
     return (label || entry?.label || activeHost || '').trim();
   }, [saved.hosts, selectedId, label, activeHost]);
+
+  const showPatrolPointsSection = usePatrol || patrolModeActive;
+
+  const handlePatrolButtonClick = () => {
+    if (canCancelPatrolPoints) {
+      onCancelSetPatrolPoints();
+      return;
+    }
+    if (!canSetPatrolPoints) return;
+    onBeginSetPatrolPoints({
+      host: activeHost,
+      label: activeHostLabel || activeHost,
+    });
+  };
 
   const handlePowerOffConfirm = async () => {
     const host = normalizeHostInput(hostInput);
@@ -1041,7 +1077,7 @@ const RobotStartup = () => {
             Capture
           </label>
           <label
-            className="robot-startup__planner-option"
+            className="robot-startup__planner-option robot-startup__patrol-option"
             title="Pass patrol:=true to roslaunch at startup"
           >
             <input
@@ -1051,6 +1087,25 @@ const RobotStartup = () => {
               disabled={busy || usePrimaryDockerStart}
             />
             Patrol
+            {showPatrolPointsSection && (
+              <button
+                type="button"
+                className={`robot-startup__btn--patrol${
+                  patrolModeActive ? ' robot-startup__btn--patrol-active' : ''
+                }`}
+                onClick={handlePatrolButtonClick}
+                disabled={patrolModeActive ? !canCancelPatrolPoints : !canSetPatrolPoints}
+                title={
+                  patrolModeActive
+                    ? 'Cancel setting patrol points'
+                    : canSetPatrolPoints
+                      ? 'Click and drag on the map to set patrol points for this robot'
+                      : setPatrolPointsDisabledReason
+                }
+              >
+                {patrolModeActive ? 'Setting Patrol…' : 'Set Patrol'}
+              </button>
+            )}
           </label>
         </div>
       </div>
