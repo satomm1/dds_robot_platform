@@ -224,11 +224,13 @@ class DataListener(Listener):
                 continue
             elif message_type == "person_detected":
 
-                dds_log("data_sub", "person_detected")
-
                 pose = data['pose']
                 x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
                 det_ts = _detection_timestamp(data, timestamp)
+                dds_log(
+                    "data_sub",
+                    f"person_detected {time.strftime('%H:%M:%S', time.localtime(det_ts))}",
+                )
 
                 requests.post(
                     self.graphql_server,

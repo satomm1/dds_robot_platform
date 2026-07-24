@@ -24,7 +24,7 @@ AIR_QUALITY_CACHE = "robot_air_quality"
 MCU_STATE_CACHE = "robot_mcu_state"
 # Drop detections older than this (Unix seconds); entries without timestamp are kept.
 OBJECT_STALE_SEC = float(os.environ.get("OBJECT_STALE_SEC", "15"))
-PERSON_OBJECT_STALE_SEC = float(os.environ.get("PERSON_OBJECT_STALE_SEC", "1.5"))
+PERSON_OBJECT_STALE_SEC = float(os.environ.get("PERSON_OBJECT_STALE_SEC", "10"))
 
 
 def _central_pose_to_global(x, y, theta):
