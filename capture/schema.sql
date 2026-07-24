@@ -32,12 +32,18 @@ CREATE TABLE captures (
   detections    JSONB DEFAULT '[]',
   extra         JSONB DEFAULT '{}',
   sha256        TEXT,
+  sha256_original TEXT,
+  deface_status TEXT NOT NULL DEFAULT 'n/a',
+  deface_error  TEXT,
+  defaced_at    TIMESTAMPTZ,
   UNIQUE (session_id, frame_id)
 );
 
 CREATE INDEX idx_captures_robot_time ON captures (robot_id, wall_time);
 CREATE INDEX idx_captures_detections ON captures USING GIN (detections);
 CREATE INDEX idx_captures_extra_modality ON captures ((extra->>'modality'));
+CREATE INDEX idx_captures_deface_pending
+  ON captures (id) WHERE deface_status = 'pending';
 
 CREATE TABLE robot_poses (
   id            BIGSERIAL PRIMARY KEY,

@@ -37,5 +37,23 @@ services:
       postgres:
         condition: service_healthy
 
+  deface:
+    build:
+      context: ./deface
+    container_name: capture_deface
+    environment:
+      DATABASE_URL: postgresql://capture:${POSTGRES_PASSWORD:-changeme}@postgres/robot_capture
+      STORAGE_ROOT: ${STORAGE_ROOT:-/data/captures}
+      DEFACE_POLL_INTERVAL_SEC: ${DEFACE_POLL_INTERVAL_SEC:-1}
+      DEFACE_BATCH_SIZE: ${DEFACE_BATCH_SIZE:-8}
+      DEFACE_WORKERS: ${DEFACE_WORKERS:-4}
+      DEFACE_SCALE: ${DEFACE_SCALE:-}
+    volumes:
+      - ${CAPTURE_DATA_DIR:-./data/captures}:/data/captures
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:

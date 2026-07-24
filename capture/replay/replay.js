@@ -118,12 +118,32 @@
 
   async function loadAuthImageBlob(storagePath) {
     const r = await fetch("/api/v1/files/" + storagePath, { headers: apiHeaders() });
+    if (r.status === 425) {
+      const err = new Error("anonymizing");
+      err.code = 425;
+      throw err;
+    }
+    if (r.status === 424) {
+      const err = new Error("anonymization failed");
+      err.code = 424;
+      throw err;
+    }
     if (!r.ok) throw new Error("Failed to load image");
     return r.blob();
   }
 
   async function loadAuthImageBuffer(storagePath) {
     const r = await fetch("/api/v1/files/" + storagePath, { headers: apiHeaders() });
+    if (r.status === 425) {
+      const err = new Error("anonymizing");
+      err.code = 425;
+      throw err;
+    }
+    if (r.status === 424) {
+      const err = new Error("anonymization failed");
+      err.code = 424;
+      throw err;
+    }
     if (!r.ok) throw new Error("Failed to load image");
     return r.arrayBuffer();
   }
@@ -1127,28 +1147,60 @@
       evidenceImg.removeAttribute("src");
       bboxCtx.clearRect(0, 0, bboxCanvas.width, bboxCanvas.height);
       setEvidenceViewMode("depth");
-      const depthInfo = await renderDepthPreview(frame.storage_path);
-      if (depthInfo.stats.valid) {
-        evidenceMeta.textContent +=
-          " · depth " +
-          depthInfo.width +
-          "×" +
-          depthInfo.height +
-          " · " +
-          Math.round(depthInfo.stats.min) +
-          "–" +
-          Math.round(depthInfo.stats.max) +
-          " mm";
+      try {
+        const depthInfo = await renderDepthPreview(frame.storage_path);
+        if (depthInfo.stats.valid) {
+          evidenceMeta.textContent +=
+            " · depth " +
+            depthInfo.width +
+            "×" +
+            depthInfo.height +
+            " · " +
+            Math.round(depthInfo.stats.min) +
+            "–" +
+            Math.round(depthInfo.stats.max) +
+            " mm";
+        }
+      } catch (err) {
+        if (err.code === 425) {
+          evidencePlaceholder.textContent = "Anonymizing…";
+          evidencePlaceholder.classList.remove("hidden");
+          evidenceContent.classList.add("hidden");
+        } else if (err.code === 424) {
+          evidencePlaceholder.textContent = "Anonymization failed.";
+          evidencePlaceholder.classList.remove("hidden");
+          evidenceContent.classList.add("hidden");
+        } else {
+          throw err;
+        }
       }
       return;
     }
 
     setEvidenceViewMode(activeTab);
     revokeImageUrl();
-    const blob = await loadAuthImageBlob(frame.storage_path);
-    imageObjectUrl = URL.createObjectURL(blob);
-    evidenceImg.onload = () => drawBboxes(ev.rgb || frame);
-    evidenceImg.src = imageObjectUrl;
+    try {
+      const blob = await loadAuthImageBlob(frame.storage_path);
+      imageObjectUrl = URL.createObjectURL(blob);
+      evidenceImg.onload = () => drawBboxes(ev.rgb || frame);
+      evidenceImg.src = imageObjectUrl;
+    } catch (err) {
+      evidenceImg.removeAttribute("src");
+      bboxCtx.clearRect(0, 0, bboxCanvas.width, bboxCanvas.height);
+      if (err.code === 425) {
+        evidencePlaceholder.textContent = "Anonymizing faces…";
+        evidencePlaceholder.classList.remove("hidden");
+        evidenceContent.classList.add("hidden");
+      } else if (err.code === 424) {
+        evidencePlaceholder.textContent = "Anonymization failed.";
+        evidencePlaceholder.classList.remove("hidden");
+        evidenceContent.classList.add("hidden");
+      } else {
+        evidencePlaceholder.textContent = "Failed to load image.";
+        evidencePlaceholder.classList.remove("hidden");
+        evidenceContent.classList.add("hidden");
+      }
+    }
   }
 
   async function updateEvidence() {

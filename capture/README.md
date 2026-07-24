@@ -12,11 +12,13 @@ Uses **`ghcr.io/satomm1/matt_python:1.1.0`** (same image as the root GraphQL sta
 cd capture
 cp .env.example .env
 docker compose pull
+docker compose build deface
 docker compose up -d
 curl -s http://127.0.0.1:8080/health
 # {"status":"ok"}
 ```
 
+Services: `postgres`, `ingest` (FastAPI upload/API/replay), and `deface` (face-anonymization worker).
 Point each robot's uploader at:
 
 ```
@@ -59,10 +61,12 @@ Prerequisite data: robots must have uploaded poses (`pose_uploader`) and optiona
 
 ```
 capture/
-├── server.py       # FastAPI app (upload + read API + /replay static)
-├── schema.sql      # Postgres tables
-├── compose.yaml    # postgres + ingest (uses ghcr.io/satomm1/matt_python:1.1.0)
-├── replay/         # browser mission replay (index.html, replay.js, replay.css)
+├── server.py          # FastAPI app (upload + read API + /replay static)
+├── schema.sql         # Postgres tables (includes deface columns)
+├── migrations/        # One-shot ALTERs for existing volumes (also applied by ensure_schema)
+├── compose.yaml       # postgres + ingest + deface
+├── deface/            # Face-anonymization sidecar (Dockerfile + worker.py)
+├── replay/            # browser mission replay (index.html, replay.js, replay.css)
 └── .env.example
 ```
 
@@ -70,7 +74,8 @@ Files land on disk at `STORAGE_ROOT` (default `/data/captures`):
 
 ```
 /data/captures/robot_2/2025-06-18/{session_id}/manifest.json
-/data/captures/robot_2/2025-06-18/{session_id}/frame_*.jpg          # RGB image sessions
+/data/captures/robot_2/2025-06-18/{session_id}/frame_*.raw.jpg     # RGB staging (pre-deface; not served)
+/data/captures/robot_2/2025-06-18/{session_id}/frame_*.jpg          # RGB after deface (served)
 /data/captures/robot_2/2025-06-18/{session_id}/frame_*_ir.jpg       # IR companion (Astra Pro Plus)
 /data/captures/robot_2/2025-06-18/{session_id}/frame_*_depth.png   # depth companion (16-bit mm PNG)
 /data/captures/robot_2/2025-06-24/{session_id}/utterance.wav         # wakeword sessions
@@ -79,6 +84,32 @@ Files land on disk at `STORAGE_ROOT` (default `/data/captures`):
 ```
 
 On Astra Pro Plus robots with `capture:=true`, expect up to **3 files per capture tick** (RGB + IR + depth) when depth is enabled, or ~2× (RGB + IR) without depth. `sessions.frame_count` is the total file count (includes IR and depth rows), not the number of capture events.
+
+## Face anonymization (`capture_deface`)
+
+RGB JPEGs are face-blurred by a sidecar before they become downloadable.
+
+**Queue:** Postgres `captures.deface_status` (`n/a` | `pending` | `processing` | `done` | `failed`). There is no filesystem watcher. New RGB uploads are inserted as `pending`. On worker startup, existing RGB archive rows still at `n/a` are enqueued to `pending` once (IR / depth / WAV stay `n/a`). The worker claims newest pending rows first (`ORDER BY id DESC`) so fresh uploads are not starved behind archive backfill.
+
+**Privacy (Option B):** ingest writes RGB only as `{stem}.raw.jpg`. The final `{stem}.jpg` path appears after deface. `GET /api/v1/files/...` returns **425** while `pending`/`processing`, **424** on `failed`, and serves when `done` or `n/a`. Replay shows an “Anonymizing…” placeholder for 425.
+
+**Hashes:** `sha256_original` is the raw upload hash; `sha256` is set to the defaced file hash when status becomes `done`.
+
+**Ops:**
+
+```bash
+# Watch worker
+docker compose logs -f deface
+
+# Requeue failures
+docker compose exec postgres psql -U capture -d robot_capture -c \
+  "UPDATE captures SET deface_status='pending', deface_error=NULL WHERE deface_status='failed';"
+
+# Manual schema migration (also applied automatically by ingest/deface on startup)
+docker compose exec -T postgres psql -U capture -d robot_capture < migrations/002_deface.sql
+```
+
+Worker env (compose): `DATABASE_URL`, `STORAGE_ROOT`, `DEFACE_POLL_INTERVAL_SEC`, `DEFACE_BATCH_SIZE`, `DEFACE_WORKERS`, optional `DEFACE_SCALE` (e.g. `320x240`). CPU `onnxruntime`; the worker keeps models loaded in-process (no per-image CLI spawn).
 
 With `capture:=true`, robots also run `pose_uploader` and `detection_uploader`, which POST hourly SQLite chunks to `/api/v1/pose_upload` and `/api/v1/detection_upload` (~24 chunks/robot/day each). At default ~1 Hz, expect ~3,600 detection rows/hour/robot. Pose and detection rows join to image captures on `(robot_id, wall_time)`.
 
@@ -91,7 +122,11 @@ With `capture:=true`, robots also run `pose_uploader` and `detection_uploader`, 
 | `API_KEYS` | empty | Comma-separated keys; when set, `X-Api-Key` required on all routes except `/health` |
 | `POSE_ARCHIVE` | `true` | When true, store uploaded pose `.sqlite` + meta under `STORAGE_ROOT/poses/` |
 | `DETECTION_ARCHIVE` | `true` | When true, store uploaded detection `.sqlite` + meta under `STORAGE_ROOT/detections/` |
-| `CAPTURE_DATA_DIR` | `./data/captures` | Host path bind-mounted into ingest container (compose only) |
+| `CAPTURE_DATA_DIR` | `./data/captures` | Host path bind-mounted into ingest and deface containers (compose only) |
+| `DEFACE_POLL_INTERVAL_SEC` | `1` | Deface worker idle poll interval (compose / deface service) |
+| `DEFACE_BATCH_SIZE` | `8` | Max pending rows claimed per poll cycle |
+| `DEFACE_WORKERS` | `4` | Parallel in-process ONNX detectors (models stay warm) |
+| `DEFACE_SCALE` | empty | Optional inference size `WxH` (e.g. `320x240`) for faster detection |
 
 ## API
 

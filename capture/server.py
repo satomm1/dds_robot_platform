@@ -265,11 +265,24 @@ CREATE INDEX IF NOT EXISTS idx_detection_objects
 """
 
 
+# Deface columns for existing volumes (fresh installs get these from schema.sql).
+DEFACE_SCHEMA = """
+ALTER TABLE captures
+  ADD COLUMN IF NOT EXISTS deface_status TEXT NOT NULL DEFAULT 'n/a',
+  ADD COLUMN IF NOT EXISTS deface_error TEXT,
+  ADD COLUMN IF NOT EXISTS defaced_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS sha256_original TEXT;
+CREATE INDEX IF NOT EXISTS idx_captures_deface_pending
+  ON captures (id) WHERE deface_status = 'pending';
+"""
+
+
 async def ensure_schema() -> None:
     assert pool is not None
     async with pool.acquire() as conn:
         await conn.execute(ROBOT_POSES_SCHEMA)
         await conn.execute(DETECTION_SNAPSHOTS_SCHEMA)
+        await conn.execute(DEFACE_SCHEMA)
 
 
 @asynccontextmanager
@@ -300,7 +313,9 @@ async def persist_session(
     session_rel: str,
     frames: list[dict[str, Any]],
     file_hashes: dict[str, str],
+    sha256_originals: dict[str, str] | None = None,
 ) -> None:
+    sha256_originals = sha256_originals or {}
     assert pool is not None
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -327,13 +342,18 @@ async def persist_session(
                 session_rel,
             )
             for frame in frames:
+                needs_deface = is_rgb_jpeg_frame(frame)
                 await conn.execute(
                     """
                     INSERT INTO captures (
                         session_id, robot_id, frame_id, filename, storage_path,
                         ros_time_sec, ros_time_nsec, wall_time,
-                        pose_x, pose_y, pose_theta, detections, extra, sha256
-                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14)
+                        pose_x, pose_y, pose_theta, detections, extra,
+                        sha256, sha256_original, deface_status
+                    ) VALUES (
+                        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,
+                        $14,$15,$16
+                    )
                     ON CONFLICT (session_id, frame_id) DO NOTHING
                     """,
                     manifest["session_id"],
@@ -349,7 +369,9 @@ async def persist_session(
                     frame["pose_theta"],
                     json.dumps(frame["detections"]),
                     json.dumps(frame["extra"]),
-                    file_hashes.get(frame["filename"]),
+                    None if needs_deface else file_hashes.get(frame["filename"]),
+                    sha256_originals.get(frame["filename"]) if needs_deface else None,
+                    "pending" if needs_deface else "n/a",
                 )
 
 
@@ -390,6 +412,18 @@ def is_companion_frame(frame: dict[str, Any]) -> bool:
 
 def is_primary_frame(frame: dict[str, Any]) -> bool:
     return not is_companion_frame(frame)
+
+
+def is_rgb_jpeg_frame(frame: dict[str, Any]) -> bool:
+    """Primary RGB still that must be face-blurred before serving."""
+    if not is_primary_frame(frame):
+        return False
+    return Path(frame.get("filename", "")).suffix.lower() in {".jpg", ".jpeg"}
+
+
+def raw_filename_for(filename: str) -> str:
+    path = Path(filename)
+    return f"{path.stem}.raw{path.suffix.lower()}"
 
 
 def find_companion(
@@ -437,6 +471,7 @@ def capture_to_dict(record: asyncpg.Record) -> dict[str, Any]:
         "detections": json_value(record["detections"]),
         "extra": json_value(record["extra"]),
         "sha256": record["sha256"],
+        "deface_status": record["deface_status"],
     }
 
 
@@ -464,7 +499,8 @@ async def fetch_session_captures(session_id: str) -> list[asyncpg.Record]:
     return await db_fetch(
         """
         SELECT frame_id, filename, storage_path, ros_time_sec, ros_time_nsec,
-               wall_time, pose_x, pose_y, pose_theta, detections, extra, sha256
+               wall_time, pose_x, pose_y, pose_theta, detections, extra, sha256,
+               deface_status
         FROM captures WHERE session_id = $1::uuid
         ORDER BY wall_time NULLS LAST, ros_time_sec, ros_time_nsec
         """,
@@ -947,14 +983,22 @@ async def upload(
         raise HTTPException(status_code=409, detail="; ".join(detail))
 
     file_hashes: dict[str, str] = {}
+    sha256_originals: dict[str, str] = {}
     # Each manifest frame may be RGB, paired IR (*_ir.jpg), depth (*_depth.png), or wakeword WAV.
+    # RGB JPEGs are written as {stem}.raw{suffix}; the deface sidecar produces the final path.
     for frame in normalized:
         data = uploaded[frame["filename"]]
-        path = session_dir / frame["filename"]
-        file_hashes[frame["filename"]] = write_bytes(path, data)
+        if is_rgb_jpeg_frame(frame):
+            raw_path = session_dir / raw_filename_for(frame["filename"])
+            sha256_originals[frame["filename"]] = write_bytes(raw_path, data)
+        else:
+            path = session_dir / frame["filename"]
+            file_hashes[frame["filename"]] = write_bytes(path, data)
 
     write_bytes(session_dir / "manifest.json", manifest_bytes)
-    await persist_session(parsed, session_rel, normalized, file_hashes)
+    await persist_session(
+        parsed, session_rel, normalized, file_hashes, sha256_originals
+    )
 
     return {
         "ok": True,
@@ -1118,7 +1162,7 @@ async def list_robot_capture_events(
             """
             SELECT c.frame_id, c.filename, c.storage_path, c.wall_time,
                    c.ros_time_sec, c.ros_time_nsec, c.pose_x, c.pose_y, c.pose_theta,
-                   c.detections, c.extra, c.sha256,
+                   c.detections, c.extra, c.sha256, c.deface_status,
                    s.id AS session_id, s.trigger
             FROM captures c
             JOIN sessions s ON s.id = c.session_id
@@ -1137,7 +1181,7 @@ async def list_robot_capture_events(
             """
             SELECT c.frame_id, c.filename, c.storage_path, c.wall_time,
                    c.ros_time_sec, c.ros_time_nsec, c.pose_x, c.pose_y, c.pose_theta,
-                   c.detections, c.extra, c.sha256,
+                   c.detections, c.extra, c.sha256, c.deface_status,
                    s.id AS session_id, s.trigger
             FROM captures c
             JOIN sessions s ON s.id = c.session_id
@@ -1241,7 +1285,23 @@ async def serve_file(storage_path: str):
     if not rel or ".." in rel_path.parts:
         raise HTTPException(status_code=400, detail="invalid path")
 
-    if not await file_is_registered(rel):
+    capture = await db_fetchrow(
+        "SELECT deface_status FROM captures WHERE storage_path = $1",
+        rel,
+    )
+    if capture is not None:
+        status = capture["deface_status"]
+        if status in ("pending", "processing"):
+            raise HTTPException(
+                status_code=425,
+                detail="capture anonymization pending",
+            )
+        if status == "failed":
+            raise HTTPException(
+                status_code=424,
+                detail="capture anonymization failed",
+            )
+    elif not await file_is_registered(rel):
         raise HTTPException(status_code=404, detail="file not found")
 
     full = resolve_storage_path(rel)
