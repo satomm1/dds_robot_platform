@@ -77,3 +77,12 @@ export const GET_AIR_QUALITIES = gql`
     }
   }
 `;
+
+export const GET_ROBOT_MCU_STATE = gql`
+  query RobotMcuState($robotId: Int!) {
+    robotMcuState(robot_id: $robotId) {
+      robot_id
+      mcu_connected
+    }
+  }
+`;

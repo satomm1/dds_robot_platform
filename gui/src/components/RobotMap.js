@@ -101,6 +101,8 @@ const RobotMap = forwardRef(({
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0, worldX: 0, worldY: 0 });
   const tooltipLayerRef = useRef(null);
   const [confirmationMessage, setConfirmationMessage] = useState('');
+  const [confirmationIsWarning, setConfirmationIsWarning] = useState(false);
+  const confirmationTimeoutRef = useRef(null);
   const [invalidGoalMessages, setInvalidGoalMessages] = useState({});
   const [hoveredRobotId, setHoveredRobotId] = useState(null);
   const [airQualityHoverPointer, setAirQualityHoverPointer] = useState(null);
@@ -489,9 +491,37 @@ const RobotMap = forwardRef(({
         onSetGoal(selectedRobotId, mapX, mapY, thetaRad);
       } else {
         devLog(`Setting initial position for robot ${selectedRobotId} at`, mapX, mapY, thetaRad);
-        onSetInitialPosition(selectedRobotId, mapX, mapY, thetaRad);
+        const initResultPromise = Promise.resolve(
+          onSetInitialPosition(selectedRobotId, mapX, mapY, thetaRad),
+        );
+        if (confirmationTimeoutRef.current) {
+          clearTimeout(confirmationTimeoutRef.current);
+          confirmationTimeoutRef.current = null;
+        }
+        setConfirmationIsWarning(false);
         setConfirmationMessage(`Initial position set for Robot ${selectedRobotId}`);
-        setTimeout(() => setConfirmationMessage(''), 1500);
+        confirmationTimeoutRef.current = setTimeout(() => {
+          setConfirmationMessage('');
+          setConfirmationIsWarning(false);
+          confirmationTimeoutRef.current = null;
+        }, 1500);
+
+        initResultPromise.then((result) => {
+          if (result?.mcuConnected !== false) return;
+          if (confirmationTimeoutRef.current) {
+            clearTimeout(confirmationTimeoutRef.current);
+            confirmationTimeoutRef.current = null;
+          }
+          setConfirmationIsWarning(true);
+          setConfirmationMessage(
+            `Microcontroller is not connected on robot ${selectedRobotId}: check that the power is on and the 5V battery is charged.`,
+          );
+          confirmationTimeoutRef.current = setTimeout(() => {
+            setConfirmationMessage('');
+            setConfirmationIsWarning(false);
+            confirmationTimeoutRef.current = null;
+          }, 10000);
+        });
       }
 
       if (goalLayerRef.current) {
@@ -1261,14 +1291,14 @@ const RobotMap = forwardRef(({
         </div>
       )}
 
-      {/* Confirmation message */}
+      {/* Confirmation / MCU warning message */}
       {confirmationMessage && (
         <div 
           style={{
             position: 'absolute',
             left: `${mousePosition?.x || 0}px`,
             top: `${(mousePosition?.y || 0) - 30}px`,
-            backgroundColor: '#2196F3', // Blue for initial position
+            backgroundColor: confirmationIsWarning ? '#F44336' : '#2196F3',
             color: 'white',
             padding: '6px 12px',
             borderRadius: '4px',
@@ -1277,7 +1307,9 @@ const RobotMap = forwardRef(({
             pointerEvents: 'none',
             zIndex: 1000,
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            animation: 'fadeIn 0.3s'
+            animation: 'fadeIn 0.3s',
+            maxWidth: confirmationIsWarning ? '360px' : undefined,
+            whiteSpace: confirmationIsWarning ? 'normal' : 'nowrap',
           }}
         >
           {confirmationMessage}

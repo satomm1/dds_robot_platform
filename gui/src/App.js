@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import './App.css';
-import { ApolloProvider, useMutation, useQuery } from '@apollo/client';
+import { ApolloProvider, useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import client from './apolloClient';
 import RobotMap from './components/RobotMap';
 import RobotSelector from './components/RobotSelector';
@@ -36,7 +36,7 @@ import {
 } from './utils/mapDisplaySettings';
 import { RobotColorProvider } from './hooks/useRobotColors';
 import { SET_ROBOT_GOAL, SET_ROBOT_INITIAL_POSITION, SET_MULTI_ROBOT_GOAL_PLAN, CLEAR_ROBOT_PATH } from './mutations';
-import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS, GET_AIR_QUALITIES } from './queries';
+import { GET_ROBOT_POSITIONS, GET_ROBOT_PATHS, GET_AIR_QUALITIES, GET_ROBOT_MCU_STATE } from './queries';
 
 const ROBOT_POSITIONS_POLL_MS = 2000;
 const POSITION_STALE_SEC = 31;
@@ -277,7 +277,10 @@ function AppContent() {
 
   // Mutation for setting the robot's initial position
   const [setRobotInitialPosition] = useMutation(SET_ROBOT_INITIAL_POSITION);
-  
+  const [getRobotMcuState] = useLazyQuery(GET_ROBOT_MCU_STATE, {
+    fetchPolicy: 'network-only',
+  });
+
   const handleSetRobotGoal = (robotId, x, y, thetaRad) => {
     devLog(
       `Setting goal for robot ${robotId} to position (${x}, ${y}, ${((thetaRad * 180) / Math.PI).toFixed(1)}°)`,
@@ -383,7 +386,7 @@ function AppContent() {
       });
   };
 
-  const handleSetRobotInitialPosition = (robotId, x, y, thetaRad) => {
+  const handleSetRobotInitialPosition = async (robotId, x, y, thetaRad) => {
     devLog(
       `Setting initial position for robot ${robotId} to (${x}, ${y}, ${((thetaRad * 180) / Math.PI).toFixed(1)}°)`,
     );
@@ -402,6 +405,16 @@ function AppContent() {
     }).catch(error => {
       console.error('Error setting robot initial position:', error);
     });
+
+    try {
+      const { data } = await getRobotMcuState({ variables: { robotId } });
+      return {
+        mcuConnected: Boolean(data?.robotMcuState?.mcu_connected),
+      };
+    } catch (error) {
+      console.error('Error querying robot MCU state:', error);
+      return { mcuConnected: false };
+    }
   };
 
   return (
