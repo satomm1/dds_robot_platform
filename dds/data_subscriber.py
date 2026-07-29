@@ -22,6 +22,7 @@ from dds_utils import (
     create_domain_participant,
     dispose_participant,
     dds_log,
+    dds_warn,
     fetch_subscribed_agent_ids_set,
     fetch_transform_Rt_blocking,
     get_ip,
@@ -167,39 +168,247 @@ class DataListener(Listener):
             timestamp = sample.timestamp
             data = json.loads(sample.data)
 
-            if message_type == 'path':
-                poses = data['poses']
-                x = []
-                y = []
-                t = []
-                for pose in poses:
-                    x_new, y_new, _ = self.transform_point([pose['pose']['position']['x'], pose['pose']['position']['y'], 0], forward=False)
-                    x.append(x_new)
-                    y.append(y_new)
-                    t.append(pose['header']['stamp']['secs'] + pose['header']['stamp']['nsecs'] / 1e9)
+            try:
+                self._process_data_message(
+                    message_type, timestamp, data, sending_agent
+                )
+            except requests.exceptions.RequestException as exc:
+                # Keep this to one line: ctypes DDS callbacks dump a full traceback otherwise.
+                dds_warn(
+                    "data_sub",
+                    f"{message_type} GraphQL write failed "
+                    f"({exc.__class__.__name__}, agent {self.topic_id}, "
+                    f"{self.graphql_server})",
+                )
 
-                dds_log("data_sub", f"path -> GraphQL (agent {sending_agent})")
-                response = requests.post(self.graphql_server,
-                                json={'query': PATH_MUTATION,
+    def _process_data_message(self, message_type, timestamp, data, sending_agent):
+        if message_type == 'path':
+            poses = data['poses']
+            x = []
+            y = []
+            t = []
+            for pose in poses:
+                x_new, y_new, _ = self.transform_point([pose['pose']['position']['x'], pose['pose']['position']['y'], 0], forward=False)
+                x.append(x_new)
+                y.append(y_new)
+                t.append(pose['header']['stamp']['secs'] + pose['header']['stamp']['nsecs'] / 1e9)
+
+            dds_log("data_sub", f"path -> GraphQL (agent {sending_agent})")
+            response = requests.post(self.graphql_server,
+                            json={'query': PATH_MUTATION,
+                                'variables': {
+                                    'robot_id': sending_agent,
+                                    'x': x,
+                                    'y': y,
+                                    't': t
+                                }
+                            },
+                            timeout=1
+                        )
+        elif message_type == "detected_object":
+            class_name = data['class_name']
+            pose = data['pose']
+            x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
+            det_ts = _detection_timestamp(data, timestamp)
+
+            self.object_dict[self.detected_object_num] = {
+                'x': x, 'y': y, 'class_name': class_name, 'timestamp': det_ts,
+            }
+
+            response =  requests.post(
+                            self.graphql_server,
+                            json={
+                                'query': OBJECT_MUTATION,
+                                'variables': {
+                                    'agent_id': self.topic_id,
+                                    'x': x,
+                                    'y': y,
+                                    'class_name': class_name,
+                                    'object_num': self.detected_object_num,
+                                    'timestamp': det_ts,
+                                }
+                            },
+                            timeout=1
+                        )
+
+            self.detected_object_num += 1
+
+            dds_log("data_sub", f"detected object: {class_name}")
+        elif message_type == "llm_detected_object":
+            # Intentionally ignored for central map / Ignite (same as before).
+            return
+        elif message_type == "person_detected":
+            # Batched (preferred) or legacy single DetectedObject payload.
+            persons = list(iter_person_detections(data, envelope_timestamp=timestamp))
+            det_ts = persons[0][0] if persons else _detection_timestamp(data, timestamp)
+            dds_log(
+                "data_sub",
+                f"person_detected n={len(persons)} "
+                f"{time.strftime('%H:%M:%S', time.localtime(det_ts))}",
+            )
+
+            written = 0
+            for person_ts, person in persons:
+                pose = person.get("pose") or {}
+                position = pose.get("position") or {}
+                try:
+                    px = float(position["x"])
+                    py = float(position["y"])
+                except (KeyError, TypeError, ValueError):
+                    dds_log(
+                        "data_sub",
+                        f"person_detected skip: missing pose.position",
+                    )
+                    continue
+                x, y, _ = self.transform_point([px, py, 0], forward=False)
+                class_name = person.get("class_name") or "person"
+                object_num = person_map_object_num(written)
+
+                requests.post(
+                    self.graphql_server,
+                    json={
+                        "query": OBJECT_MUTATION,
+                        "variables": {
+                            "agent_id": self.topic_id,
+                            "x": x,
+                            "y": y,
+                            "class_name": class_name,
+                            "object_num": object_num,
+                            "timestamp": float(person_ts),
+                        },
+                    },
+                    timeout=1,
+                )
+
+                if self.influx_write_api is not None:
+                    point = (
+                        Point("person_detected")
+                        .tag("robot_id", str(self.topic_id))
+                        .field("x", x)
+                        .field("y", y)
+                        .time(int(round(float(person_ts) * 1000)), WritePrecision.MS)
+                    )
+                    self.influx_write_api.write(
+                        bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point
+                    )
+                written += 1
+
+            # Clear leftover person slots if this frame has fewer people than before.
+            for i in range(written, self._person_map_count):
+                requests.post(
+                    self.graphql_server,
+                    json={
+                        "query": CLEAR_OBJECT_MUTATION,
+                        "variables": {
+                            "agent_id": self.topic_id,
+                            "object_num": person_map_object_num(i),
+                        },
+                    },
+                    timeout=1,
+                )
+            self._person_map_count = written
+
+        elif message_type == MSG_AIR_QUALITY:
+            required = (
+                "temperature",
+                "relative_humidity",
+                "voc_index",
+                "nox_index",
+            )
+            if not all(k in data for k in required):
+                dds_log(
+                    "data_sub",
+                    f"air_quality missing fields (agent {self.topic_id}): {data}",
+                )
+                return
+
+            temperature = float(data["temperature"])
+            relative_humidity = float(data["relative_humidity"])
+            voc_index = float(data["voc_index"])
+            nox_index = float(data["nox_index"])
+
+            requests.post(
+                self.graphql_server,
+                json={
+                    "query": SET_AIR_QUALITY_MUTATION,
+                    "variables": {
+                        "robot_id": int(self.topic_id),
+                        "temperature": temperature,
+                        "relative_humidity": relative_humidity,
+                        "voc_index": voc_index,
+                        "nox_index": nox_index,
+                        "timestamp": float(timestamp),
+                    },
+                },
+                timeout=1,
+            )
+
+            pose = fetch_fresh_robot_position(
+                self.graphql_server, int(self.topic_id)
+            )
+            if self.influx_write_api is not None:
+                if pose is not None:
+                    x, y, theta = pose
+                    point = (
+                        Point("air_quality")
+                        .tag("robot_id", str(self.topic_id))
+                        .field("temperature", temperature)
+                        .field("relative_humidity", relative_humidity)
+                        .field("voc_index", voc_index)
+                        .field("nox_index", nox_index)
+                        .field("x", x)
+                        .field("y", y)
+                        .field("theta", theta)
+                        .time(timestamp, WritePrecision.S)
+                    )
+                    self.influx_write_api.write(
+                        bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point
+                    )
+                else:
+                    dds_log(
+                        "data_sub",
+                        f"air_quality skipped Influx: stale position (agent {self.topic_id})",
+                    )
+
+        elif message_type == "sensor_detected_objects":
+            x = data['x']
+            y = data['y']
+            w = data['w']
+            class_name = data['class']
+
+            sensor_id = sending_agent
+            i = 0
+            for _ in range(len(x)):
+                object_id = str(sensor_id) + '_' + str(i)
+                x_new, y_new, _ = self.transform_point([x[i], y[i], 0], forward=False)
+                self.object_dict[object_id] = {'x': x_new, 'y': y_new, 'class_name': class_name[i]}
+                i += 1
+
+            while (str(sensor_id) + '_' + str(i)) in self.object_dict:
+                self.object_dict.pop(str(sensor_id) + '_' + str(i))
+
+                # Clear objects that are not in the current message
+                response =  requests.post(
+                                self.graphql_server,
+                                json={
+                                    'query': CLEAR_OBJECT_MUTATION,
                                     'variables': {
-                                        'robot_id': sending_agent,
-                                        'x': x,
-                                        'y': y,
-                                        't': t
+                                        'agent_id': self.topic_id,
+                                        'object_num': i
                                     }
                                 },
                                 timeout=1
                             )
-            elif message_type == "detected_object":
-                class_name = data['class_name']
-                pose = data['pose']
-                x, y, _ = self.transform_point([pose['position']['x'], pose['position']['y'], 0], forward=False)
-                det_ts = _detection_timestamp(data, timestamp)
 
-                self.object_dict[self.detected_object_num] = {
-                    'x': x, 'y': y, 'class_name': class_name, 'timestamp': det_ts,
-                }
+                i += 1
 
+            # Write object to database
+            for i in range(len(x)):
+                class_name = self.object_dict[str(sensor_id) + '_' + str(i)]['class_name']
+                x = self.object_dict[str(sensor_id) + '_' + str(i)]['x']
+                y = self.object_dict[str(sensor_id) + '_' + str(i)]['y']
+
+                # Write object to database
                 response =  requests.post(
                                 self.graphql_server,
                                 json={
@@ -209,242 +418,48 @@ class DataListener(Listener):
                                         'x': x,
                                         'y': y,
                                         'class_name': class_name,
-                                        'object_num': self.detected_object_num,
-                                        'timestamp': det_ts,
+                                        'object_num': i
                                     }
                                 },
                                 timeout=1
                             )
 
-                self.detected_object_num += 1
-
-                dds_log("data_sub", f"detected object: {class_name}")
-            elif message_type == "llm_detected_object":
-                # Intentionally ignored for central map / Ignite (same as before).
-                continue
-            elif message_type == "person_detected":
-                # Batched (preferred) or legacy single DetectedObject payload.
-                persons = list(iter_person_detections(data, envelope_timestamp=timestamp))
-                det_ts = persons[0][0] if persons else _detection_timestamp(data, timestamp)
-                dds_log(
-                    "data_sub",
-                    f"person_detected n={len(persons)} "
-                    f"{time.strftime('%H:%M:%S', time.localtime(det_ts))}",
-                )
-
-                written = 0
-                for person_ts, person in persons:
-                    pose = person.get("pose") or {}
-                    position = pose.get("position") or {}
-                    try:
-                        px = float(position["x"])
-                        py = float(position["y"])
-                    except (KeyError, TypeError, ValueError):
-                        dds_log(
-                            "data_sub",
-                            f"person_detected skip: missing pose.position",
-                        )
-                        continue
-                    x, y, _ = self.transform_point([px, py, 0], forward=False)
-                    class_name = person.get("class_name") or "person"
-                    object_num = person_map_object_num(written)
-
-                    requests.post(
-                        self.graphql_server,
-                        json={
-                            "query": OBJECT_MUTATION,
-                            "variables": {
-                                "agent_id": self.topic_id,
-                                "x": x,
-                                "y": y,
-                                "class_name": class_name,
-                                "object_num": object_num,
-                                "timestamp": float(person_ts),
+        elif message_type == "goal":
+            x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
+            response =  requests.post(
+                            self.graphql_server,
+                            json={'query': ROBOT_GOAL_MUTATION,
+                                'variables': {
+                                    'robot_id': int(self.topic_id),
+                                    'x_goal': x,
+                                    'y_goal': y,
+                                    'theta_goal': theta,
+                                    'goal_timestamp': timestamp,
+                                    'from_bot': True,
+                                    'goal_valid': True
+                                }
                             },
-                        },
-                        timeout=1,
-                    )
-
-                    if self.influx_write_api is not None:
-                        point = (
-                            Point("person_detected")
-                            .tag("robot_id", str(self.topic_id))
-                            .field("x", x)
-                            .field("y", y)
-                            .time(int(round(float(person_ts) * 1000)), WritePrecision.MS)
+                            timeout=1
                         )
-                        self.influx_write_api.write(
-                            bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point
-                        )
-                    written += 1
 
-                # Clear leftover person slots if this frame has fewer people than before.
-                for i in range(written, self._person_map_count):
-                    requests.post(
-                        self.graphql_server,
-                        json={
-                            "query": CLEAR_OBJECT_MUTATION,
-                            "variables": {
-                                "agent_id": self.topic_id,
-                                "object_num": person_map_object_num(i),
+        elif message_type == "invalid_goal":
+            dds_log("data_sub", f"invalid goal (agent {self.topic_id})")
+            x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
+            response =  requests.post(
+                            self.graphql_server,
+                            json={'query': ROBOT_GOAL_MUTATION,
+                                'variables': {
+                                    'robot_id': int(self.topic_id),
+                                    'x_goal': x,
+                                    'y_goal': y,
+                                    'theta_goal': theta,
+                                    'goal_timestamp': timestamp,
+                                    'from_bot': True,
+                                    'goal_valid': False
+                                }
                             },
-                        },
-                        timeout=1,
-                    )
-                self._person_map_count = written
-
-            elif message_type == MSG_AIR_QUALITY:
-                required = (
-                    "temperature",
-                    "relative_humidity",
-                    "voc_index",
-                    "nox_index",
-                )
-                if not all(k in data for k in required):
-                    dds_log(
-                        "data_sub",
-                        f"air_quality missing fields (agent {self.topic_id}): {data}",
-                    )
-                    continue
-
-                temperature = float(data["temperature"])
-                relative_humidity = float(data["relative_humidity"])
-                voc_index = float(data["voc_index"])
-                nox_index = float(data["nox_index"])
-
-                requests.post(
-                    self.graphql_server,
-                    json={
-                        "query": SET_AIR_QUALITY_MUTATION,
-                        "variables": {
-                            "robot_id": int(self.topic_id),
-                            "temperature": temperature,
-                            "relative_humidity": relative_humidity,
-                            "voc_index": voc_index,
-                            "nox_index": nox_index,
-                            "timestamp": float(timestamp),
-                        },
-                    },
-                    timeout=1,
-                )
-
-                pose = fetch_fresh_robot_position(
-                    self.graphql_server, int(self.topic_id)
-                )
-                if self.influx_write_api is not None:
-                    if pose is not None:
-                        x, y, theta = pose
-                        point = (
-                            Point("air_quality")
-                            .tag("robot_id", str(self.topic_id))
-                            .field("temperature", temperature)
-                            .field("relative_humidity", relative_humidity)
-                            .field("voc_index", voc_index)
-                            .field("nox_index", nox_index)
-                            .field("x", x)
-                            .field("y", y)
-                            .field("theta", theta)
-                            .time(timestamp, WritePrecision.S)
+                            timeout=1
                         )
-                        self.influx_write_api.write(
-                            bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point
-                        )
-                    else:
-                        dds_log(
-                            "data_sub",
-                            f"air_quality skipped Influx: stale position (agent {self.topic_id})",
-                        )
-
-            elif message_type == "sensor_detected_objects":
-                x = data['x']
-                y = data['y']
-                w = data['w']
-                class_name = data['class']
-
-                sensor_id = sending_agent
-                i = 0
-                for _ in range(len(x)):
-                    object_id = str(sensor_id) + '_' + str(i)
-                    x_new, y_new, _ = self.transform_point([x[i], y[i], 0], forward=False)
-                    self.object_dict[object_id] = {'x': x_new, 'y': y_new, 'class_name': class_name[i]}
-                    i += 1
-
-                while (str(sensor_id) + '_' + str(i)) in self.object_dict:
-                    self.object_dict.pop(str(sensor_id) + '_' + str(i))
-
-                    # Clear objects that are not in the current message
-                    response =  requests.post(
-                                    self.graphql_server,
-                                    json={
-                                        'query': CLEAR_OBJECT_MUTATION,
-                                        'variables': {
-                                            'agent_id': self.topic_id,
-                                            'object_num': i
-                                        }
-                                    },
-                                    timeout=1
-                                )
-
-                    i += 1
-
-                # Write object to database
-                for i in range(len(x)):
-                    class_name = self.object_dict[str(sensor_id) + '_' + str(i)]['class_name']
-                    x = self.object_dict[str(sensor_id) + '_' + str(i)]['x']
-                    y = self.object_dict[str(sensor_id) + '_' + str(i)]['y']
-
-                    # Write object to database
-                    response =  requests.post(
-                                    self.graphql_server,
-                                    json={
-                                        'query': OBJECT_MUTATION,
-                                        'variables': {
-                                            'agent_id': self.topic_id,
-                                            'x': x,
-                                            'y': y,
-                                            'class_name': class_name,
-                                            'object_num': i
-                                        }
-                                    },
-                                    timeout=1
-                                )
-
-            elif message_type == "goal":
-                x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
-                response =  requests.post(
-                                self.graphql_server,
-                                json={'query': ROBOT_GOAL_MUTATION,
-                                    'variables': {
-                                        'robot_id': int(self.topic_id),
-                                        'x_goal': x,
-                                        'y_goal': y,
-                                        'theta_goal': theta,
-                                        'goal_timestamp': timestamp,
-                                        'from_bot': True,
-                                        'goal_valid': True
-                                    }
-                                },
-                                timeout=1
-                            )
-
-            elif message_type == "invalid_goal":
-                dds_log("data_sub", f"invalid goal (agent {self.topic_id})")
-                x, y, theta = self.transform_point([data['x'], data['y'], data['theta']], forward=False)
-                response =  requests.post(
-                                self.graphql_server,
-                                json={'query': ROBOT_GOAL_MUTATION,
-                                    'variables': {
-                                        'robot_id': int(self.topic_id),
-                                        'x_goal': x,
-                                        'y_goal': y,
-                                        'theta_goal': theta,
-                                        'goal_timestamp': timestamp,
-                                        'from_bot': True,
-                                        'goal_valid': False
-                                    }
-                                },
-                                timeout=1
-                            )
 
 
 class DataSubscriber:
