@@ -74,6 +74,18 @@ type Objects {
     timestamp: Float
 }
 
+type LedgerObject {
+    id: String
+    class_name: String
+    x: Float
+    y: Float
+    width: Float
+    last_seen: Float
+    belief: Float
+    observers: [Int]
+    n_obs: Int
+}
+
 type Transform {
     R: [Float]
     t: [Float]
@@ -160,6 +172,7 @@ type Query {
     stoppedRobotPositions: [Robot]
     objectPositions: [Objects]
     globalObjectPositions: [Objects]
+    ledgerObjects: [LedgerObject]
     transform: Transform
     subscribed_agents: Agents
     exitedAgents: Agents
@@ -196,6 +209,7 @@ type Mutation {
     setObjects(agent_id: Int, x: Float, y: Float, class_name: String, object_num: Int, timestamp: Float): Boolean
     clearObject(agent_id: Int, object_num: Int): Boolean
     clearAllObjects: Boolean
+    setLedgerObjects(objects: String!): Boolean
     setAirQuality(robot_id: Int!, temperature: Float!, relative_humidity: Float!, voc_index: Float!, nox_index: Float!, timestamp: Float!): Boolean
     setRobotMcuState(robot_id: Int!, mcu_connected: Boolean!, location_valid: Boolean!, timestamp: Float!): Boolean
 }

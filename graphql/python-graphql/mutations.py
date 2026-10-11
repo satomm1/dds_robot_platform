@@ -484,6 +484,17 @@ def resolve_clear_object(_, info, agent_id, object_num):
         logger.exception("clearObject failed for agent_id=%s: %s", agent_id, exc)
         return False
     
+@mutation.field("setLedgerObjects")
+def resolve_set_ledger_objects(_, info, objects):
+    """Replace the fleet ledger snapshot (JSON array) published by dds/observation_ledger.py."""
+    try:
+        json.loads(objects)
+        ignite_client.get_or_create_cache('ledger_objects').put(1, objects)
+        return True
+    except Exception as exc:
+        logger.exception("setLedgerObjects failed: %s", exc)
+        return False
+
 @mutation.field("clearAllObjects")
 def resolve_clear_all_objects(_, info):
     detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')

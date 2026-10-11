@@ -146,6 +146,12 @@ class DataListener(Listener):
         self.t = None
 
         self.influx_write_api = influx_write_api
+        self.reader = None
+
+    def attach(self, reader):
+        """Call once DataReader() returns: process samples that arrived during its construction."""
+        self.reader = reader
+        self.on_data_available(reader)
 
     def transform_point(self, point, forward=True):
         return transform_se2(self.R, self.t, point, forward)
@@ -155,6 +161,11 @@ class DataListener(Listener):
         self.t = t
 
     def on_data_available(self, reader):
+        # TransientLocal history can fire this inside DataReader() (and after close()), before
+        # Cyclone has registered the Python entity, so the lookup yields None.
+        reader = reader or self.reader
+        if reader is None:
+            return  # attach() processes these samples
         for sample in reader.read():
             if isinstance(sample, InvalidSample):
                 continue
@@ -495,6 +506,7 @@ class DataSubscriber:
             self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
             self.data_listeners[agent_id].update_transformation(self.R, self.t)
             self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
+            self.data_listeners[agent_id].attach(self.data_readers[agent_id])
 
     def run(self):
         dds_log("data_sub", "ready")
@@ -515,6 +527,7 @@ class DataSubscriber:
                     self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
                     self.data_listeners[agent_id].update_transformation(self.R, self.t)
                     self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
+                    self.data_listeners[agent_id].attach(self.data_readers[agent_id])
 
 
                 for agent_id in old_agents:

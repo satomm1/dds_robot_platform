@@ -618,6 +618,19 @@ def resolve_data(*_):
     return _object_positions_from_cache()
 
 
+@query.field("ledgerObjects")
+def resolve_ledger_objects(*_):
+    # The ledger only holds objects that are currently present, so no stale pruning here.
+    raw = ignite_client.get_or_create_cache('ledger_objects').get(1)
+    if raw is None:
+        return []
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as exc:
+        logger.warning("ledgerObjects bad JSON: %s", exc)
+        return []
+
+
 @query.field("globalObjectPositions")
 def resolve_global_object_positions(*_):
     require_global_transform()

@@ -88,6 +88,7 @@ python3 heartbeat_publisher.py >>"${DDS_LOG}" 2>&1 &
 python3 goal_publisher.py >>"${DDS_LOG}" 2>&1 &
 python3 location_subscriber.py >>"${DDS_LOG}" 2>&1 &
 python3 data_subscriber.py >>"${DDS_LOG}" 2>&1 &
+python3 observation_ledger.py >>"${DDS_LOG}" 2>&1 &
 python3 image_subscriber.py >>"${DDS_LOG}" 2>&1 &
 
 dds_log "DDS scripts running (PIDs: $(jobs -p | tr '\n' ' '))."
