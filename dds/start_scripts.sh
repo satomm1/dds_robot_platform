@@ -27,6 +27,11 @@ dds_log() {
 }
 
 export PYTHONUNBUFFERED=1
+# Lets cleanup() dump the Python stacks of a script that will not exit (SIGABRT -> traceback in the log).
+export PYTHONFAULTHANDLER=1
+ulimit -c 0  # no core files from that SIGABRT
+
+SHUTDOWN_TIMEOUT_S=5
 
 activate_dds_python() {
   if python3 -c "import cyclonedds" 2>/dev/null; then
@@ -69,12 +74,38 @@ activate_dds_python() {
 
 activate_dds_python
 
+running_pids() {
+  local pid
+  for pid in "$@"; do
+    kill -0 "${pid}" 2>/dev/null && echo "${pid}"
+  done
+}
+
 cleanup() {
-  local pids
+  trap '' SIGTERM SIGINT  # a second Ctrl+C must not re-enter cleanup; stragglers are killed below
+  local pids stuck pid deadline
   pids="$(jobs -p)"
   if [[ -n "${pids}" ]]; then
     # shellcheck disable=SC2086
     kill ${pids} 2>/dev/null || true
+
+    deadline=$((SECONDS + SHUTDOWN_TIMEOUT_S))
+    while (( SECONDS < deadline )) && [[ -n "$(running_pids ${pids})" ]]; do
+      sleep 0.2
+    done
+
+    # shellcheck disable=SC2086
+    stuck="$(running_pids ${pids})"
+    if [[ -n "${stuck}" ]]; then
+      for pid in ${stuck}; do
+        dds_log "Still running ${SHUTDOWN_TIMEOUT_S}s after SIGTERM: PID ${pid} ($(ps -o args= -p "${pid}")); dumping stacks and killing."
+      done
+      # shellcheck disable=SC2086
+      kill -ABRT ${stuck} 2>/dev/null || true
+      sleep 1
+      # shellcheck disable=SC2086
+      kill -KILL $(running_pids ${stuck}) 2>/dev/null || true
+    fi
   fi
   wait 2>/dev/null || true
   dds_log "DDS scripts stopped."
