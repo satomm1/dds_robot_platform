@@ -18,11 +18,12 @@ import sys
 import threading
 import time
 
+from cyclonedds.core import Policy, Qos
 from cyclonedds.internal import InvalidSample
-from cyclonedds.core import Listener
 from cyclonedds.pub import DataWriter, Publisher
 from cyclonedds.sub import DataReader, Subscriber
 from cyclonedds.topic import Topic
+from cyclonedds.util import duration
 
 from dds_utils import (
     AgentIdError,
@@ -39,6 +40,7 @@ from dds_utils import (
     parse_graphql_response,
     post_graphql,
     reliable_qos,
+    reliable_transient_local_command_qos,
     require_agent_id_int,
     transform_se2,
 )
@@ -63,6 +65,15 @@ DISCOVERY_GRACE_S = 3.0
 CLOCK_SKEW_WARN_S = 2.0
 PUBLISH_PERIOD_S = 1.0  # when the ledger changed
 REFRESH_PERIOD_S = 5.0  # unconditionally, so beliefs decay in the GUI
+IO_POLL_PERIOD_S = 0.005
+
+# Readers keep more than the writers' KeepLast(1) so samples arriving between polls are not
+# overwritten. History is not a matching policy, so this still matches the robots' writers.
+ledger_reader_qos = Qos(
+    Policy.Reliability.Reliable(max_blocking_time=duration(milliseconds=10)),
+    Policy.Durability.TransientLocal,
+    Policy.History.KeepLast(depth=64),
+)
 
 SET_LEDGER_OBJECTS_MUTATION = """
 mutation SetLedgerObjects($objects: String!) {
@@ -138,6 +149,7 @@ class CentralLedger:
         self.central_id = central_id
         self.send = send
         self.clock = clock
+        self.start_time = clock()
         self.lock = threading.Lock()
         self.ledger = ObservationLedger()
         self.resolver = GatedResolver(MATCH_RADIUS_M)
@@ -160,7 +172,7 @@ class CentralLedger:
 
     # ---------- Incoming samples ----------
 
-    def handle_robot_sample(self, topic_id, sending_agent, message_type, data):
+    def handle_robot_sample(self, topic_id, sending_agent, message_type, data, timestamp=None):
         """A sample read from DataTopic{topic_id}."""
         if sending_agent != topic_id:
             return  # directed message from another agent to topic_id
@@ -171,9 +183,15 @@ class CentralLedger:
         elif message_type == MSG_LEDGER_SYNC_REQUEST:
             self.on_sync_request(json.loads(data))
 
-    def handle_own_sample(self, sending_agent, message_type, data):
+    def handle_own_sample(self, sending_agent, message_type, data, timestamp=None):
         """A sample read from DataTopic{central_id}."""
         if sending_agent == self.central_id or message_type != MSG_LEDGER_SYNC_RESPONSE:
+            return
+        if timestamp is not None and timestamp < int(self.start_time) - 1:
+            # TransientLocal replay of a response to a previous run of this node; robots keep
+            # their last response per target. Accepting it would mark the robot synced with
+            # stale data and skip the fresh startup sync.
+            dds_log(COMPONENT, f"ignoring stale sync response from {sending_agent} (sent {timestamp})")
             return
         self.on_sync_response(json.loads(data))
 
@@ -267,34 +285,29 @@ class CentralLedger:
 # ---------- DDS node ----------
 
 
-class _TopicListener(Listener):
-    def __init__(self, handler, label):
-        super().__init__()
-        self.handler = handler
-        self.label = label
-        self.reader = None
-
-    def attach(self, reader):
-        """Call once DataReader() returns: drain samples that arrived during its construction."""
-        self.reader = reader
-        self.on_data_available(reader)
-
-    def on_data_available(self, reader):
-        # TransientLocal history can fire this inside DataReader() (and after close()), before
-        # Cyclone has registered the Python entity, so the lookup yields None.
-        reader = reader or self.reader
-        if reader is None:
-            return  # attach() drains these samples
-        for sample in reader.take():
+def _dispatch(reader, handler, label):
+    """Take every pending sample from reader and hand it to handler."""
+    while True:
+        samples = reader.take(N=64)
+        if not samples:
+            return
+        for sample in samples:
             if isinstance(sample, InvalidSample):
                 continue
             try:
-                self.handler(int(sample.sending_agent), sample.message_type, sample.data)
-            except Exception as exc:  # a bad sample must never kill the listener
-                dds_warn(COMPONENT, f"bad {sample.message_type} sample on {self.label}: {exc!r}")
+                handler(int(sample.sending_agent), sample.message_type, sample.data, int(sample.timestamp))
+            except Exception as exc:  # a bad sample must never stop the I/O loop
+                dds_warn(COMPONENT, f"bad {sample.message_type} sample on {label}: {exc!r}")
 
 
 class CentralLedgerNode:
+    """DDS side. No listeners: a single I/O thread polls the readers and does every write.
+
+    Python listener callbacks run on Cyclone's receive threads and need the GIL; a write from a
+    Python thread to a topic this participant also reads with a listener deadlocked against them
+    (the writer thread hung in write() and the node stopped answering sync requests).
+    """
+
     def __init__(self, central_id, server_url=None):
         if not -32768 <= central_id <= 32767:
             raise ValueError(f"AGENT_ID {central_id} does not fit in an int16 (robot peer lists)")
@@ -311,18 +324,14 @@ class CentralLedgerNode:
         self.publisher = Publisher(self.participant)
         self._topics = {}
         self._topics_lock = threading.Lock()  # fleet poll (main) and sender threads
-        self._writers = {}  # only touched by the sender thread
+        self._writers = {}  # only touched by the I/O thread
         self._outbox = queue.Queue()
-        self.robot_readers = {}
+        self._readers_lock = threading.Lock()  # fleet poll (main) and I/O threads
+        self.robot_readers = {}  # robot id -> (reader, handler, label)
 
-        own_topic = self._topic(central_id)
-        self.own_reader = self._make_reader(own_topic, self.core.handle_own_sample, data_topic_name(central_id))
-
-    def _make_reader(self, topic, handler, label):
-        listener = _TopicListener(handler, label)
-        reader = DataReader(self.subscriber, topic, listener=listener, qos=reliable_qos)
-        listener.attach(reader)
-        return reader
+        label = data_topic_name(central_id)
+        own_reader = DataReader(self.subscriber, self._topic(central_id), qos=ledger_reader_qos)
+        self.own_reader = (own_reader, self.core.handle_own_sample, label)
 
     def _topic(self, agent_id):
         with self._topics_lock:
@@ -331,40 +340,53 @@ class CentralLedgerNode:
             return self._topics[agent_id]
 
     def _send(self, agent_id, message_type, payload):
-        # Queued: creating a DataWriter inside a listener callback deadlocks Cyclone.
+        # Queued; written by the I/O thread.
         self._outbox.put((agent_id, message_type, json.dumps(payload)))
 
-    def _send_loop(self):
+    def _io_loop(self):
         while self.running:
-            try:
-                agent_id, message_type, data = self._outbox.get(timeout=1.0)
-            except queue.Empty:
-                continue
-            try:
-                writer = self._writers.get(agent_id)
-                if writer is None:
-                    writer = DataWriter(self.publisher, self._topic(agent_id), qos=reliable_qos)
-                    self._writers[agent_id] = writer
-                writer.write(DataMessage(
-                    message_type=message_type,
-                    sending_agent=self.central_id,
-                    timestamp=int(time.time()),
-                    data=data,
-                ))
-            except Exception as exc:
-                dds_warn(COMPONENT, f"failed to send {message_type} to DataTopic{agent_id}: {exc!r}")
+            with self._readers_lock:
+                readers = [self.own_reader] + list(self.robot_readers.values())
+                for reader, handler, label in readers:
+                    _dispatch(reader, handler, label)
+            while True:
+                try:
+                    self._write(*self._outbox.get_nowait())
+                except queue.Empty:
+                    break
+            time.sleep(IO_POLL_PERIOD_S)
+
+    def _write(self, agent_id, message_type, data):
+        try:
+            writer = self._writers.get(agent_id)
+            if writer is None:
+                # Directed sync responses expire (Lifespan) so a restarted robot's new reader is
+                # not handed our last, stale response and treats us as already synced.
+                qos = reliable_qos if agent_id == self.central_id else reliable_transient_local_command_qos
+                writer = DataWriter(self.publisher, self._topic(agent_id), qos=qos)
+                self._writers[agent_id] = writer
+            writer.write(DataMessage(
+                message_type=message_type,
+                sending_agent=self.central_id,
+                timestamp=int(time.time()),
+                data=data,
+            ))
+        except Exception as exc:
+            dds_warn(COMPONENT, f"failed to send {message_type} to DataTopic{agent_id}: {exc!r}")
 
     def _update_fleet(self):
         robots = {int(a) for a in fetch_subscribed_agent_ids_set(self.graphql_server, self.central_id)}
         robots.discard(self.central_id)
         robots.discard(-1)
-        for r in robots - set(self.robot_readers):
-            dds_log(COMPONENT, f"subscribed to agent {r} ledger")
-            handler = lambda sender, mtype, data, r=r: self.core.handle_robot_sample(r, sender, mtype, data)
-            self.robot_readers[r] = self._make_reader(self._topic(r), handler, data_topic_name(r))
-        for r in set(self.robot_readers) - robots:
-            dds_log(COMPONENT, f"unsubscribed from agent {r} ledger")
-            dispose_entity(self.robot_readers.pop(r))
+        with self._readers_lock:
+            for r in robots - set(self.robot_readers):
+                dds_log(COMPONENT, f"subscribed to agent {r} ledger")
+                handler = lambda sender, mtype, data, ts, r=r: self.core.handle_robot_sample(r, sender, mtype, data, ts)
+                reader = DataReader(self.subscriber, self._topic(r), qos=ledger_reader_qos)
+                self.robot_readers[r] = (reader, handler, data_topic_name(r))
+            for r in set(self.robot_readers) - robots:
+                dds_log(COMPONENT, f"unsubscribed from agent {r} ledger")
+                dispose_entity(self.robot_readers.pop(r)[0])
         self.core.set_robots(robots)
 
     def _sync_loop(self):
@@ -398,7 +420,7 @@ class CentralLedgerNode:
             time.sleep(PUBLISH_PERIOD_S)
 
     def run(self):
-        threading.Thread(target=self._send_loop, daemon=True).start()
+        threading.Thread(target=self._io_loop, daemon=True).start()
         threading.Thread(target=self._sync_loop, daemon=True).start()
         threading.Thread(target=self._publish_loop, daemon=True).start()
         dds_log(COMPONENT, f"ready (central_id={self.central_id})")
@@ -413,7 +435,8 @@ class CentralLedgerNode:
     def shutdown(self):
         dds_log(COMPONENT, "stopped")
         self.running = False
-        self.robot_readers.clear()
+        with self._readers_lock:
+            self.robot_readers.clear()
         self._writers.clear()
         dispose_participant(self.participant)
         self.participant = None

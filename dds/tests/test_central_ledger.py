@@ -244,3 +244,14 @@ def test_startup_sync_retries_and_resyncs_on_rejoin():
     assert list(core.ledger.objects()) == [o.obs_id]
     core.set_robots({3, 6})
     assert core.sync_tick() == [3]
+
+
+def test_stale_sync_response_from_before_start_is_ignored():
+    # A robot's TransientLocal writer replays its last response (sent to our previous run).
+    core, _, clock = make_core(now=1000.0)
+    resp = json.dumps({"responder": 3, "observations": [at(3, 1, 1.0, 1.0, stamp=1.0).to_dict()],
+                       "removals": []})
+    core.handle_own_sample(3, MSG_LEDGER_SYNC_RESPONSE, resp, timestamp=900)
+    assert core.ledger.objects() == {} and 3 not in core.synced
+    core.handle_own_sample(3, MSG_LEDGER_SYNC_RESPONSE, resp, timestamp=1001)
+    assert 3 in core.synced
