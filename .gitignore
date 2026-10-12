@@ -5,6 +5,7 @@ dds/cyclonedds.xml.bak
 
 # Operator map data (GUI sync / local copies; not repo config)
 dds/*.json
+dds/*.txt
 dds/saved_maps/
 
 capture/data/
