@@ -17,22 +17,32 @@ import base64
 from ros_messages import Header, Origin, Position, Quaternion, MapMetaData, OccupancyGrid, msg_to_dict
 from message_defs import EntryExit, Heartbeat, Initialization, reliable_qos, best_effort_qos, get_ip
 
-from dds_utils.config import AGENT_TYPE, HEARTBEAT_PERIOD, HEARTBEAT_TIMEOUT, resolve_graphql_http_url
+from dds_utils.config import (
+    AGENT_TYPE,
+    HEARTBEAT_PERIOD,
+    HEARTBEAT_TIMEOUT,
+    TPS_SMOOTH,
+    TRANSFORM_MODE,
+    resolve_graphql_http_url,
+)
 from dds_utils import (
     AgentIdError,
     create_domain_participant,
     dds_log,
+    build_map_transform,
     dispose_participant,
     parse_agent_id_int,
+    load_known_points,
     require_agent_id_int,
-    transform_se2,
 )
 from dds_utils.gql_queries import AGENTS_QUERY
 from dds_utils.topics import ENTRY_EXIT_TOPIC, HEARTBEAT_TOPIC, INITIALIZATION_TOPIC
 
 TRANSFORM_MUTATION =   """
-                            mutation($R: [Float]!, $t: [Float]!, $timestamp: Float!) {
-                                setTransform(R: $R, t: $t, timestamp: $timestamp)
+                            mutation($R: [Float]!, $t: [Float]!, $timestamp: Float!, $model: String,
+                                     $src_points: [Float], $dst_points: [Float], $smooth: Float) {
+                                setTransform(R: $R, t: $t, timestamp: $timestamp, model: $model,
+                                             src_points: $src_points, dst_points: $dst_points, smooth: $smooth)
                             }
                         """
 
@@ -523,11 +533,7 @@ class EntryExitCommunication:
         self.load_map()
 
         # Now get reference points
-        self.known_points = []
-        with open('known_points.txt', 'r') as f:
-            for line in f:
-                x, y = line.split(',')
-                self.known_points.append((float(x), float(y)))
+        self.known_points = load_known_points('known_points.txt')
 
         self.entry_exit_listener.update_known_points(self.known_points)
 
@@ -640,48 +646,32 @@ class EntryExitCommunication:
         """
         dds_log("entry_exit", "computing map transform")
 
-        self.R = None
-        self.t = None
-        if self.known_points == self.reference_known_points:
-            self.R = np.identity(2)
-            self.t = np.zeros((2,1))
-        else:
-
-            # Find the transform from the known points
-            known_points = np.array(self.known_points)
-            reference_known_points = np.array(self.reference_known_points)
-
-            centroid1 = np.mean(known_points, axis=0)
-            centroid2 = np.mean(reference_known_points, axis=0)
-            centered_points1 = known_points - centroid1
-            centered_points2 = reference_known_points - centroid2
-
-            H = np.dot(centered_points1.T, centered_points2)
-            U, S, Vt = np.linalg.svd(H)
-            R = Vt.T @ U.T
-
-            if np.linalg.det(R) < 0:
-                Vt[1, :] *= -1
-                R = Vt.T @ U.T
-
-            t = centroid2 - R @ centroid1
-
-            self.R = R
-            self.t = t
+        self.map_tf = build_map_transform(
+            self.known_points, self.reference_known_points, TRANSFORM_MODE, TPS_SMOOTH
+        )
+        self.R, self.t = self.map_tf.R, self.map_tf.t
+        msg = f"map transform model={self.map_tf.model} ({len(self.known_points)} point pairs)"
+        if self.map_tf.fallback_reason:
+            msg += f"; fell back to rigid: {self.map_tf.fallback_reason}"
+        dds_log("entry_exit", msg)
 
         # Now store the transform in the ignite server
+        variables = self.map_tf.to_doc()
+        variables['timestamp'] = int(time.time())
         response = requests.post(
             self.graphql_server,
             json={
                 'query': TRANSFORM_MUTATION,
-                'variables': {
-                    'R': self.R.flatten().tolist(),
-                    't': self.t.flatten().tolist(),
-                    'timestamp': int(time.time())
-                }
+                'variables': variables,
             },
             timeout=ENTRY_EXIT_TRANSFORM_TIMEOUT_SEC
         )
+        try:
+            errors = response.json().get('errors')
+        except ValueError:
+            errors = f"HTTP {response.status_code}"
+        if errors:
+            dds_log("entry_exit", f"setTransform failed: {errors}")
 
     def transform_point(self, point, forward=True):
         """
@@ -694,7 +684,7 @@ class EntryExitCommunication:
         Returns:
         - tuple: The transformed point.
         """
-        return transform_se2(self.R, self.t, point, forward)
+        return self.map_tf.apply(point, forward)
 
     def _seed_placeholder_position(self, robot_id):
         """Write (0,0,0) to GraphQL so the GUI shows the robot before first Location sample.

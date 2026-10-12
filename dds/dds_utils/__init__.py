@@ -16,6 +16,7 @@ from .config import (
 from .gql_queries import AGENTS_QUERY, TRANSFORM_QUERY
 from .gql_subscriber_sync import (
     fetch_subscribed_agent_ids_set,
+    fetch_map_transform_blocking,
     fetch_transform_Rt_blocking,
     parse_graphql_response,
     post_graphql,
@@ -48,7 +49,15 @@ from .topics import (
     image_topic_name,
     location_topic_name,
 )
-from .transform import transform_se2
+from .transform import (
+    RigidMapTransform,
+    TpsMapTransform,
+    build_map_transform,
+    estimate_se2,
+    load_known_points,
+    map_transform_from_doc,
+    transform_se2,
+)
 
 __all__ = [
     "GraphqlPollBackoff",
@@ -86,6 +95,7 @@ __all__ = [
     "dispose_entity",
     "dispose_participant",
     "fetch_subscribed_agent_ids_set",
+    "fetch_map_transform_blocking",
     "fetch_transform_Rt_blocking",
     "is_dds_verbose",
     "parse_graphql_response",
@@ -100,5 +110,11 @@ __all__ = [
     "reliable_transient_local_command_qos",
     "require_agent_id_int",
     "require_robot_id_int",
+    "RigidMapTransform",
+    "TpsMapTransform",
+    "build_map_transform",
+    "estimate_se2",
+    "map_transform_from_doc",
+    "load_known_points",
     "transform_se2",
 ]

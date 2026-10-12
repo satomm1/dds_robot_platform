@@ -20,7 +20,8 @@ from dds_utils import (
     reliable_qos,
     reliable_transient_local_command_qos,
     require_agent_id_int,
-    transform_se2,
+    TRANSFORM_QUERY,
+    map_transform_from_doc,
 )
 from dds_utils.config import resolve_graphql_http_url
 from dds_utils.gql_subscriber_sync import parse_graphql_response, post_graphql
@@ -68,16 +69,6 @@ query RobotMcuState($robotId: Int!) {
     }
 }
 """
-
-TRANSFORM_MATRIX_QUERY = """
-                            query {
-                                transform {
-                                    R
-                                    t
-                                    timestamp
-                                }
-                            }
-                            """
 
 PENDING_STOPS_QUERY = """
 query {
@@ -149,8 +140,7 @@ class GoalWriter:
         self.subscriber = Subscriber(self.participant)
         self.publisher = Publisher(self.participant)
 
-        self.R = None
-        self.t = None
+        self.map_tf = None
 
         self._target_data_writers = {}
         self._last_multi_plan_key = None
@@ -166,7 +156,9 @@ class GoalWriter:
         Returns:
         - tuple: The transformed point.
         """
-        return transform_se2(self.R, self.t, point, forward)
+        if self.map_tf is None:
+            return point
+        return self.map_tf.apply(point, forward)
 
     def _get_data_writer(self, robot_id: int) -> DataWriter:
         if robot_id not in self._target_data_writers:
@@ -265,20 +257,18 @@ class GoalWriter:
     def run(self):
 
         # First make sure we have the transformation matrix
-        while self.R is None:
+        while self.map_tf is None:
             try:
-                response = post_graphql(self.graphql_server, TRANSFORM_MATRIX_QUERY, timeout=5)
+                response = post_graphql(self.graphql_server, TRANSFORM_QUERY, timeout=5)
                 data = parse_graphql_response(response)
-                transform = data.get("transform", {})
+                transform = data.get("transform") or {}
                 timestamp = transform.get("timestamp", 0)
                 if time.time() - timestamp > 10:
                     time.sleep(1)
                     continue
-                R = transform.get("R", [])
-                t = transform.get("t", [])
-                if len(R) == 4 and len(t) == 2:
-                    self.R = np.array(R).reshape((2, 2))
-                    self.t = np.array(t)
+                self.map_tf = map_transform_from_doc(transform)
+                if self.map_tf is not None:
+                    dds_log("goal_pub", f"map transform model={self.map_tf.model}")
                     break
             except Exception:
                 time.sleep(1)

@@ -12,6 +12,10 @@ TRANSFORM_QUERY = """
                                 R
                                 t
                                 timestamp
+                                model
+                                src_points
+                                dst_points
+                                smooth
                             }
                         }
                     """

@@ -91,6 +91,12 @@ type Transform {
     t: [Float]
     s: Float
     timestamp: Int
+    # Map transform model: "rigid" (R, t only) or "tps" (thin plate spline through the
+    # known point pairs below). R, t always hold the rigid fit for rigid-only readers.
+    model: String
+    src_points: [Float]   # flattened [x0, y0, x1, y1, ...] in the local map frame
+    dst_points: [Float]   # same pairs in the reference map frame
+    smooth: Float
 }
 
 type Agents {
@@ -201,7 +207,7 @@ type Mutation {
     setAgentList(agent_list: [Int]): Boolean
     setExitedAgentList(agent_list: [Int]): Boolean
     clearDetectedObjects: Boolean
-    setTransform(R: [Float], t: [Float], timestamp: Float): Boolean
+    setTransform(R: [Float], t: [Float], timestamp: Float, model: String, src_points: [Float], dst_points: [Float], smooth: Float): Boolean
     setMap(data: String!): Boolean 
     setMapMetadata(resolution: Float, width: Int, height: Int, origin_pos_x: Float, origin_pos_y: Float, origin_pos_z: Float, origin_ori_x: Float,
                         origin_ori_y: Float, origin_ori_z: Float, origin_ori_w: Float): Boolean

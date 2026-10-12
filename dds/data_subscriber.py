@@ -24,11 +24,10 @@ from dds_utils import (
     dds_log,
     dds_warn,
     fetch_subscribed_agent_ids_set,
-    fetch_transform_Rt_blocking,
+    fetch_map_transform_blocking,
     get_ip,
     reliable_qos,
     require_agent_id_int,
-    transform_se2,
 )
 from dds_utils.config import (
     INFLUX_BUCKET,
@@ -142,8 +141,7 @@ class DataListener(Listener):
         # How many negative person slots (-1,-2,...) are currently in Ignite for this agent.
         self._person_map_count = 0
 
-        self.R = None
-        self.t = None
+        self.map_tf = None
 
         self.influx_write_api = influx_write_api
         self.reader = None
@@ -154,11 +152,12 @@ class DataListener(Listener):
         self.on_data_available(reader)
 
     def transform_point(self, point, forward=True):
-        return transform_se2(self.R, self.t, point, forward)
+        if self.map_tf is None:
+            return point
+        return self.map_tf.apply(point, forward)
 
-    def update_transformation(self, R, t):
-        self.R = R
-        self.t = t
+    def update_transformation(self, map_tf):
+        self.map_tf = map_tf
 
     def on_data_available(self, reader):
         # TransientLocal history can fire this inside DataReader() (and after close()), before
@@ -488,8 +487,7 @@ class DataSubscriber:
         self.subscribed_agents = self.get_agents()
 
         # Get the transformation matrix from Ignite
-        self.R = None
-        self.t = None
+        self.map_tf = None
 
         self.get_transform()
 
@@ -504,7 +502,7 @@ class DataSubscriber:
             dds_log("data_sub", f"subscribed to agent {agent_id} data")
             new_data_topic = Topic(self.participant, data_topic_name(agent_id), DataMessage)
             self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
-            self.data_listeners[agent_id].update_transformation(self.R, self.t)
+            self.data_listeners[agent_id].update_transformation(self.map_tf)
             self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
             self.data_listeners[agent_id].attach(self.data_readers[agent_id])
 
@@ -525,7 +523,7 @@ class DataSubscriber:
                     dds_log("data_sub", f"subscribed to agent {agent_id} data")
                     new_data_topic = Topic(self.participant, data_topic_name(agent_id), DataMessage)
                     self.data_listeners[agent_id] = DataListener(self.my_id, agent_id, self.graphql_server, influx_write_api=self.influx_write_api)
-                    self.data_listeners[agent_id].update_transformation(self.R, self.t)
+                    self.data_listeners[agent_id].update_transformation(self.map_tf)
                     self.data_readers[agent_id] = DataReader(self.subscriber, new_data_topic, listener=self.data_listeners[agent_id], qos=reliable_qos)
                     self.data_listeners[agent_id].attach(self.data_readers[agent_id])
 
@@ -550,7 +548,7 @@ class DataSubscriber:
         return fetch_subscribed_agent_ids_set(self.graphql_server, self.my_id)
 
     def get_transform(self):
-        self.R, self.t = fetch_transform_Rt_blocking(self.graphql_server)
+        self.map_tf = fetch_map_transform_blocking(self.graphql_server)
         # print("data_subscriber got the transformation matrix!")
 
     def shutdown(self):

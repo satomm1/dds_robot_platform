@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from dds_utils.transform import RigidMapTransform  # noqa: E402
 from dds_utils.ledger import GatedResolver, Observation, ObservationLedger, Removal, make_obs_id  # noqa: E402
 from dds_utils.message_types import (  # noqa: E402
     MSG_LEDGER_OBSERVATION,
@@ -144,9 +145,8 @@ def test_snapshot_fields_and_belief():
 def test_snapshot_applies_central_transform():
     ledger = ObservationLedger()
     ledger.add(at(3, 1, 1.0, 2.0, stamp=0.0))
-    R = np.eye(2)
-    t = np.array([1.0, 1.0])
-    (obj,) = snapshot(ledger, now=0.0, R=R, t=t)
+    map_tf = RigidMapTransform(np.eye(2), np.array([1.0, 1.0]))
+    (obj,) = snapshot(ledger, now=0.0, map_tf=map_tf)
     assert (obj["x"], obj["y"]) == (0.0, 1.0)  # R.T @ (p - t)
 
 

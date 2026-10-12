@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from dds_utils.gql_subscriber_sync import (  # noqa: E402
+    fetch_map_transform_blocking,
     fetch_transform_Rt_blocking,
     parse_graphql_response,
 )
@@ -61,3 +62,20 @@ def test_fetch_transform_Rt_blocking_timeout():
                         max_wait_s=5,
                         poll_s=0.01,
                     )
+
+
+def test_fetch_map_transform_blocking_tps():
+    src = [0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0, 5.0, 4.0]
+    dst = [1.0, 1.0, 11.2, 1.1, 11.0, 11.3, 0.9, 11.0, 6.1, 5.0]
+    r = MagicMock()
+    r.status_code = 200
+    r.json.return_value = {"data": {"transform": {
+        "R": [1, 0, 0, 1], "t": [1.0, 1.0], "timestamp": 1,
+        "model": "tps", "src_points": src, "dst_points": dst, "smooth": 0.0,
+    }}}
+    with patch("dds_utils.gql_subscriber_sync.post_graphql", return_value=r):
+        tf = fetch_map_transform_blocking("http://127.0.0.1:9/graphql", max_wait_s=5)
+        R, t = fetch_transform_Rt_blocking("http://127.0.0.1:9/graphql", max_wait_s=5)
+    assert tf.model == "tps"
+    assert abs(tf.apply((5.0, 4.0))[0] - 6.1) < 1e-9
+    assert R.shape == (2, 2) and t.shape == (2,)

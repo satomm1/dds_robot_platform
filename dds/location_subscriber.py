@@ -25,10 +25,9 @@ from dds_utils import (
     dispose_participant,
     dds_log,
     fetch_subscribed_agent_ids_set,
-    fetch_transform_Rt_blocking,
+    fetch_map_transform_blocking,
     get_ip,
     require_agent_id_int,
-    transform_se2,
 )
 from dds_utils.config import INFLUX_BUCKET, INFLUX_ORG, INFLUX_URL, resolve_graphql_http_url
 from dds_utils.topics import location_topic_name
@@ -91,19 +90,19 @@ class LocationListener(Listener):
         self.my_ip = my_ip
         self.locations = (None, None, None)
 
-        self.R = None
-        self.t = None
+        self.map_tf = None
 
         self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
 
         self.influx_write_api = influx_write_api
 
     def transform_point(self, point, forward=True):
-        return transform_se2(self.R, self.t, point, forward)
+        if self.map_tf is None:
+            return point
+        return self.map_tf.apply(point, forward)
 
-    def update_transformation(self, R, t):
-        self.R = R
-        self.t = t
+    def update_transformation(self, map_tf):
+        self.map_tf = map_tf
 
     def on_data_available(self, reader):
         """
@@ -185,8 +184,7 @@ class LocationSubscriber:
         self.subscribed_agents = self.get_agents()
 
         # Get the transformation matrix from Ignite
-        self.R = None
-        self.t = None
+        self.map_tf = None
 
         self.get_transform()
 
@@ -201,7 +199,7 @@ class LocationSubscriber:
             dds_log("loc_sub", f"subscribed to agent {agent_id} location")
             new_location_topic = Topic(self.participant, location_topic_name(agent_id), Location)
             self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip, influx_write_api=self.influx_write_api)
-            self.location_listeners[agent_id].update_transformation(self.R, self.t)
+            self.location_listeners[agent_id].update_transformation(self.map_tf)
             self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
     def run(self):
@@ -218,7 +216,7 @@ class LocationSubscriber:
                     dds_log("loc_sub", f"subscribed to agent {agent_id} location")
                     new_location_topic = Topic(self.participant, location_topic_name(agent_id), Location)
                     self.location_listeners[agent_id] = LocationListener(self.my_id, self.my_ip, influx_write_api=self.influx_write_api)
-                    self.location_listeners[agent_id].update_transformation(self.R, self.t)
+                    self.location_listeners[agent_id].update_transformation(self.map_tf)
                     self.location_readers[agent_id] = DataReader(self.subscriber, new_location_topic, listener=self.location_listeners[agent_id], qos=best_effort_qos)
 
                 for agent_id in old_agents:
@@ -253,7 +251,7 @@ class LocationSubscriber:
         return fetch_subscribed_agent_ids_set(self.graphql_server, self.my_id)
 
     def get_transform(self):
-        self.R, self.t = fetch_transform_Rt_blocking(self.graphql_server)
+        self.map_tf = fetch_map_transform_blocking(self.graphql_server)
         # print("location_subscriber got the transformation matrix!")
 
     def shutdown(self):

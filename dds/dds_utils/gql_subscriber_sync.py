@@ -6,6 +6,7 @@ import numpy as np
 import requests
 
 from .gql_queries import AGENTS_QUERY, TRANSFORM_QUERY
+from .transform import map_transform_from_doc
 
 logger = logging.getLogger(__name__)
 SUBSCRIBED_AGENT_QUERY_TIMEOUT_SEC = float(os.environ.get("SUBSCRIBED_AGENT_QUERY_TIMEOUT_SEC", "8"))
@@ -64,9 +65,10 @@ def fetch_subscribed_agent_ids_set(graphql_server, my_id):
     return set()
 
 
-def fetch_transform_Rt_blocking(graphql_server, max_wait_s=300, poll_s=1.0):
+def fetch_map_transform_blocking(graphql_server, max_wait_s=300, poll_s=1.0):
     """
-    Poll until transform has a usable 2x2 R and length-2 t, or max_wait_s elapses.
+    Poll until transform holds a usable map transform (rigid or TPS), or max_wait_s elapses.
+    Returns a RigidMapTransform or TpsMapTransform from dds_utils.transform.
     """
     deadline = time.time() + max_wait_s
     last_error = None
@@ -74,17 +76,22 @@ def fetch_transform_Rt_blocking(graphql_server, max_wait_s=300, poll_s=1.0):
         try:
             response = post_graphql(graphql_server, TRANSFORM_QUERY)
             data = parse_graphql_response(response)
-            transform = data.get("transform", {})
-            R = transform.get("R", [])
-            t = transform.get("t", [])
-            if len(R) == 4 and len(t) == 2:
-                R_np = np.array(R).reshape((2, 2))
-                t_np = np.array(t)
-                return R_np, t_np
+            map_tf = map_transform_from_doc(data.get("transform") or {})
+            if map_tf is not None:
+                return map_tf
         except Exception as exc:
             last_error = exc
-            logger.debug("fetch_transform_Rt_blocking poll: %s", exc)
+            logger.debug("fetch_map_transform_blocking poll: %s", exc)
         time.sleep(poll_s)
     raise RuntimeError(
         f"Timed out after {max_wait_s}s waiting for valid transform; last_error={last_error!r}"
     )
+
+
+def fetch_transform_Rt_blocking(graphql_server, max_wait_s=300, poll_s=1.0):
+    """
+    Poll until transform has a usable 2x2 R and length-2 t, or max_wait_s elapses.
+    Returns the rigid (R, t) approximation even when the stored model is TPS.
+    """
+    map_tf = fetch_map_transform_blocking(graphql_server, max_wait_s=max_wait_s, poll_s=poll_s)
+    return np.array(map_tf.R).reshape((2, 2)), np.array(map_tf.t)

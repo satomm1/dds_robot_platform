@@ -7,6 +7,11 @@ HEARTBEAT_TIMEOUT = 31  # seconds
 POSITION_STALE_SEC = float(os.environ.get("POSITION_STALE_SEC", HEARTBEAT_TIMEOUT))
 AGENT_TYPE = "human"
 
+# Map transform model between agents: "tps" (thin plate spline, falls back to rigid
+# with < 4 known point pairs) or "rigid" (SE(2)).
+TRANSFORM_MODE = os.environ.get("TRANSFORM_MODE", "tps")
+TPS_SMOOTH = float(os.environ.get("TPS_SMOOTH", "0.0"))
+
 PARTICIPANT_LEASE_DURATION_MS = 30000
 
 DEFAULT_GRAPHQL_PORT = 8000

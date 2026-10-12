@@ -657,7 +657,11 @@ def resolve_data(*_):
             "R": [0],
             "t": [0],
             "s": 1.0,
-            "timestamp": 0
+            "timestamp": 0,
+            "model": "rigid",
+            "src_points": [],
+            "dst_points": [],
+            "smooth": 0.0,
         }
     
     transform = json.loads(transform)
@@ -665,7 +669,11 @@ def resolve_data(*_):
         "R": transform["R"],
         "t": transform["t"],
         "s": 1.0,
-        "timestamp": transform["timestamp"]
+        "timestamp": transform["timestamp"],
+        "model": transform.get("model", "rigid"),
+        "src_points": transform.get("src_points", []),
+        "dst_points": transform.get("dst_points", []),
+        "smooth": transform.get("smooth", 0.0),
     }
 
 @query.field("subscribed_agents")

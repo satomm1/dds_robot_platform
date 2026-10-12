@@ -372,14 +372,32 @@ def resolve_clear_detected_objects(_, info):
         logger.exception("clearDetectedObjects failed: %s", exc)
         return False
     
+TRANSFORM_MODELS = ("rigid", "tps")
+TPS_MIN_POINT_PAIRS = 4
+
+
 @mutation.field("setTransform")
-def resolve_set_transform(_, info, R, t, timestamp):
-    transform_cache = ignite_client.get_or_create_cache('transform')
+def resolve_set_transform(_, info, R, t, timestamp, model=None, src_points=None, dst_points=None, smooth=None):
+    model = model or "rigid"
+    if model not in TRANSFORM_MODELS:
+        raise ValueError(f"setTransform: model must be one of {TRANSFORM_MODELS}, got {model!r}")
     transform = {
         "R": R,
         "t": t,
-        "timestamp": timestamp
+        "timestamp": timestamp,
+        "model": model,
     }
+    if model == "tps":
+        src_points = src_points or []
+        dst_points = dst_points or []
+        if len(src_points) != len(dst_points) or len(src_points) % 2:
+            raise ValueError("setTransform: src_points and dst_points must be equal-length flattened [x, y, ...] lists")
+        if len(src_points) < 2 * TPS_MIN_POINT_PAIRS:
+            raise ValueError(f"setTransform: tps needs at least {TPS_MIN_POINT_PAIRS} point pairs")
+        transform["src_points"] = src_points
+        transform["dst_points"] = dst_points
+        transform["smooth"] = float(smooth or 0.0)
+    transform_cache = ignite_client.get_or_create_cache('transform')
     try:
         transform_cache.put(1, json.dumps(transform))
         return True

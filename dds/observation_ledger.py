@@ -35,14 +35,13 @@ from dds_utils import (
     dispose_entity,
     dispose_participant,
     fetch_subscribed_agent_ids_set,
-    fetch_transform_Rt_blocking,
+    fetch_map_transform_blocking,
     get_ip,
     parse_graphql_response,
     post_graphql,
     reliable_qos,
     reliable_transient_local_command_qos,
     require_agent_id_int,
-    transform_se2,
 )
 from dds_utils.belief import BELIEF_T1_S, BELIEF_T2_S, object_belief
 from dds_utils.config import resolve_graphql_http_url
@@ -116,14 +115,15 @@ def apply_sync_response(ledger, resolver, resp):
     return added
 
 
-def snapshot(ledger, now, R=None, t=None):
-    """Current objects for display. x, y are the mean position, mapped to the central frame with R, t."""
+def snapshot(ledger, now, map_tf=None):
+    """Current objects for display. x, y are the mean position, mapped to the central frame with map_tf."""
     result = []
     for object_id, members in ledger.objects().items():
         n = len(members)
         x = sum(o.x for o in members) / n
         y = sum(o.y for o in members) / n
-        x, y, _ = transform_se2(R, t, [x, y, 0.0], forward=False)
+        if map_tf is not None:
+            x, y = map_tf.apply((x, y), forward=False)
         last_seen = max(o.stamp for o in members)
         result.append({
             "id": object_id,
@@ -267,10 +267,10 @@ class CentralLedger:
 
     # ---------- Exposure ----------
 
-    def take_snapshot(self, R=None, t=None):
+    def take_snapshot(self, map_tf=None):
         with self.lock:
             self.dirty = False
-            return snapshot(self.ledger, self.clock(), R, t)
+            return snapshot(self.ledger, self.clock(), map_tf)
 
     def _check_clock(self, stamp, observer_id):
         now = self.clock()
@@ -315,8 +315,7 @@ class CentralLedgerNode:
         self.graphql_server = resolve_graphql_http_url(my_ip=get_ip(), server_url=server_url)
         self._graphql_warn = GraphqlPollBackoff()
         self.core = CentralLedger(central_id, self._send)
-        self.R = None
-        self.t = None
+        self.map_tf = None
         self.running = True
 
         self.participant = create_domain_participant(domain_qos=False)
@@ -399,14 +398,14 @@ class CentralLedgerNode:
 
     def _publish_loop(self):
         try:
-            self.R, self.t = fetch_transform_Rt_blocking(self.graphql_server)
+            self.map_tf = fetch_map_transform_blocking(self.graphql_server)
         except RuntimeError as exc:
             dds_warn(COMPONENT, f"no transform; publishing reference-frame positions: {exc}")
         last = 0.0
         while self.running:
             now = time.time()
             if self.core.dirty or now - last >= REFRESH_PERIOD_S:
-                objects = self.core.take_snapshot(self.R, self.t)
+                objects = self.core.take_snapshot(self.map_tf)
                 try:
                     parse_graphql_response(post_graphql(
                         self.graphql_server,
