@@ -20,8 +20,7 @@ from dds_utils import (
     reliable_qos,
     reliable_transient_local_command_qos,
     require_agent_id_int,
-    TRANSFORM_QUERY,
-    map_transform_from_doc,
+    MapTransformWatcher,
 )
 from dds_utils.config import resolve_graphql_http_url
 from dds_utils.gql_subscriber_sync import parse_graphql_response, post_graphql
@@ -35,13 +34,6 @@ from dds_utils.message_types import (
 )
 
 INTER_DDS_WRITE_SLEEP_S = 0.02
-
-# A transform pushed within this many seconds before startup counts as this session's.
-TRANSFORM_FRESH_SLACK_S = 10
-# How long to wait at startup for this session's transform before accepting an older stored one.
-TRANSFORM_FRESH_WAIT_S = 20
-# How often the main loop re-reads the transform so a newer push from entry_exit is picked up.
-TRANSFORM_REFRESH_S = 5
 
 
 ROBOT_GOALS_QUERY = """
@@ -148,8 +140,7 @@ class GoalWriter:
         self.publisher = Publisher(self.participant)
 
         self.map_tf = None
-        self._transform_ts = None
-        self._started_at = time.time()
+        self._tf_watch = MapTransformWatcher(self.graphql_server, "goal_pub")
 
         self._target_data_writers = {}
         self._last_multi_plan_key = None
@@ -265,28 +256,15 @@ class GoalWriter:
 
     def run(self):
 
-        # Wait for a transform. Prefer one pushed by this session's entry_exit, but after
-        # TRANSFORM_FRESH_WAIT_S accept whatever valid transform is stored rather than
-        # blocking forever (e.g. when goal_publisher is restarted on its own).
-        while True:
-            doc = self._poll_transform()
-            if doc is not None:
-                fresh = doc["timestamp"] >= self._started_at - TRANSFORM_FRESH_SLACK_S
-                waited_too_long = time.time() - self._started_at > TRANSFORM_FRESH_WAIT_S
-                if fresh or waited_too_long:
-                    self._set_transform(doc, stale=not fresh)
-                    break
-            time.sleep(1)
-        last_transform_check = time.time()
+        # Wait for a transform (prefers this session's; see MapTransformWatcher).
+        self.map_tf = self._tf_watch.wait(max_wait_s=None)
 
         # Now start the main loop
         dds_log("goal_pub", "ready")
         while True:
-            if time.time() - last_transform_check >= TRANSFORM_REFRESH_S:
-                last_transform_check = time.time()
-                doc = self._poll_transform()
-                if doc is not None and doc["timestamp"] != self._transform_ts:
-                    self._set_transform(doc)
+            map_tf = self._tf_watch.refresh()
+            if map_tf is not None:
+                self.map_tf = map_tf
 
             try:
                 current_time = int(time.time())
@@ -476,27 +454,6 @@ class GoalWriter:
                 pass
 
             time.sleep(0.2)
-
-    def _poll_transform(self):
-        """Return the stored transform doc if it holds a usable transform, else None."""
-        try:
-            response = post_graphql(self.graphql_server, TRANSFORM_QUERY, timeout=5)
-            doc = parse_graphql_response(response).get("transform") or {}
-        except Exception:
-            return None
-        if map_transform_from_doc(doc) is None:
-            return None
-        doc["timestamp"] = doc.get("timestamp") or 0
-        return doc
-
-    def _set_transform(self, doc, stale=False):
-        self.map_tf = map_transform_from_doc(doc)
-        self._transform_ts = doc["timestamp"]
-        msg = f"map transform model={self.map_tf.model}"
-        if stale:
-            age = time.time() - self._transform_ts
-            msg += f" (no fresh transform after {TRANSFORM_FRESH_WAIT_S}s; using stored one from {age:.0f}s ago)"
-        dds_log("goal_pub", msg)
 
     def shutdown(self):
         dds_log("goal_pub", "stopped")

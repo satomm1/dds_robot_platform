@@ -35,7 +35,7 @@ from dds_utils import (
     dispose_entity,
     dispose_participant,
     fetch_subscribed_agent_ids_set,
-    fetch_map_transform_blocking,
+    MapTransformWatcher,
     get_ip,
     parse_graphql_response,
     post_graphql,
@@ -316,6 +316,7 @@ class CentralLedgerNode:
         self._graphql_warn = GraphqlPollBackoff()
         self.core = CentralLedger(central_id, self._send)
         self.map_tf = None
+        self._tf_watch = MapTransformWatcher(self.graphql_server, COMPONENT)
         self.running = True
 
         self.participant = create_domain_participant(domain_qos=False)
@@ -398,11 +399,15 @@ class CentralLedgerNode:
 
     def _publish_loop(self):
         try:
-            self.map_tf = fetch_map_transform_blocking(self.graphql_server)
+            self.map_tf = self._tf_watch.wait()
         except RuntimeError as exc:
             dds_warn(COMPONENT, f"no transform; publishing reference-frame positions: {exc}")
         last = 0.0
         while self.running:
+            map_tf = self._tf_watch.refresh()
+            if map_tf is not None:
+                self.map_tf = map_tf
+                self.core.dirty = True  # republish positions in the new frame
             now = time.time()
             if self.core.dirty or now - last >= REFRESH_PERIOD_S:
                 objects = self.core.take_snapshot(self.map_tf)

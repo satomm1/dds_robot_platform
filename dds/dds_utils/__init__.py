@@ -15,6 +15,7 @@ from .config import (
 )
 from .gql_queries import AGENTS_QUERY, TRANSFORM_QUERY
 from .gql_subscriber_sync import (
+    MapTransformWatcher,
     fetch_subscribed_agent_ids_set,
     fetch_map_transform_blocking,
     fetch_transform_Rt_blocking,
@@ -60,6 +61,7 @@ from .transform import (
 )
 
 __all__ = [
+    "MapTransformWatcher",
     "GraphqlPollBackoff",
     "ImageLogThrottle",
     "AGENT_TYPE",

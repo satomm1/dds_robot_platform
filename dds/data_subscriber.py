@@ -24,7 +24,7 @@ from dds_utils import (
     dds_log,
     dds_warn,
     fetch_subscribed_agent_ids_set,
-    fetch_map_transform_blocking,
+    MapTransformWatcher,
     get_ip,
     reliable_qos,
     require_agent_id_int,
@@ -509,6 +509,7 @@ class DataSubscriber:
     def run(self):
         dds_log("data_sub", "ready")
         while True:
+            self._refresh_transform()
 
             try:
                 agents_to_subscribe = self.get_agents()
@@ -544,11 +545,22 @@ class DataSubscriber:
 
             time.sleep(1)
 
+    def _refresh_transform(self):
+        """Pick up a newer transform (e.g. entry_exit pushed after we started) and hand it to every listener."""
+        map_tf = self._tf_watch.refresh()
+        if map_tf is None:
+            return
+        self.map_tf = map_tf
+        for listener in list(self.data_listeners.values()):
+            if listener is not None:
+                listener.update_transformation(map_tf)
+
     def get_agents(self):
         return fetch_subscribed_agent_ids_set(self.graphql_server, self.my_id)
 
     def get_transform(self):
-        self.map_tf = fetch_map_transform_blocking(self.graphql_server)
+        self._tf_watch = MapTransformWatcher(self.graphql_server, "data_sub")
+        self.map_tf = self._tf_watch.wait()
         # print("data_subscriber got the transformation matrix!")
 
     def shutdown(self):
