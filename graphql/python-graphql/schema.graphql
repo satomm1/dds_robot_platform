@@ -90,7 +90,7 @@ type Transform {
     R: [Float]
     t: [Float]
     s: Float
-    timestamp: Int
+    timestamp: Float
     # Map transform model: "rigid" (R, t only) or "tps" (thin plate spline through the
     # known point pairs below). R, t always hold the rigid fit for rigid-only readers.
     model: String
