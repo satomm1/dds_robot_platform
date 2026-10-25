@@ -13,6 +13,7 @@ import sys
 import json
 import numpy as np
 import signal
+import weakref
 import requests
 
 from dds_utils import (
@@ -144,11 +145,13 @@ class DataListener(Listener):
         self.map_tf = None
 
         self.influx_write_api = influx_write_api
-        self.reader = None
+        self._reader_ref = None
 
     def attach(self, reader):
         """Call once DataReader() returns: process samples that arrived during its construction."""
-        self.reader = reader
+        # Weak: the DataReader already holds this listener, and a strong back-reference makes a cycle
+        # that defers dds_delete to the GC, which can then run it on Cyclone's thread mid-callback.
+        self._reader_ref = weakref.ref(reader)
         self.on_data_available(reader)
 
     def transform_point(self, point, forward=True):
@@ -162,7 +165,8 @@ class DataListener(Listener):
     def on_data_available(self, reader):
         # TransientLocal history can fire this inside DataReader() (and after close()), before
         # Cyclone has registered the Python entity, so the lookup yields None.
-        reader = reader or self.reader
+        if reader is None and self._reader_ref is not None:
+            reader = self._reader_ref()
         if reader is None:
             return  # attach() processes these samples
         for sample in reader.read():
