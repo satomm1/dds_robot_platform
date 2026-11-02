@@ -14,6 +14,7 @@ import {
   hasDockerBridge,
 } from '../utils/dockerComposeApi';
 import { loadDdsLocalSettings, saveDdsLocalSettings } from '../utils/ddsLocalStorage';
+import { isPageHidden } from '../utils/pageVisibility';
 import {
   DDS_POLL_INTERVAL_MS,
   DDS_STATUS,
@@ -163,7 +164,9 @@ const DdsLocalControl = () => {
     }
 
     pollDockerStatus();
-    const interval = setInterval(pollDockerStatus, DDS_POLL_INTERVAL_MS);
+    const interval = setInterval(() => {
+      if (!isPageHidden()) pollDockerStatus();
+    }, DDS_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [pathValidated, pollDockerStatus, setReachIfChanged]);
 

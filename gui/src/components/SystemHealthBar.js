@@ -18,8 +18,8 @@ function HealthPill({ state, label, detail, detailOnHover = false }) {
   );
 }
 
-const SystemHealthBar = () => {
-  const { items } = useSystemHealth();
+const SystemHealthBar = ({ robotPositions, positionsLoading, positionsError }) => {
+  const { items } = useSystemHealth({ robotPositions, positionsLoading, positionsError });
 
   return (
     <div className="system-health-bar" role="status" aria-label="System connection health">

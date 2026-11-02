@@ -15,6 +15,8 @@ import {
   summarizeHostPowerOffBody,
 } from '../utils/robotHostApi';
 import CentralMapSection from './CentralMapSection';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { isPageHidden } from '../utils/pageVisibility';
 import {
   DOCKER_STATUS,
   HOST_REACHABILITY,
@@ -39,9 +41,16 @@ import {
 } from '../utils/robotLauncherStatus';
 
 const STATUS_AUTO_DISMISS_MS = 5000;
+/** Wait this long after the last keystroke in the IP field before polling it. */
+const HOST_INPUT_DEBOUNCE_MS = 400;
 /** Failed polls before the status dot / actions show unreachable. */
 const HOST_OFFLINE_FAIL_THRESHOLD = 3;
 const LAUNCHER_OFFLINE_FAIL_THRESHOLD = 3;
+
+/** `prev` unchanged when `key` already maps to `value`, so unchanged polls do not re-render. */
+function withKey(prev, key, value) {
+  return prev[key] === value ? prev : { ...prev, [key]: value };
+}
 
 function SavedHostPicker({ hosts, reachByHost, selectedId, disabled, onSelect }) {
   const [open, setOpen] = useState(false);
@@ -344,12 +353,15 @@ const RobotStartup = ({
   ]);
 
   const activeHost = useMemo(() => normalizeHostInput(hostInput), [hostInput]);
+  // Poll the typed host only once typing pauses, so partial IPs ("19", "192.") are never polled.
+  const pollTargetHost = useDebouncedValue(activeHost, HOST_INPUT_DEBOUNCE_MS);
+  const hostSettling = Boolean(activeHost) && activeHost !== pollTargetHost;
 
   const pollHosts = useMemo(() => {
     const hosts = new Set(saved.hosts.map((h) => h.host));
-    if (activeHost) hosts.add(activeHost);
+    if (pollTargetHost) hosts.add(pollTargetHost);
     return [...hosts];
-  }, [saved.hosts, activeHost]);
+  }, [saved.hosts, pollTargetHost]);
 
   const reachByHost = useMemo(() => {
     const map = {};
@@ -371,10 +383,11 @@ const RobotStartup = ({
     [activeHost, launcherStatus],
   );
 
-  const activeReach = useMemo(
-    () => (activeHost ? reachByHost[activeHost] || HOST_STATUS.OFFLINE : HOST_STATUS.OFFLINE),
-    [activeHost, reachByHost],
-  );
+  const activeReach = useMemo(() => {
+    if (!activeHost) return HOST_STATUS.OFFLINE;
+    if (hostSettling) return HOST_STATUS.CHECKING;
+    return reachByHost[activeHost] || HOST_STATUS.OFFLINE;
+  }, [activeHost, hostSettling, reachByHost]);
 
   const activeHostReach = useMemo(
     () =>
@@ -390,102 +403,133 @@ const RobotStartup = ({
     [activeHost, dockerStatus],
   );
 
-  const pollHost = useCallback(async (host) => {
-    const clean = normalizeHostInput(host);
-    if (!clean) return;
-    setLauncherStatus((prev) => {
-      const current = prev[clean];
-      // Keep last known status during refresh polls to avoid Start-button flicker.
-      if (current === HOST_STATUS.AVAILABLE || current === HOST_STATUS.RUNNING) {
-        return prev;
-      }
-      return { ...prev, [clean]: HOST_STATUS.CHECKING };
-    });
-    const result = await fetchRobotLauncherStatus(clean);
-    const reach = result.ok
-      ? parseLauncherStatusBody(result.body)
-      : HOST_STATUS.OFFLINE;
+  // Polls still waiting on a response, keyed "launcher:<host>" / "host:<host>". A robot that is
+  // offline takes the full request timeout (longer than the poll interval), so skip overlapping polls.
+  const pollsInFlightRef = useRef(new Map());
 
-    if (reach === HOST_STATUS.AVAILABLE || reach === HOST_STATUS.RUNNING) {
-      launcherFailCountRef.current[clean] = 0;
-    } else if (!result.ok || reach === HOST_STATUS.OFFLINE) {
-      launcherFailCountRef.current[clean] = (launcherFailCountRef.current[clean] || 0) + 1;
+  const runPollOnce = useCallback(async (key, force, poll) => {
+    const inFlight = pollsInFlightRef.current;
+    if (!force && inFlight.get(key)) return;
+    inFlight.set(key, (inFlight.get(key) || 0) + 1);
+    try {
+      await poll();
+    } finally {
+      const left = inFlight.get(key) - 1;
+      if (left > 0) inFlight.set(key, left);
+      else inFlight.delete(key);
     }
-
-    setLauncherStatus((prev) => {
-      const previous = prev[clean];
-      if (
-        reach === HOST_STATUS.OFFLINE &&
-        (previous === HOST_STATUS.AVAILABLE || previous === HOST_STATUS.RUNNING) &&
-        (launcherFailCountRef.current[clean] || 0) < LAUNCHER_OFFLINE_FAIL_THRESHOLD
-      ) {
-        return prev;
-      }
-      return { ...prev, [clean]: reach };
-    });
   }, []);
 
-  const pollHostService = useCallback(async (host) => {
-    const clean = normalizeHostInput(host);
-    if (!clean) return;
-    setHostReachability((prev) => {
-      const current = prev[clean];
-      if (current === HOST_REACHABILITY.ONLINE) {
-        return prev;
-      }
-      return { ...prev, [clean]: HOST_REACHABILITY.CHECKING };
-    });
-    const result = await fetchRobotHostStatus(clean);
-    const reach = hostReachabilityFromFetch(result.ok, result.body);
-    const docker = dockerStatusFromHostBody(result.body);
+  const pollHost = useCallback(
+    (host, { force = false } = {}) => {
+      const clean = normalizeHostInput(host);
+      if (!clean) return Promise.resolve();
+      return runPollOnce(`launcher:${clean}`, force, async () => {
+        setLauncherStatus((prev) => {
+          const current = prev[clean];
+          // Keep last known status during refresh polls to avoid Start-button flicker.
+          if (current === HOST_STATUS.AVAILABLE || current === HOST_STATUS.RUNNING) {
+            return prev;
+          }
+          return withKey(prev, clean, HOST_STATUS.CHECKING);
+        });
+        const result = await fetchRobotLauncherStatus(clean);
+        const reach = result.ok
+          ? parseLauncherStatusBody(result.body)
+          : HOST_STATUS.OFFLINE;
 
-    if (reach === HOST_REACHABILITY.ONLINE) {
-      hostFailCountRef.current[clean] = 0;
-    } else if (result.ok === false) {
-      const fails = (hostFailCountRef.current[clean] || 0) + 1;
-      hostFailCountRef.current[clean] = fails;
-    }
+        if (reach === HOST_STATUS.AVAILABLE || reach === HOST_STATUS.RUNNING) {
+          launcherFailCountRef.current[clean] = 0;
+        } else if (!result.ok || reach === HOST_STATUS.OFFLINE) {
+          launcherFailCountRef.current[clean] = (launcherFailCountRef.current[clean] || 0) + 1;
+        }
 
-    setHostReachability((prev) => {
-      const previous = prev[clean];
-      if (
-        reach === HOST_REACHABILITY.OFFLINE &&
-        previous === HOST_REACHABILITY.ONLINE &&
-        (hostFailCountRef.current[clean] || 0) < HOST_OFFLINE_FAIL_THRESHOLD
-      ) {
-        return prev;
-      }
-      return { ...prev, [clean]: reach };
-    });
-    setDockerStatus((prev) => {
-      if (!result.ok && prev[clean] === DOCKER_STATUS.RUNNING) {
-        return prev;
-      }
-      return { ...prev, [clean]: docker };
-    });
-  }, []);
+        setLauncherStatus((prev) => {
+          const previous = prev[clean];
+          if (
+            reach === HOST_STATUS.OFFLINE &&
+            (previous === HOST_STATUS.AVAILABLE || previous === HOST_STATUS.RUNNING) &&
+            (launcherFailCountRef.current[clean] || 0) < LAUNCHER_OFFLINE_FAIL_THRESHOLD
+          ) {
+            return prev;
+          }
+          return withKey(prev, clean, reach);
+        });
+      });
+    },
+    [runPollOnce],
+  );
 
+  const pollHostService = useCallback(
+    (host, { force = false } = {}) => {
+      const clean = normalizeHostInput(host);
+      if (!clean) return Promise.resolve();
+      return runPollOnce(`host:${clean}`, force, async () => {
+        setHostReachability((prev) => {
+          const current = prev[clean];
+          if (current === HOST_REACHABILITY.ONLINE) {
+            return prev;
+          }
+          return withKey(prev, clean, HOST_REACHABILITY.CHECKING);
+        });
+        const result = await fetchRobotHostStatus(clean);
+        const reach = hostReachabilityFromFetch(result.ok, result.body);
+        const docker = dockerStatusFromHostBody(result.body);
+
+        if (reach === HOST_REACHABILITY.ONLINE) {
+          hostFailCountRef.current[clean] = 0;
+        } else if (result.ok === false) {
+          const fails = (hostFailCountRef.current[clean] || 0) + 1;
+          hostFailCountRef.current[clean] = fails;
+        }
+
+        setHostReachability((prev) => {
+          const previous = prev[clean];
+          if (
+            reach === HOST_REACHABILITY.OFFLINE &&
+            previous === HOST_REACHABILITY.ONLINE &&
+            (hostFailCountRef.current[clean] || 0) < HOST_OFFLINE_FAIL_THRESHOLD
+          ) {
+            return prev;
+          }
+          return withKey(prev, clean, reach);
+        });
+        setDockerStatus((prev) => {
+          if (!result.ok && prev[clean] === DOCKER_STATUS.RUNNING) {
+            return prev;
+          }
+          return withKey(prev, clean, docker);
+        });
+      });
+    },
+    [runPollOnce],
+  );
+
+  // After a Docker start/stop, always fetch fresh status even if a routine poll is still waiting.
   const refreshHostAndLauncher = useCallback(
     async (host) => {
-      await Promise.all([pollHostService(host), pollHost(host)]);
+      await Promise.all([
+        pollHostService(host, { force: true }),
+        pollHost(host, { force: true }),
+      ]);
     },
     [pollHost, pollHostService],
   );
 
   const backgroundPollHosts = useMemo(
-    () => pollHosts.filter((host) => host !== activeHost),
-    [pollHosts, activeHost],
+    () => pollHosts.filter((host) => host !== pollTargetHost),
+    [pollHosts, pollTargetHost],
   );
 
   const pollBackgroundHosts = useCallback(async () => {
     if (backgroundPollHosts.length === 0) return;
 
     setLauncherStatus((prev) => {
-      const next = { ...prev };
+      let next = prev;
       for (const host of backgroundPollHosts) {
         const current = prev[host];
         if (current !== HOST_STATUS.AVAILABLE && current !== HOST_STATUS.RUNNING) {
-          next[host] = HOST_STATUS.CHECKING;
+          next = withKey(next, host, HOST_STATUS.CHECKING);
         }
       }
       return next;
@@ -498,10 +542,10 @@ const RobotStartup = ({
     if (backgroundPollHosts.length === 0) return;
 
     setHostReachability((prev) => {
-      const next = { ...prev };
+      let next = prev;
       for (const host of backgroundPollHosts) {
-        if (next[host] !== HOST_REACHABILITY.ONLINE) {
-          next[host] = HOST_REACHABILITY.CHECKING;
+        if (prev[host] !== HOST_REACHABILITY.ONLINE) {
+          next = withKey(next, host, HOST_REACHABILITY.CHECKING);
         }
       }
       return next;
@@ -526,6 +570,7 @@ const RobotStartup = ({
     pollBackgroundHosts();
     pollBackgroundHostServices();
     const interval = setInterval(() => {
+      if (isPageHidden()) return;
       pollBackgroundHosts();
       pollBackgroundHostServices();
     }, POLL_INTERVAL_MS);
@@ -533,15 +578,16 @@ const RobotStartup = ({
   }, [pollBackgroundHosts, pollBackgroundHostServices]);
 
   useEffect(() => {
-    if (!activeHost) return undefined;
-    pollHost(activeHost);
-    pollHostService(activeHost);
+    if (!pollTargetHost) return undefined;
+    pollHost(pollTargetHost);
+    pollHostService(pollTargetHost);
     const interval = setInterval(() => {
-      pollHost(activeHost);
-      pollHostService(activeHost);
+      if (isPageHidden()) return;
+      pollHost(pollTargetHost);
+      pollHostService(pollTargetHost);
     }, SELECTED_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [activeHost, pollHost, pollHostService]);
+  }, [pollTargetHost, pollHost, pollHostService]);
 
   const applyEntry = useCallback((entry) => {
     if (!entry) return;

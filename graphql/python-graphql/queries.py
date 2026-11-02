@@ -490,15 +490,6 @@ def resolve_data(*_, robot_id: int):
         "timestamp": robot.get("timestamp", 0.0),
     }
 
-# @query.field("robotImage")
-# def resolve_data(*_, robot_id: int):
-#     image_cache = ignite_client.get_or_create_cache('robot_image')
-#     robot = image_cache.get(robot_id)
-#     return {
-#         "id": robot_id,
-#         "image": robot
-#     }
-
 @query.field("robotStatus")
 def resolve_data(*_, robot_id: int):
     robot = cache_op('robot_status', lambda c: c.get(robot_id))

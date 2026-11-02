@@ -1,7 +1,7 @@
 // src/ApolloClient.js
 import { ApolloClient, InMemoryCache, HttpLink } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
-// import { WebSocketLink } from '@apollo/client/link/ws';
+import { isPageHidden } from './utils/pageVisibility';
 
 const graphqlUri =
   process.env.REACT_APP_GRAPHQL_HTTP_URL || 'http://localhost:8000/graphql';
@@ -22,6 +22,10 @@ const authLink = setContext((_, { headers }) => {
 const client = new ApolloClient({
   link: authLink.concat(httpLink),
   cache: new InMemoryCache(),
+  defaultOptions: {
+    // Applies to every polling useQuery: skip polls while the window is hidden/minimized.
+    watchQuery: { skipPollAttempt: isPageHidden },
+  },
 });
 
 export default client;

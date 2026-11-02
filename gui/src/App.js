@@ -607,7 +607,11 @@ function AppContent() {
               </div>
               <div className="sidebar-right__footer">
                 <DdsLocalControl />
-                <SystemHealthBar />
+                <SystemHealthBar
+                  robotPositions={robotPositions}
+                  positionsLoading={positionsLoading}
+                  positionsError={positionsError}
+                />
               </div>
             </aside>
           </>

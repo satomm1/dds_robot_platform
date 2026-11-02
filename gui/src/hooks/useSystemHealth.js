@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@apollo/client';
-import { GET_ROBOT_POSITIONS, GET_SUBSCRIBED_AGENTS } from '../queries';
+import { GET_SUBSCRIBED_AGENTS } from '../queries';
 import { getGraphqlBaseUrl } from '../utils/graphqlBaseUrl';
+import { isPageHidden } from '../utils/pageVisibility';
 
 export const HEALTH_STATE = {
   CHECKING: 'checking',
@@ -43,7 +44,20 @@ function formatAgeMs(ms) {
   return `${min}m ago`;
 }
 
-export function useSystemHealth() {
+/** Newest robot pose time (Unix seconds) across robots, or null when none has a timestamp. */
+function newestPositionTimestamp(robotPositions) {
+  let newest = null;
+  for (const robot of robotPositions) {
+    const ts = Number(robot.position_timestamp);
+    if (Number.isFinite(ts) && ts > 0 && (newest == null || ts > newest)) newest = ts;
+  }
+  return newest;
+}
+
+/**
+ * Robot positions come from App's GET_ROBOT_POSITIONS poll (passed in) instead of a second poll here.
+ */
+export function useSystemHealth({ robotPositions = [], positionsLoading = false, positionsError } = {}) {
   const [graphqlHealth, setGraphqlHealth] = useState({
     state: HEALTH_STATE.CHECKING,
     label: 'GraphQL',
@@ -51,21 +65,9 @@ export function useSystemHealth() {
   });
 
   const {
-    data: positionsData,
-    error: positionsError,
-    loading: positionsLoading,
-    dataUpdatedAt: positionsUpdatedAt,
-  } = useQuery(GET_ROBOT_POSITIONS, {
-    pollInterval: HEALTH_POLL_MS,
-    fetchPolicy: 'cache-and-network',
-    notifyOnNetworkStatusChange: true,
-  });
-
-  const {
     data: agentsData,
     error: agentsError,
     loading: agentsLoading,
-    dataUpdatedAt: agentsUpdatedAt,
   } = useQuery(GET_SUBSCRIBED_AGENTS, {
     pollInterval: HEALTH_POLL_MS,
     fetchPolicy: 'cache-and-network',
@@ -105,12 +107,14 @@ export function useSystemHealth() {
 
   useEffect(() => {
     pollRestHealth();
-    const interval = setInterval(pollRestHealth, HEALTH_POLL_MS);
+    const interval = setInterval(() => {
+      if (!isPageHidden()) pollRestHealth();
+    }, HEALTH_POLL_MS);
     return () => clearInterval(interval);
   }, [pollRestHealth]);
 
   const ddsHealth = useMemo(() => {
-    if (agentsLoading && !agentsData && positionsLoading && !positionsData) {
+    if (agentsLoading && !agentsData && positionsLoading && robotPositions.length === 0) {
       return {
         state: HEALTH_STATE.CHECKING,
         label: 'DDS',
@@ -125,7 +129,7 @@ export function useSystemHealth() {
       };
     }
 
-    const robotCount = positionsData?.robotPositions?.length ?? 0;
+    const robotCount = robotPositions.length;
 
     if (robotCount === 0) {
       return {
@@ -135,8 +139,9 @@ export function useSystemHealth() {
       };
     }
 
-    const updatedAt = Math.max(positionsUpdatedAt || 0, agentsUpdatedAt || 0);
-    const age = updatedAt ? formatAgeMs(Date.now() - updatedAt) : '';
+    // Freshness of the DDS data itself: the newest pose any robot reported.
+    const newestTs = newestPositionTimestamp(robotPositions);
+    const age = newestTs != null ? formatAgeMs(Math.max(0, Date.now() - newestTs * 1000)) : '';
     const robotLabel =
       robotCount === 1 ? '1 robot active' : `${robotCount} robots active`;
     return {
@@ -148,11 +153,9 @@ export function useSystemHealth() {
     agentsData,
     agentsError,
     agentsLoading,
-    agentsUpdatedAt,
-    positionsData,
+    robotPositions,
     positionsError,
     positionsLoading,
-    positionsUpdatedAt,
   ]);
 
   const items = useMemo(() => {

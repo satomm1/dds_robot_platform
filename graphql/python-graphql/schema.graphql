@@ -52,11 +52,6 @@ type Scan {
     timestamp: Float
 }
 
-type Image {
-    id: Int
-    data: [Int]
-}
-
 type RobotImageMeta {
     robot_id: Int!
     timestamp: Float
@@ -173,7 +168,6 @@ type Query {
     robotPaths: [Path]
     # robotVelocities: [Robot]
     robotScan(robot_id: Int): Scan
-    # robotImage(robot_id: Int): Image
     robotStatus(robot_id: Int): Robot
     stoppedRobotPositions: [Robot]
     objectPositions: [Objects]
@@ -220,15 +214,7 @@ type Mutation {
     setRobotMcuState(robot_id: Int!, mcu_connected: Boolean!, location_valid: Boolean!, timestamp: Float!): Boolean
 }
 
-type Subscription {
-    robotPosition(robot_id: Int): Robot
-    robotPositions: Robot
-    # robotVelocity(robot_id: Int): Robot
-    robotVideo(robot_id: Int): Image
-}
-
 schema {
     query: Query
     mutation: Mutation
-    subscription: Subscription
 }
