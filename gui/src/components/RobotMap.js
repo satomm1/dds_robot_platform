@@ -318,6 +318,7 @@ const RobotMap = forwardRef(({
 
   useQuery(GET_OBJECT_POSITIONS, {
     ...defaultPollOptions,
+    pollInterval: 500, // Faster than other queries so departed people clear quickly
     onCompleted: (data) => {
       devLog('Fetched object positions:', data);
       if (data && data.objectPositions) {
