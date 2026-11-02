@@ -35,6 +35,27 @@ def test_parse_graphql_response_graphql_errors():
         parse_graphql_response(r)
 
 
+def test_parse_graphql_response_allow_partial_keeps_data():
+    r = MagicMock()
+    r.status_code = 200
+    r.json.return_value = {
+        "data": {"robotGoals": None, "pendingRobotStops": [{"id": 3, "requested_at": 1.0}]},
+        "errors": [{"message": "robotGoals failed", "path": ["robotGoals"]}],
+    }
+    with pytest.raises(RuntimeError, match="GraphQL errors"):
+        parse_graphql_response(r)
+    data = parse_graphql_response(r, allow_partial=True)
+    assert data["pendingRobotStops"] == [{"id": 3, "requested_at": 1.0}]
+
+
+def test_parse_graphql_response_allow_partial_raises_without_data():
+    r = MagicMock()
+    r.status_code = 200
+    r.json.return_value = {"data": None, "errors": [{"message": "syntax error"}]}
+    with pytest.raises(RuntimeError, match="GraphQL errors"):
+        parse_graphql_response(r, allow_partial=True)
+
+
 def test_parse_graphql_response_bad_http():
     r = MagicMock()
     r.status_code = 502

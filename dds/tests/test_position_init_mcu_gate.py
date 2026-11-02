@@ -13,6 +13,7 @@ def test_is_mcu_connected_queries_graphql():
 
     gw = GoalWriter.__new__(GoalWriter)
     gw.graphql_server = "http://example/graphql"
+    gw._http = MagicMock()
 
     with patch("goal_publisher.post_graphql") as post, patch(
         "goal_publisher.parse_graphql_response",
@@ -29,6 +30,7 @@ def test_is_mcu_connected_false_when_missing_or_error():
 
     gw = GoalWriter.__new__(GoalWriter)
     gw.graphql_server = "http://example/graphql"
+    gw._http = MagicMock()
 
     with patch("goal_publisher.post_graphql"), patch(
         "goal_publisher.parse_graphql_response",

@@ -6,6 +6,7 @@ import time
 
 import json
 import numpy as np
+import requests
 import signal
 import os
 import sys
@@ -13,6 +14,7 @@ import sys
 from dds_utils import (
     AgentIdError,
     DataMessage,
+    GraphqlPollBackoff,
     dds_log,
     create_domain_participant,
     dispose_participant,
@@ -34,73 +36,21 @@ from dds_utils.message_types import (
 )
 
 INTER_DDS_WRITE_SLEEP_S = 0.02
+POLL_PERIOD_S = 0.2
 
 
-ROBOT_GOALS_QUERY = """
-                    query {
-                        robotGoals {
-                            id
-                            x_goal
-                            y_goal
-                            theta_goal
-                            goal_timestamp
-                            goal_valid
-                        }
-                    }
-                    """
-
-ROBOT_INITIAL_POSITIONS_QUERY = """
-                            query {
-                                robotInitialPositions {
-                                    id
-                                    x_init
-                                    y_init
-                                    theta_init
-                                    init_timestamp
-                                }
-                            }
-                            """
-
-ROBOT_MCU_STATE_QUERY = """
-query RobotMcuState($robotId: Int!) {
-    robotMcuState(robot_id: $robotId) {
-        mcu_connected
-    }
-}
-"""
-
-PENDING_STOPS_QUERY = """
+# Everything the loop reads, in one request. Every field is nullable in the schema, so a
+# failing resolver nulls only its own field (see parse_graphql_response(allow_partial=True)).
+POLL_QUERY = """
 query {
-    pendingRobotStops {
+    robotGoals {
         id
-        requested_at
+        x_goal
+        y_goal
+        theta_goal
+        goal_timestamp
+        goal_valid
     }
-}
-"""
-
-CONSUME_STOP_MUTATION = """
-mutation ConsumeRobotStopRequest($robotId: Int!) {
-    consumeRobotStopRequest(robot_id: $robotId)
-}
-"""
-
-PENDING_SHUTDOWN_QUERY = """
-query {
-    pendingRobotShutdowns {
-        id
-        requested_at
-    }
-}
-"""
-
-CONSUME_SHUTDOWN_MUTATION = """
-mutation ConsumeRobotShutdownRequest($robotId: Int!) {
-    consumeRobotShutdownRequest(robot_id: $robotId)
-}
-"""
-
-ACTIVE_MULTI_ROBOT_GOAL_PLAN_QUERY = """
-query {
     activeMultiRobotGoalPlan {
         plan_id
         coordinated
@@ -112,6 +62,41 @@ query {
             theta_goal
         }
     }
+    pendingRobotStops {
+        id
+        requested_at
+    }
+    pendingRobotShutdowns {
+        id
+        requested_at
+    }
+    robotInitialPositions {
+        id
+        x_init
+        y_init
+        theta_init
+        init_timestamp
+    }
+}
+"""
+
+ROBOT_MCU_STATE_QUERY = """
+query RobotMcuState($robotId: Int!) {
+    robotMcuState(robot_id: $robotId) {
+        mcu_connected
+    }
+}
+"""
+
+CONSUME_STOP_MUTATION = """
+mutation ConsumeRobotStopRequest($robotId: Int!) {
+    consumeRobotStopRequest(robot_id: $robotId)
+}
+"""
+
+CONSUME_SHUTDOWN_MUTATION = """
+mutation ConsumeRobotShutdownRequest($robotId: Int!) {
+    consumeRobotShutdownRequest(robot_id: $robotId)
 }
 """
 
@@ -129,6 +114,9 @@ class GoalWriter:
 
         self.my_ip = get_ip()
         self.graphql_server = resolve_graphql_http_url(my_ip=self.my_ip, server_url=server_url)
+        # One keep-alive connection for the poll and its follow-up mutations (single thread).
+        self._http = requests.Session()
+        self._poll_warn = GraphqlPollBackoff()
 
         self.robot_goal_history = dict()
         self.robot_init_history = dict()
@@ -142,7 +130,11 @@ class GoalWriter:
         self.map_tf = None
         self._tf_watch = MapTransformWatcher(self.graphql_server, "goal_pub")
 
+        # Writers live as long as the process: a writer deleted right after write() can drop the
+        # sample before the robot has discovered the writer or acknowledged it.
+        self._topics = {}
         self._target_data_writers = {}
+        self._command_data_writers = {}
         self._last_multi_plan_key = None
 
     def transform_point(self, point, forward=True):
@@ -160,41 +152,55 @@ class GoalWriter:
             return point
         return self.map_tf.apply(point, forward)
 
-    def _get_data_writer(self, robot_id: int) -> DataWriter:
-        if robot_id not in self._target_data_writers:
-            message_topic = Topic(
+    def _topic(self, robot_id: int) -> Topic:
+        if robot_id not in self._topics:
+            self._topics[robot_id] = Topic(
                 self.participant, data_topic_name(robot_id), DataMessage
             )
-            self._target_data_writers[robot_id] = DataWriter(
-                self.publisher, message_topic, qos=reliable_qos
-            )
-        return self._target_data_writers[robot_id]
+        return self._topics[robot_id]
+
+    def _get_data_writer(self, robot_id: int, command: bool = False) -> DataWriter:
+        """Goals, position_init and multi-robot goals use reliable_qos. Stop and shutdown
+        (command=True) use the Lifespan QoS so a restarted robot is not replayed a stale one."""
+        if command:
+            writers, qos = self._command_data_writers, reliable_transient_local_command_qos
+        else:
+            writers, qos = self._target_data_writers, reliable_qos
+        if robot_id not in writers:
+            writers[robot_id] = DataWriter(self.publisher, self._topic(robot_id), qos=qos)
+        return writers[robot_id]
+
+    def _post(self, query, variables=None):
+        return post_graphql(
+            self.graphql_server, query, variables=variables, timeout=5, session=self._http
+        )
 
     def _is_mcu_connected(self, robot_id: int) -> bool:
         """Quick Ignite/GraphQL check before sending position_init."""
         try:
-            response = post_graphql(
-                self.graphql_server,
-                ROBOT_MCU_STATE_QUERY,
-                variables={"robotId": int(robot_id)},
-                timeout=5,
-            )
+            response = self._post(ROBOT_MCU_STATE_QUERY, variables={"robotId": int(robot_id)})
             data = parse_graphql_response(response)
             state = data.get("robotMcuState")
             return bool(state and state.get("mcu_connected"))
         except Exception:
             return False
 
-    def _maybe_publish_multi_robot_plan(self, current_time: int):
+    def _poll(self) -> dict:
+        """One request for all five fields; {} if it fails, so nothing is published this tick."""
         try:
-            response = post_graphql(
-                self.graphql_server, ACTIVE_MULTI_ROBOT_GOAL_PLAN_QUERY, timeout=5
-            )
-            data = parse_graphql_response(response)
-            plan = data.get("activeMultiRobotGoalPlan")
-        except Exception:
-            plan = None
+            response = self._post(POLL_QUERY)
+            data = parse_graphql_response(response, allow_partial=True)
+            errors = response.json().get("errors")
+        except Exception as exc:
+            self._poll_warn.failure("goal_pub", lambda exc=exc: f"poll failed: {exc}")
+            return {}
+        if errors:
+            self._poll_warn.failure("goal_pub", lambda: f"poll returned errors: {errors}")
+        else:
+            self._poll_warn.success()
+        return data
 
+    def _maybe_publish_multi_robot_plan(self, current_time: int, plan):
         if not plan or not plan.get("goals"):
             self._last_multi_plan_key = None
             return
@@ -240,11 +246,7 @@ class GoalWriter:
 
         self._last_multi_plan_key = key
         try:
-            cr = post_graphql(
-                self.graphql_server,
-                CONSUME_MULTI_ROBOT_GOAL_PLAN_MUTATION,
-                timeout=5,
-            )
+            cr = self._post(CONSUME_MULTI_ROBOT_GOAL_PLAN_MUTATION)
             pdata = parse_graphql_response(cr)
             if not pdata.get("consumeMultiRobotGoalPlan"):
                 raise RuntimeError("consumeMultiRobotGoalPlan returned false")
@@ -253,6 +255,122 @@ class GoalWriter:
                 "goal_pub",
                 f"consumeMultiRobotGoalPlan failed (DDS already sent; clear Ignite if needed): {exc}",
             )
+
+    def _publish_goals(self, current_time: int, robot_goals):
+        for robot_goal in robot_goals:
+            robot_goal_id = int(robot_goal['id'])
+            robot_goal_x = robot_goal['x_goal']
+            robot_goal_y = robot_goal['y_goal']
+            robot_goal_theta = robot_goal['theta_goal']
+            robot_goal_timestamp = robot_goal['goal_timestamp']
+            robot_goal_valid = robot_goal.get('goal_valid', True)
+
+            if not robot_goal_valid:
+                # Skip invalid goals
+                continue
+
+            # Transform the goal to the reference map
+            robot_goal_x, robot_goal_y, robot_goal_theta = self.transform_point([robot_goal_x, robot_goal_y, robot_goal_theta], forward=True)
+            desired = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
+
+            previous = self.robot_goal_history.get(robot_goal_id)
+            if previous == desired:
+                continue
+            self.robot_goal_history[robot_goal_id] = desired
+
+            # A goal first seen at startup is only sent if it is recent
+            if previous is None and abs(current_time - robot_goal_timestamp) >= 10:
+                continue
+
+            goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
+            command_message = DataMessage(MSG_GOAL, int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
+            self._get_data_writer(robot_goal_id).write(command_message)
+            action = "set" if previous is None else "updated"
+            dds_log(
+                "goal_pub",
+                f"goal {action} for robot {robot_goal_id} "
+                f"(x={robot_goal_x:.3f}, y={robot_goal_y:.3f}, θ={robot_goal_theta:.3f})",
+            )
+
+    def _publish_pending_commands(self, current_time: int, pending, message_type, consume_mutation, label):
+        """Pending human stop/shutdown requests -> DDS DataMessage, then mark them consumed."""
+        try:
+            for request in pending:
+                rid = int(request["id"])
+                ts = int(request.get("requested_at", current_time))
+                payload = json.dumps({"source": "human"})
+                command_message = DataMessage(message_type, int(self.my_id), ts, payload)
+                self._get_data_writer(rid, command=True).write(command_message)
+                dds_log("goal_pub", f"published {label} for robot {rid}")
+                try:
+                    cr = self._post(consume_mutation, variables={"robotId": rid})
+                    parse_graphql_response(cr)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _publish_initial_positions(self, current_time: int, robot_init):
+        for robot in robot_init:
+            robot_id = int(robot['id'])
+            robot_x = robot['x_init']
+            robot_y = robot['y_init']
+            robot_theta = robot['theta_init']
+            robot_timestamp = robot['init_timestamp']
+
+            # Transform the initial position to the reference map
+            robot_x, robot_y, robot_theta = self.transform_point(
+                [robot_x, robot_y, robot_theta], forward=True
+            )
+            desired = (robot_x, robot_y, robot_theta, robot_timestamp)
+
+            if robot_id not in self.robot_init_history:
+                if abs(current_time - robot_timestamp) >= 10:
+                    continue
+            elif self.robot_init_history[robot_id] == desired:
+                continue
+
+            if not self._is_mcu_connected(robot_id):
+                if robot_id not in self._mcu_block_logged:
+                    self._mcu_block_logged.add(robot_id)
+                    dds_log(
+                        "goal_pub",
+                        f"position_init blocked for robot {robot_id}: MCU not connected",
+                    )
+                continue
+
+            init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
+            command_message = DataMessage(
+                MSG_POSITION_INIT,
+                int(self.my_id),
+                int(robot_timestamp),
+                json.dumps(init_dict),
+            )
+            self._get_data_writer(robot_id).write(command_message)
+            action = "updated" if robot_id in self.robot_init_history else "set"
+            self.robot_init_history[robot_id] = desired
+            self._mcu_block_logged.discard(robot_id)
+            dds_log(
+                "goal_pub",
+                f"initial position {action} for robot {robot_id} "
+                f"(x={robot_x:.3f}, y={robot_y:.3f}, θ={robot_theta:.3f})",
+            )
+
+    def _poll_once(self, current_time: int):
+        data = self._poll()
+        self._publish_goals(current_time, data.get("robotGoals") or [])
+        self._maybe_publish_multi_robot_plan(current_time, data.get("activeMultiRobotGoalPlan"))
+        self._publish_pending_commands(
+            current_time, data.get("pendingRobotStops") or [], MSG_STOP, CONSUME_STOP_MUTATION, "stop"
+        )
+        self._publish_pending_commands(
+            current_time,
+            data.get("pendingRobotShutdowns") or [],
+            MSG_ROBOT_SHUTDOWN,
+            CONSUME_SHUTDOWN_MUTATION,
+            "shutdown",
+        )
+        self._publish_initial_positions(current_time, data.get("robotInitialPositions") or [])
 
     def run(self):
 
@@ -267,196 +385,15 @@ class GoalWriter:
                 self.map_tf = map_tf
 
             try:
-                current_time = int(time.time())
-
-                # Query for any robot goals
-                try:
-                    response = post_graphql(self.graphql_server, ROBOT_GOALS_QUERY, timeout=5)
-                    data = parse_graphql_response(response)
-                    robot_goals = data.get("robotGoals", [])
-                except Exception:
-                    robot_goals = []
-
-                for robot_goal in robot_goals:
-                    robot_goal_id = int(robot_goal['id'])
-                    robot_goal_x = robot_goal['x_goal']
-                    robot_goal_y = robot_goal['y_goal']
-                    robot_goal_theta = robot_goal['theta_goal']
-                    robot_goal_timestamp = robot_goal['goal_timestamp']
-                    robot_goal_valid = robot_goal.get('goal_valid', True)
-
-                    if not robot_goal_valid:
-                        # Skip invalid goals
-                        continue
-
-                    # Transform the goal to the reference map
-                    robot_goal_x, robot_goal_y, robot_goal_theta = self.transform_point([robot_goal_x, robot_goal_y, robot_goal_theta], forward=True)
-
-                    if robot_goal_id not in self.robot_goal_history:
-                        # Store goal in history
-                        self.robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
-
-                        # Check if the goal is recent
-                        if abs(current_time - robot_goal_timestamp) < 10:
-
-                            # Send the goal to the robot
-                            goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
-                            command_message = DataMessage(MSG_GOAL, int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
-                            message_topic = Topic(self.participant, data_topic_name(robot_goal_id), DataMessage)
-                            message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
-                            message_writer.write(command_message)
-                            dds_log(
-                                "goal_pub",
-                                f"goal set for robot {robot_goal_id} "
-                                f"(x={robot_goal_x:.3f}, y={robot_goal_y:.3f}, θ={robot_goal_theta:.3f})",
-                            )
-                    elif self.robot_goal_history[robot_goal_id] != (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp):
-
-                        # Store goal in history
-                        self.robot_goal_history[robot_goal_id] = (robot_goal_x, robot_goal_y, robot_goal_theta, robot_goal_timestamp)
-                        goal_dict = {"x": robot_goal_x, "y": robot_goal_y, "theta": robot_goal_theta}
-                        command_message = DataMessage(MSG_GOAL, int(self.my_id), int(robot_goal_timestamp), json.dumps(goal_dict))
-                        message_topic = Topic(self.participant, data_topic_name(robot_goal_id), DataMessage)
-                        message_writer = DataWriter(self.publisher, message_topic, qos=reliable_qos)
-
-                        message_writer.write(command_message)
-                        dds_log(
-                            "goal_pub",
-                            f"goal updated for robot {robot_goal_id} "
-                            f"(x={robot_goal_x:.3f}, y={robot_goal_y:.3f}, θ={robot_goal_theta:.3f})",
-                        )
-
-                self._maybe_publish_multi_robot_plan(current_time)
-
-                # Pending human stop requests -> DDS DataMessage(stop)
-                try:
-                    response = post_graphql(self.graphql_server, PENDING_STOPS_QUERY, timeout=5)
-                    pdata = parse_graphql_response(response)
-                    for stop in pdata.get("pendingRobotStops", []) or []:
-                        rid = int(stop["id"])
-                        ts = int(stop.get("requested_at", current_time))
-                        stop_payload = json.dumps({"source": "human"})
-                        command_message = DataMessage(
-                            MSG_STOP, int(self.my_id), ts, stop_payload
-                        )
-                        message_topic = Topic(
-                            self.participant, data_topic_name(rid), DataMessage
-                        )
-                        message_writer = DataWriter(
-                            self.publisher, message_topic, qos=reliable_transient_local_command_qos
-                        )
-                        message_writer.write(command_message)
-                        dds_log("goal_pub", f"published stop for robot {rid}")
-                        try:
-                            cr = post_graphql(
-                                self.graphql_server,
-                                CONSUME_STOP_MUTATION,
-                                variables={"robotId": rid},
-                                timeout=5,
-                            )
-                            parse_graphql_response(cr)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-                # Pending human shutdown requests -> DDS DataMessage(robot_shutdown)
-                try:
-                    response = post_graphql(
-                        self.graphql_server, PENDING_SHUTDOWN_QUERY, timeout=5
-                    )
-                    pdata = parse_graphql_response(response)
-                    for shutdown in pdata.get("pendingRobotShutdowns", []) or []:
-                        rid = int(shutdown["id"])
-                        ts = int(shutdown.get("requested_at", current_time))
-                        shutdown_payload = json.dumps({"source": "human"})
-                        command_message = DataMessage(
-                            MSG_ROBOT_SHUTDOWN, int(self.my_id), ts, shutdown_payload
-                        )
-                        message_topic = Topic(
-                            self.participant, data_topic_name(rid), DataMessage
-                        )
-                        message_writer = DataWriter(
-                            self.publisher, message_topic, qos=reliable_transient_local_command_qos
-                        )
-                        message_writer.write(command_message)
-                        dds_log("goal_pub", f"published shutdown for robot {rid}")
-                        try:
-                            cr = post_graphql(
-                                self.graphql_server,
-                                CONSUME_SHUTDOWN_MUTATION,
-                                variables={"robotId": rid},
-                                timeout=5,
-                            )
-                            parse_graphql_response(cr)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-                # Query for any robot initial positions
-                try:
-                    response = post_graphql(
-                        self.graphql_server, ROBOT_INITIAL_POSITIONS_QUERY, timeout=5
-                    )
-                    data = parse_graphql_response(response)
-                    robot_init = data.get("robotInitialPositions", [])
-                except Exception:
-                    robot_init = []
-
-                for robot in robot_init:
-                    robot_id = int(robot['id'])
-                    robot_x = robot['x_init']
-                    robot_y = robot['y_init']
-                    robot_theta = robot['theta_init']
-                    robot_timestamp = robot['init_timestamp']
-
-                    # Transform the initial position to the reference map
-                    robot_x, robot_y, robot_theta = self.transform_point(
-                        [robot_x, robot_y, robot_theta], forward=True
-                    )
-                    desired = (robot_x, robot_y, robot_theta, robot_timestamp)
-
-                    if robot_id not in self.robot_init_history:
-                        if abs(current_time - robot_timestamp) >= 10:
-                            continue
-                    elif self.robot_init_history[robot_id] == desired:
-                        continue
-
-                    if not self._is_mcu_connected(robot_id):
-                        if robot_id not in self._mcu_block_logged:
-                            self._mcu_block_logged.add(robot_id)
-                            dds_log(
-                                "goal_pub",
-                                f"position_init blocked for robot {robot_id}: MCU not connected",
-                            )
-                        continue
-
-                    init_dict = {"x": robot_x, "y": robot_y, "theta": robot_theta}
-                    command_message = DataMessage(
-                        MSG_POSITION_INIT,
-                        int(self.my_id),
-                        int(robot_timestamp),
-                        json.dumps(init_dict),
-                    )
-                    self._get_data_writer(robot_id).write(command_message)
-                    action = "updated" if robot_id in self.robot_init_history else "set"
-                    self.robot_init_history[robot_id] = desired
-                    self._mcu_block_logged.discard(robot_id)
-                    dds_log(
-                        "goal_pub",
-                        f"initial position {action} for robot {robot_id} "
-                        f"(x={robot_x:.3f}, y={robot_y:.3f}, θ={robot_theta:.3f})",
-                    )
-
+                self._poll_once(int(time.time()))
             except Exception:
-                # print("No goals yet...", e)
                 pass
 
-            time.sleep(0.2)
+            time.sleep(POLL_PERIOD_S)
 
     def shutdown(self):
         dds_log("goal_pub", "stopped")
+        self._http.close()
         self.subscriber = None
         self.publisher = None
         dispose_participant(self.participant)

@@ -21,17 +21,21 @@ TRANSFORM_FRESH_WAIT_S = 20
 TRANSFORM_REFRESH_S = 5
 
 
-def post_graphql(graphql_server, query, variables=None, timeout=5):
+def post_graphql(graphql_server, query, variables=None, timeout=5, session=None):
+    """Pass a requests.Session as ``session`` to reuse one keep-alive connection across calls."""
     payload = {"query": query}
     if variables is not None:
         payload["variables"] = variables
-    return requests.post(graphql_server, json=payload, timeout=timeout)
+    return (session or requests).post(graphql_server, json=payload, timeout=timeout)
 
 
-def parse_graphql_response(response):
+def parse_graphql_response(response, allow_partial=False):
     """
     Raise on HTTP failure, invalid JSON, or top-level GraphQL errors.
     Returns the 'data' object (possibly empty dict).
+
+    With allow_partial, errors alongside non-null 'data' are tolerated: a query with several
+    nullable top-level fields then keeps the fields whose resolvers succeeded.
     """
     if response.status_code != 200:
         raise RuntimeError(f"GraphQL HTTP {response.status_code}: {response.text[:500]}")
@@ -40,7 +44,7 @@ def parse_graphql_response(response):
     except ValueError as exc:
         raise RuntimeError("GraphQL response is not JSON") from exc
     errs = body.get("errors")
-    if errs:
+    if errs and not (allow_partial and body.get("data") is not None):
         raise RuntimeError(f"GraphQL errors: {errs}")
     return body.get("data") or {}
 
