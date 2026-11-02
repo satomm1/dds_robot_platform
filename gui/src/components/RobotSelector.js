@@ -60,7 +60,8 @@ const RobotSelector = ({
   if (positionsLoading && robotPositions.length === 0) {
     return <div className="robot-selector">Loading robots...</div>;
   }
-  if (positionsError) {
+  // A failed poll keeps Apollo's last data; only show the full error when there is none.
+  if (positionsError && robotPositions.length === 0) {
     return (
       <div className="robot-selector">Error loading robots: {positionsError.message}</div>
     );
@@ -78,6 +79,11 @@ const RobotSelector = ({
   return (
     <div className="robot-selector">
       <h3>{multiPlanMode ? 'Fleet & Select Robot' : 'Select Robot'}</h3>
+      {positionsError ? (
+        <p className="robot-selector__error-note" role="status">
+          Connection lost — showing last known robots.
+        </p>
+      ) : null}
       {multiPlanMode ? (
         <p className="robot-selector__hint">
           Check fleet members, click a robot, then stage its goal on the map.

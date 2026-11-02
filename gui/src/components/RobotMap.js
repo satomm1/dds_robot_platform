@@ -18,6 +18,7 @@ import { mapToPixel } from './robotMap/mapTransform';
 import { createPointerStore } from './robotMap/pointerStore';
 import CursorOverlay from './robotMap/CursorOverlay';
 import MapImageLayer from './robotMap/MapImageLayer';
+import { createOccupancyCanvas } from './robotMap/occupancyImage';
 import PathsLayer from './robotMap/PathsLayer';
 import RobotsLayer from './robotMap/RobotsLayer';
 import PoseDragLayer from './robotMap/PoseDragLayer';
@@ -410,68 +411,8 @@ const RobotMap = forwardRef(({
 
     devLog('Pre-rendering map image:', width, 'x', height);
 
-    // Create an offscreen canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = width * gridCellSize;
-    canvas.height = height * gridCellSize;
-    const ctx = canvas.getContext('2d');
-
-    // Fill with background color first (optional)
-    ctx.fillStyle = '#E4F8FF'; // Default background color
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw the grid on the canvas
-    for (let x = 0; x < width; x++) {
-      for (let y = 0; y < height; y++) {
-        const index = y * width + x;
-        const value = occupancy[index];
-
-        // Only draw occupied or unknown cells (optional optimization)
-        if (value === 0) continue; // Skip empty cells
-
-        let color;
-        if (value === 100) {
-          color = '#000000';
-        } else if (value !== 0) {
-          color = '#A8A8A8';
-        }
-
-        const xPos = (width - x - 1) * gridCellSize; // Invert x for correct orientation
-        const yPos = y * gridCellSize;
-
-        ctx.fillStyle = color;
-        ctx.fillRect(xPos, yPos, gridCellSize, gridCellSize);
-      }
-    }
-
-    // Add grid lines if needed (optional)
-    if (gridCellSize > 2) { // Only draw grid lines if cells are big enough
-      ctx.strokeStyle = '#ddd';
-      ctx.lineWidth = 0.5;
-
-      for (let x = 0; x <= width; x++) {
-        ctx.beginPath();
-        ctx.moveTo(x * gridCellSize, 0);
-        ctx.lineTo(x * gridCellSize, height * gridCellSize);
-        ctx.stroke();
-      }
-
-      for (let y = 0; y <= height; y++) {
-        ctx.beginPath();
-        ctx.moveTo(0, y * gridCellSize);
-        ctx.lineTo(width * gridCellSize, y * gridCellSize);
-        ctx.stroke();
-      }
-    }
-
-    // Convert canvas to image
-    const img = new Image();
-    img.onload = () => {
-      setMapImage(img);
-      devLog('Map image created successfully');
-    };
-    img.src = canvas.toDataURL();
-
+    // One pixel per cell; MapImageLayer scales it up by gridCellSize.
+    setMapImage(createOccupancyCanvas(occupancy, width, height));
   }, [mapData]);
 
   const isPosePlacementMode =
@@ -922,9 +863,6 @@ const RobotMap = forwardRef(({
   if (positionsLoading && !robotPositions.length && !mapData) {
     return <div>Loading robot positions...</div>;
   }
-  if (positionsError) {
-    return <div>Error loading robot positions: {positionsError.message}</div>;
-  }
 
   if (mapData && !hasMap) {
     return (
@@ -984,6 +922,18 @@ const RobotMap = forwardRef(({
       {positionMode === 'patrol' && (
         <div className="robot-map__patrol-banner" role="status">
           Setting patrol points — click and drag on the map to add poses
+        </div>
+      )}
+      {/* Transient poll failures keep the map mounted; Apollo still holds the last positions. */}
+      {positionsError && (
+        <div
+          className={`robot-map__connection-banner${
+            positionMode === 'patrol' ? ' robot-map__connection-banner--below-patrol' : ''
+          }`}
+          role="status"
+        >
+          Lost connection to robot positions: {positionsError.message}. Showing last known
+          positions.
         </div>
       )}
       {mapSize.width > 0 && mapSize.height > 0 && (

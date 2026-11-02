@@ -106,7 +106,8 @@ const RobotControls = ({
     </>
   );
 
-  if (positionsError) {
+  // A failed poll keeps Apollo's last data; only show the full error when there is none.
+  if (positionsError && robotPositions.length === 0) {
     return wrap(
       <div className="robot-controls">Error: {positionsError.message}</div>,
     );
@@ -145,6 +146,11 @@ const RobotControls = ({
   return wrap(
     <div className="robot-controls">
       <h3>{robotLabel}</h3>
+      {positionsError ? (
+        <p className="robot-controls__error-note" role="status">
+          Connection lost — position may be out of date.
+        </p>
+      ) : null}
       <div className="control-stats">
         <p>
           <strong>Position:</strong> ({selectedRobot.x.toFixed(2)},{' '}
