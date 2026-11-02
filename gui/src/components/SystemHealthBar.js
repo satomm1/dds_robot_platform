@@ -36,4 +36,4 @@ const SystemHealthBar = () => {
   );
 };
 
-export default SystemHealthBar;
+export default React.memo(SystemHealthBar);

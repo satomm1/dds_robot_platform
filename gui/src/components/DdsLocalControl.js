@@ -469,4 +469,4 @@ const DdsLocalControl = () => {
   );
 };
 
-export default DdsLocalControl;
+export default React.memo(DdsLocalControl);

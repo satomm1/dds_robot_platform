@@ -196,4 +196,4 @@ const RobotControls = ({
   );
 };
 
-export default RobotControls;
+export default React.memo(RobotControls);

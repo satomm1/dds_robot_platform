@@ -153,4 +153,4 @@ const RobotSelector = ({
   );
 };
 
-export default RobotSelector;
+export default React.memo(RobotSelector);

@@ -127,4 +127,4 @@ const MapSettingsModal = ({
   );
 };
 
-export default MapSettingsModal;
+export default React.memo(MapSettingsModal);

@@ -36,15 +36,26 @@ export function useResizableColumnWidth({
       const startX = e.clientX;
       const startW = widthRef.current;
       const sign = side === 'left' ? 1 : -1;
+      let frameId = null;
 
+      // Coalesce mouse moves to one state update per animation frame.
       const onMove = (moveEvent) => {
         const delta = (moveEvent.clientX - startX) * sign;
-        const next = Math.min(maxWidth, Math.max(minWidth, startW + delta));
-        widthRef.current = next;
-        setWidth(next);
+        widthRef.current = Math.min(maxWidth, Math.max(minWidth, startW + delta));
+        if (frameId == null) {
+          frameId = requestAnimationFrame(() => {
+            frameId = null;
+            setWidth(widthRef.current);
+          });
+        }
       };
 
       const onUp = () => {
+        if (frameId != null) {
+          cancelAnimationFrame(frameId);
+          frameId = null;
+        }
+        setWidth(widthRef.current);
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
         document.body.style.cursor = '';

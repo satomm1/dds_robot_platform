@@ -75,4 +75,4 @@ const MultiRobotGoalPlanner = ({
   );
 };
 
-export default MultiRobotGoalPlanner;
+export default React.memo(MultiRobotGoalPlanner);

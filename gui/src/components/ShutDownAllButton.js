@@ -98,4 +98,4 @@ const ShutDownAllButton = ({
   );
 };
 
-export default ShutDownAllButton;
+export default React.memo(ShutDownAllButton);

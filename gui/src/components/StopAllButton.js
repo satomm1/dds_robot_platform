@@ -102,4 +102,4 @@ const StopAllButton = ({
   );
 };
 
-export default StopAllButton;
+export default React.memo(StopAllButton);

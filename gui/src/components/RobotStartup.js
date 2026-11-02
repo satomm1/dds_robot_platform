@@ -1186,4 +1186,4 @@ const RobotStartup = ({
   );
 };
 
-export default RobotStartup;
+export default React.memo(RobotStartup);

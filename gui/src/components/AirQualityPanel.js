@@ -70,4 +70,4 @@ const AirQualityPanel = ({
   );
 };
 
-export default AirQualityPanel;
+export default React.memo(AirQualityPanel);

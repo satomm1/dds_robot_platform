@@ -175,4 +175,4 @@ const PatrolPointsEditor = ({
   );
 };
 
-export default PatrolPointsEditor;
+export default React.memo(PatrolPointsEditor);

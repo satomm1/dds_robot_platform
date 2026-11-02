@@ -2,18 +2,27 @@ import React, {
   forwardRef,
   useRef,
   useEffect,
+  useMemo,
   useState,
   useCallback,
   useImperativeHandle,
 } from 'react';
-import { Stage, Layer, Rect, Circle, Line, Arrow, Text, Label, Tag } from 'react-konva';
-import { Image as KonvaImage } from 'react-konva'; // Add this line
+import { Stage } from 'react-konva';
 import { useQuery, useMutation } from '@apollo/client';
 import { GET_OCCUPANCY_GRID, GET_ROBOT_GOALS, GET_ROBOT_PATHS, GET_OBJECT_POSITIONS } from '../queries';
 import { CLEAR_ALL_OBJECTS } from '../mutations';
 import { useRobotColors } from '../hooks/useRobotColors';
 import { mapDragToRobotThetaRad } from '../utils';
 import MapControlsPanel from './MapControlsPanel';
+import { mapToPixel } from './robotMap/mapTransform';
+import { createPointerStore } from './robotMap/pointerStore';
+import CursorOverlay from './robotMap/CursorOverlay';
+import MapImageLayer from './robotMap/MapImageLayer';
+import PathsLayer from './robotMap/PathsLayer';
+import RobotsLayer from './robotMap/RobotsLayer';
+import PoseDragLayer from './robotMap/PoseDragLayer';
+import GoalsLayer from './robotMap/GoalsLayer';
+import ObjectsLayer from './robotMap/ObjectsLayer';
 
 const devLog = (...args) => {
   if (process.env.NODE_ENV === 'development') console.log(...args);
@@ -24,13 +33,25 @@ const devWarn = (...args) => {
 
 const MIN_DRAG_PX = 8;
 const ZOOM_TO_ROBOT_SCALE = 1;
+const INVALID_GOAL_DISPLAY_SEC = 5;
+const EMPTY_ARRAY = [];
 
-function robotToMapPixels(robot, occGridWidth, occGridResolution, gridCellSize) {
-  return {
-    x: ((occGridWidth * occGridResolution - robot.x) * gridCellSize) / occGridResolution,
-    y: (robot.y * gridCellSize) / occGridResolution,
-  };
-}
+// Polling interval (in milliseconds)
+const POLL_INTERVAL = 1000; // Fetch every 1 seconds
+const OBJECT_POLL_INTERVAL = 500; // Faster than other queries so departed people clear quickly
+
+const gridCellSize = 5;
+
+// Zoom scale limits
+const minScale = 0.1;
+const maxScale = 3;
+
+// No notifyOnNetworkStatusChange: unchanged poll results keep the same `data`
+// reference, so idle polls do not re-render the map.
+const defaultPollOptions = {
+  pollInterval: POLL_INTERVAL,
+  fetchPolicy: 'network-only',
+};
 
 function pointerToWorld(stage, pointerPosition) {
   const transform = stage.getAbsoluteTransform().copy().invert();
@@ -58,6 +79,11 @@ function resolveInvalidGoalOverlayPosition(stage, info) {
   return null;
 }
 
+// Calculate distance between two points
+const calculateDistance = (x1, y1, x2, y2) => {
+  return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+};
+
 const RobotMap = forwardRef(({
   selectedRobotId,
   robotMarkerRadius = 12,
@@ -67,18 +93,18 @@ const RobotMap = forwardRef(({
   showSelectedRobotOnly = false,
   showAirQualityOnHover = false,
   showMapControls = true,
-  airQualities = [],
+  airQualities = EMPTY_ARRAY,
   positionStaleSec = 31,
-  robotPositions = [],
+  robotPositions = EMPTY_ARRAY,
   positionsLoading,
   positionsError,
   onSetGoal,
   onSetInitialPosition,
   positionMode,
-  multiPlanFleetIds = [],
+  multiPlanFleetIds = EMPTY_ARRAY,
   stagedMultiGoals = {},
   onStageMultiGoal = () => {},
-  stagedPatrolPoints = [],
+  stagedPatrolPoints = EMPTY_ARRAY,
   onStagePatrolPoint = () => {},
   pathDisplayDismissed = {},
   dismissPathForRobot = () => {},
@@ -86,27 +112,26 @@ const RobotMap = forwardRef(({
 }, ref) => {
   const { getRobotColor } = useRobotColors();
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
-  // Replace single goalMarker with a map of robot IDs to goal markers
-  const [goalMarkers, setGoalMarkers] = useState({});
-  const [robots, setRobots] = useState([]);
-  const [robotPaths, setRobotPaths] = useState({});
-  const [detectedObjects, setDetectedObjects] = useState([]);
+  // Local goal edits layered over server goals: marker = optimistic click, null = cleared.
+  // An override is dropped once that robot's goal on the server changes.
+  const [goalOverrides, setGoalOverrides] = useState({});
+  const [objectsCleared, setObjectsCleared] = useState(false);
   const containerRef = useRef(null);
   const stageRef = useRef(null);
-  const robotsLayerRef = useRef(null);
-  const goalLayerRef = useRef(null);
-  const pathLayerRef = useRef(null);
-  const objectsLayerRef = useRef(null);
   const [occGridWidth, setOccGridWidth] = useState(0);
   const [occGridHeight, setOccGridHeight] = useState(0);
   const [occGridResolution, setOccGridResolution] = useState(1);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0, worldX: 0, worldY: 0 });
-  const tooltipLayerRef = useRef(null);
+  const pointerStoreRef = useRef(null);
+  if (!pointerStoreRef.current) {
+    pointerStoreRef.current = createPointerStore({ x: 0, y: 0, worldX: 0, worldY: 0 });
+  }
   const [confirmationMessage, setConfirmationMessage] = useState('');
   const [confirmationIsWarning, setConfirmationIsWarning] = useState(false);
   const confirmationTimeoutRef = useRef(null);
   const [invalidGoalMessages, setInvalidGoalMessages] = useState({});
   const [hoveredRobotId, setHoveredRobotId] = useState(null);
+  const hoveredRobotIdRef = useRef(null);
+  hoveredRobotIdRef.current = hoveredRobotId;
   const [airQualityHoverPointer, setAirQualityHoverPointer] = useState(null);
   const [poseDrag, setPoseDrag] = useState(null);
   const [spacePanActive, setSpacePanActive] = useState(false);
@@ -122,21 +147,10 @@ const RobotMap = forwardRef(({
   const proximityDismissLatchRef = useRef(new Set());
   const prevPathDismissedRef = useRef({});
 
-  // Polling interval (in milliseconds)
-  const POLL_INTERVAL = 1000; // Fetch every 1 seconds
-  
-  const gridCellSize = 5;
-
-  const defaultPollOptions = {
-    pollInterval: POLL_INTERVAL,
-    fetchPolicy: 'network-only',
-    notifyOnNetworkStatusChange: true,
-  };
-
-  // Zoom scale limits
-  const minScale = 0.1;
-  const maxScale = 3;
-  const [scale, setScale] = useState(minScale); // Start at minimum zoom level
+  const transform = useMemo(
+    () => ({ occGridWidth, occGridResolution, gridCellSize }),
+    [occGridWidth, occGridResolution],
+  );
 
   // Query for occupancy grid (server returns width/height 0 when no map is loaded yet)
   const { loading: mapLoading, error: mapError, data: mapData, refetch: refetchMap } = useQuery(
@@ -166,11 +180,6 @@ const RobotMap = forwardRef(({
     return () => ro.disconnect();
   }, [hasMap]);
 
-  // Calculate distance between two points
-  const calculateDistance = (x1, y1, x2, y2) => {
-    return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-  };
-
   useEffect(() => {
     const prev = prevPathDismissedRef.current;
     const next = pathDisplayDismissed;
@@ -182,161 +191,162 @@ const RobotMap = forwardRef(({
     });
     prevPathDismissedRef.current = { ...next };
   }, [pathDisplayDismissed]);
-  
-  useEffect(() => {
-    if (robotPositions && robotPositions.length >= 0) {
-      devLog('Robot positions from parent:', robotPositions);
-      setRobots(robotPositions);
-    }
-  }, [robotPositions]);
-
-  const hidePathThresholdPx = 30;
-
-  useEffect(() => {
-    if (!hasMap || occGridWidth <= 0) return;
-    robots.forEach((robot) => {
-      const goal = goalMarkers[robot.id];
-      if (!goal) return;
-      if (pathDisplayDismissed[robot.id]) return;
-      const robotX = (occGridWidth - robot.x / occGridResolution) * gridCellSize;
-      const robotY = (robot.y * gridCellSize) / occGridResolution;
-      const distance = calculateDistance(robotX, robotY, goal.x, goal.y);
-      if (distance < hidePathThresholdPx) {
-        if (!proximityDismissLatchRef.current.has(robot.id)) {
-          proximityDismissLatchRef.current.add(robot.id);
-          dismissPathForRobot(robot.id);
-        }
-      }
-    });
-  }, [
-    robots,
-    goalMarkers,
-    hasMap,
-    occGridWidth,
-    occGridResolution,
-    pathDisplayDismissed,
-    dismissPathForRobot,
-  ]);
 
   // Query for robot goals with explicit polling
-  useQuery(GET_ROBOT_GOALS, {
-    ...defaultPollOptions,
-    onCompleted: (data) => {
-      devLog('Fetched robot goals:', data);
-      if (data && data.robotGoals) {
-        // Update goal markers based on server data
-        const newGoalMarkers = {};
-        const newInvalidGoalMessages = {};
+  const { data: goalsData } = useQuery(GET_ROBOT_GOALS, defaultPollOptions);
 
-        data.robotGoals.forEach(goal => {
-          const sig = `${goal.x_goal},${goal.y_goal},${goal.goal_timestamp}`;
-          const prevSig = prevGoalSignaturesRef.current[goal.id];
-          if (prevSig !== undefined && prevSig !== sig) {
-            clearPathDismissalForRobot(goal.id);
-            proximityDismissLatchRef.current.delete(goal.id);
-          }
-          prevGoalSignaturesRef.current[goal.id] = sig;
-
-          if (!goal.goal_valid) {
-            const worldX =
-              (occGridWidth - goal.x_goal / occGridResolution) * gridCellSize;
-            const worldY = (goal.y_goal * gridCellSize) / occGridResolution;
-
-            // Show near the click for a few seconds after the robot rejects the goal.
-            const goalTimeSec = Number(goal.goal_timestamp);
-            const timeDiffInSeconds = Date.now() / 1000 - goalTimeSec;
-
-            if (timeDiffInSeconds >= 0 && timeDiffInSeconds < 5) {
-              devWarn(`Invalid goal for robot ${goal.id} at (${goal.x_goal}, ${goal.y_goal})`);
-              const clickPos = goalClickScreenRef.current[goal.id];
-              newInvalidGoalMessages[goal.id] = {
-                timestamp: goalTimeSec,
-                screenX: clickPos?.x,
-                screenY: clickPos?.y,
-                worldX,
-                worldY,
-              };
-            }
-          } else {
-            delete goalClickScreenRef.current[goal.id];
-            newGoalMarkers[goal.id] = {
-              x: (occGridWidth - goal.x_goal/occGridResolution) * gridCellSize, // Convert grid coordinates to pixels
-              y: goal.y_goal * gridCellSize / occGridResolution, // Convert grid coordinates to pixels
-              color: getRobotColor(goal.id)
-            };
-          }
-        });
-        setGoalMarkers(newGoalMarkers);
-        setInvalidGoalMessages(newInvalidGoalMessages);
+  const serverGoalMarkers = useMemo(() => {
+    const markers = {};
+    (goalsData?.robotGoals ?? EMPTY_ARRAY).forEach((goal) => {
+      if (goal.goal_valid) {
+        markers[goal.id] = mapToPixel(transform, goal.x_goal, goal.y_goal);
       }
+    });
+    return markers;
+  }, [goalsData, transform]);
+
+  const goalMarkers = useMemo(() => {
+    const overrideIds = Object.keys(goalOverrides);
+    if (overrideIds.length === 0) return serverGoalMarkers;
+    const merged = { ...serverGoalMarkers };
+    overrideIds.forEach((id) => {
+      if (goalOverrides[id]) {
+        merged[id] = goalOverrides[id];
+      } else {
+        delete merged[id];
+      }
+    });
+    return merged;
+  }, [serverGoalMarkers, goalOverrides]);
+
+  useEffect(() => {
+    const goals = goalsData?.robotGoals;
+    if (!goals) return;
+    devLog('Fetched robot goals:', goalsData);
+
+    const changedIds = [];
+    const nextInvalidGoalMessages = {};
+    const nowSec = Date.now() / 1000;
+
+    goals.forEach((goal) => {
+      const sig = `${goal.x_goal},${goal.y_goal},${goal.goal_timestamp}`;
+      const prevSig = prevGoalSignaturesRef.current[goal.id];
+      if (prevSig !== undefined && prevSig !== sig) {
+        clearPathDismissalForRobot(goal.id);
+        proximityDismissLatchRef.current.delete(goal.id);
+        changedIds.push(goal.id);
+      }
+      prevGoalSignaturesRef.current[goal.id] = sig;
+
+      if (goal.goal_valid) {
+        delete goalClickScreenRef.current[goal.id];
+        return;
+      }
+
+      // Show near the click for a few seconds after the robot rejects the goal.
+      const goalTimeSec = Number(goal.goal_timestamp);
+      const timeDiffInSeconds = nowSec - goalTimeSec;
+      if (timeDiffInSeconds >= 0 && timeDiffInSeconds < INVALID_GOAL_DISPLAY_SEC) {
+        devWarn(`Invalid goal for robot ${goal.id} at (${goal.x_goal}, ${goal.y_goal})`);
+        const world = mapToPixel(transform, goal.x_goal, goal.y_goal);
+        const clickPos = goalClickScreenRef.current[goal.id];
+        nextInvalidGoalMessages[goal.id] = {
+          timestamp: goalTimeSec,
+          screenX: clickPos?.x,
+          screenY: clickPos?.y,
+          worldX: world.x,
+          worldY: world.y,
+        };
+      }
+    });
+
+    if (changedIds.length > 0) {
+      setGoalOverrides((prev) => {
+        let next = prev;
+        changedIds.forEach((id) => {
+          if (!(id in next)) return;
+          if (next === prev) next = { ...prev };
+          delete next[id];
+        });
+        return next;
+      });
     }
-  });
-  
+    setInvalidGoalMessages((prev) =>
+      Object.keys(prev).length === 0 && Object.keys(nextInvalidGoalMessages).length === 0
+        ? prev
+        : nextInvalidGoalMessages,
+    );
+    // transform is read for tooltip placement only; recompute when goals change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goalsData, clearPathDismissalForRobot]);
+
+  // Expire invalid-goal tooltips; polls no longer re-render the map while data is unchanged.
+  useEffect(() => {
+    const timestamps = Object.values(invalidGoalMessages).map((info) => info.timestamp);
+    if (timestamps.length === 0) return undefined;
+    const expiresAtMs = (Math.min(...timestamps) + INVALID_GOAL_DISPLAY_SEC) * 1000;
+    const timer = setTimeout(() => {
+      const nowSec = Date.now() / 1000;
+      setInvalidGoalMessages((prev) => {
+        const next = {};
+        Object.entries(prev).forEach(([id, info]) => {
+          if (nowSec - info.timestamp < INVALID_GOAL_DISPLAY_SEC) next[id] = info;
+        });
+        return next;
+      });
+    }, Math.max(0, expiresAtMs - Date.now()));
+    return () => clearTimeout(timer);
+  }, [invalidGoalMessages]);
+
   // Query for robot paths with explicit polling
-  useQuery(GET_ROBOT_PATHS, {
+  const { data: pathsData, error: pathsError } = useQuery(GET_ROBOT_PATHS, {
     ...defaultPollOptions,
-    onCompleted: (data) => {
-      devLog('Fetched robot paths:', data);
-      if (data && data.robotPaths) {
-        // Process the path data
-        // Group path points by robot ID
-        const pathsByRobot = {};
-        
-        data.robotPaths.forEach(point => {
-          if (!pathsByRobot[point.id]) {
-            pathsByRobot[point.id] = [];
-          }
-          
-          // Apply the same coordinate transformation as we do for robots
-          point.x.forEach((xValue, index) => {
-            const yValue = point.y[index];
-            const transformedX = (occGridWidth - xValue / occGridResolution) * gridCellSize;
-            const transformedY = yValue * gridCellSize / occGridResolution;
-
-            // Add the transformed coordinates to the robot's path
-            pathsByRobot[point.id].push(transformedX, transformedY);
-          });
-          
-        });
-        
-        // Create the final path objects with color
-        const newPaths = {};
-        Object.entries(pathsByRobot).forEach(([robotId, points]) => {
-          newPaths[robotId] = {
-            points: points,
-            color: getRobotColor(robotId)
-          };
-        });
-        
-        setRobotPaths(newPaths);
-      }
-    },
-    onError: (error) => {
-      console.error('Error fetching robot paths:', error);
-    }
+    skip: !showPaths,
   });
 
-  useQuery(GET_OBJECT_POSITIONS, {
-    ...defaultPollOptions,
-    pollInterval: 500, // Faster than other queries so departed people clear quickly
-    onCompleted: (data) => {
-      devLog('Fetched object positions:', data);
-      if (data && data.objectPositions) {
-        setDetectedObjects(data.objectPositions);
+  useEffect(() => {
+    if (pathsError) console.error('Error fetching robot paths:', pathsError);
+  }, [pathsError]);
+
+  // Robot id → flat [x0, y0, x1, y1, ...] pixel points
+  const robotPaths = useMemo(() => {
+    const pathsByRobot = {};
+    (pathsData?.robotPaths ?? EMPTY_ARRAY).forEach((point) => {
+      if (!pathsByRobot[point.id]) {
+        pathsByRobot[point.id] = [];
       }
-    },
-    onError: (error) => {
-      console.error('Error fetching object positions:', error);
-    }
+      point.x.forEach((xValue, index) => {
+        const p = mapToPixel(transform, xValue, point.y[index]);
+        pathsByRobot[point.id].push(p.x, p.y);
+      });
+    });
+    return pathsByRobot;
+  }, [pathsData, transform]);
+
+  const { data: objectsData, error: objectsError } = useQuery(GET_OBJECT_POSITIONS, {
+    ...defaultPollOptions,
+    pollInterval: OBJECT_POLL_INTERVAL,
   });
+
+  useEffect(() => {
+    if (objectsError) console.error('Error fetching object positions:', objectsError);
+  }, [objectsError]);
+
+  useEffect(() => {
+    setObjectsCleared(false);
+  }, [objectsData]);
+
+  const detectedObjects = objectsCleared
+    ? EMPTY_ARRAY
+    : objectsData?.objectPositions ?? EMPTY_ARRAY;
 
   // Add the mutation
   const [clearAllObjects] = useMutation(CLEAR_ALL_OBJECTS, {
     refetchQueries: [{ query: GET_OBJECT_POSITIONS }],
     onCompleted: () => {
       devLog('All objects cleared successfully');
-      // Optionally clear the local state immediately for faster UI response
-      setDetectedObjects([]);
+      // Clear locally for faster UI response until the next object poll result.
+      setObjectsCleared(true);
     },
     onError: (error) => {
       console.error('Error clearing objects:', error);
@@ -353,6 +363,34 @@ const RobotMap = forwardRef(({
     }
     prevRobotCountRef.current = n;
   }, [robotPositions, positionsError, clearAllObjects]);
+
+  const hidePathThresholdPx = 30;
+
+  // Hide a robot's path once it gets close to its goal.
+  useEffect(() => {
+    if (!hasMap || occGridWidth <= 0) return;
+    robotPositions.forEach((robot) => {
+      const goal = goalMarkers[robot.id];
+      if (!goal) return;
+      if (pathDisplayDismissed[robot.id]) return;
+      const robotPx = mapToPixel(transform, robot.x, robot.y);
+      const distance = calculateDistance(robotPx.x, robotPx.y, goal.x, goal.y);
+      if (distance < hidePathThresholdPx) {
+        if (!proximityDismissLatchRef.current.has(robot.id)) {
+          proximityDismissLatchRef.current.add(robot.id);
+          dismissPathForRobot(robot.id);
+        }
+      }
+    });
+  }, [
+    robotPositions,
+    goalMarkers,
+    hasMap,
+    occGridWidth,
+    transform,
+    pathDisplayDismissed,
+    dismissPathForRobot,
+  ]);
 
   useEffect(() => {
     if (!mapData || !mapData.map) return;
@@ -377,27 +415,27 @@ const RobotMap = forwardRef(({
     canvas.width = width * gridCellSize;
     canvas.height = height * gridCellSize;
     const ctx = canvas.getContext('2d');
-    
+
     // Fill with background color first (optional)
     ctx.fillStyle = '#E4F8FF'; // Default background color
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
+
     // Draw the grid on the canvas
     for (let x = 0; x < width; x++) {
       for (let y = 0; y < height; y++) {
         const index = y * width + x;
         const value = occupancy[index];
-        
+
         // Only draw occupied or unknown cells (optional optimization)
         if (value === 0) continue; // Skip empty cells
-        
+
         let color;
         if (value === 100) {
           color = '#000000';
         } else if (value !== 0) {
           color = '#A8A8A8';
         }
-        
+
         const xPos = (width - x - 1) * gridCellSize; // Invert x for correct orientation
         const yPos = y * gridCellSize;
 
@@ -405,7 +443,7 @@ const RobotMap = forwardRef(({
         ctx.fillRect(xPos, yPos, gridCellSize, gridCellSize);
       }
     }
-    
+
     // Add grid lines if needed (optional)
     if (gridCellSize > 2) { // Only draw grid lines if cells are big enough
       ctx.strokeStyle = '#ddd';
@@ -425,7 +463,7 @@ const RobotMap = forwardRef(({
         ctx.stroke();
       }
     }
-    
+
     // Convert canvas to image
     const img = new Image();
     img.onload = () => {
@@ -433,31 +471,8 @@ const RobotMap = forwardRef(({
       devLog('Map image created successfully');
     };
     img.src = canvas.toDataURL();
-    
-  }, [mapData, gridCellSize]);
 
-  // Update robots layer when robot positions change
-  useEffect(() => {
-    if (robotsLayerRef.current && robots.length > 0) {
-      devLog('Redrawing robots layer with', robots.length, 'robots');
-      robotsLayerRef.current.batchDraw();
-    }
-
-    // If we have goal markers, redraw the goal layer too
-    // since it depends on robot positions for the dotted lines
-    if (goalLayerRef.current && Object.keys(goalMarkers).length > 0) {
-      devLog('Redrawing goal layer due to robot position update');
-      goalLayerRef.current.batchDraw();
-    }
-  }, [robots, goalMarkers]);
-
-  // Update path layer when robot paths change
-  useEffect(() => {
-    if (pathLayerRef.current && Object.keys(robotPaths).length > 0) {
-      devLog('Redrawing path layer with', Object.keys(robotPaths).length, 'paths');
-      pathLayerRef.current.batchDraw();
-    }
-  }, [robotPaths]);
+  }, [mapData]);
 
   const isPosePlacementMode =
     positionMode === 'goal' ||
@@ -488,13 +503,9 @@ const RobotMap = forwardRef(({
           x: drag.anchorScreen.x,
           y: drag.anchorScreen.y,
         };
-        setGoalMarkers((prevMarkers) => ({
-          ...prevMarkers,
-          [selectedRobotId]: {
-            x: anchorWorld.x,
-            y: anchorWorld.y,
-            color: getRobotColor(selectedRobotId),
-          },
+        setGoalOverrides((prev) => ({
+          ...prev,
+          [selectedRobotId]: { x: anchorWorld.x, y: anchorWorld.y },
         }));
         onSetGoal(selectedRobotId, mapX, mapY, thetaRad);
       } else {
@@ -531,10 +542,6 @@ const RobotMap = forwardRef(({
           }, 10000);
         });
       }
-
-      if (goalLayerRef.current) {
-        goalLayerRef.current.batchDraw();
-      }
     },
     [
       positionMode,
@@ -543,7 +550,6 @@ const RobotMap = forwardRef(({
       onStagePatrolPoint,
       onSetGoal,
       onSetInitialPosition,
-      getRobotColor,
     ],
   );
 
@@ -720,108 +726,94 @@ const RobotMap = forwardRef(({
         setPoseDrag(next);
       }
 
-      setMousePosition({
+      // Only CursorOverlay subscribes to this, so the map itself does not re-render.
+      pointerStoreRef.current.set({
         x: pointerPosition.x,
         y: pointerPosition.y,
         worldX: mapX,
         worldY: mapY,
       });
-
-      if (tooltipLayerRef.current) {
-        tooltipLayerRef.current.batchDraw();
-      }
     }
   };
 
-  // Helper function to get appearance of objects based on type
-  const getObjectAppearance = (type) => {
-    switch(type) {
-      case 'person':
-        return { color: 'yellow', radius: 12 };
-      case 'cone':
-        return { color: 'orange', radius: 10 };
-      default:
-        // Generate a random color for unknown object types
-        // Generate a consistent hue based on the object name
-        const stringToHash = (str) => {
-          let hash = 0;
-          for (let i = 0; i < str.length; i++) {
-            hash = str.charCodeAt(i) + ((hash << 5) - hash);
-          }
-          return hash;
-        };
-        const hue = Math.abs(stringToHash(type)) % 360; // Consistent hue based on type name
-        return { color: `hsl(${hue}, 70%, 50%)`, radius: 10 };
-    }
-  };
-  
+  const handleRobotPointerEnter = useCallback(
+    (robotId, pointer) => {
+      if (!showAirQualityOnHover) return;
+      setHoveredRobotId(robotId);
+      if (pointer) setAirQualityHoverPointer(pointer);
+    },
+    [showAirQualityOnHover],
+  );
+
+  const handleRobotPointerMove = useCallback(
+    (robotId, pointer) => {
+      if (!showAirQualityOnHover || hoveredRobotIdRef.current !== robotId) return;
+      if (pointer) setAirQualityHoverPointer(pointer);
+    },
+    [showAirQualityOnHover],
+  );
+
+  const handleRobotPointerLeave = useCallback(() => {
+    setHoveredRobotId(null);
+    setAirQualityHoverPointer(null);
+  }, []);
+
   const handleWheel = (e) => {
     e.evt.preventDefault();
-    
+
     if (!stageRef.current) return;
-    
+
     const stage = stageRef.current;
     const oldScale = stage.scaleX();
-    
+
     const pointerPosition = stage.getPointerPosition();
-    
+
     // Calculate new scale
     // The zoom speed factor can be adjusted (0.1 is a moderate speed)
     const zoomSpeed = 0.1;
     let newScale = e.evt.deltaY < 0 ? oldScale * (1 + zoomSpeed) : oldScale * (1 - zoomSpeed);
-    
+
     // Limit scale
     newScale = Math.max(minScale, Math.min(newScale, maxScale));
-    
+
     // Calculate new position so we zoom toward the pointer position
     const mousePointTo = {
       x: (pointerPosition.x - stage.x()) / oldScale,
       y: (pointerPosition.y - stage.y()) / oldScale,
     };
-    
+
     const newPos = {
       x: pointerPosition.x - mousePointTo.x * newScale,
       y: pointerPosition.y - mousePointTo.y * newScale,
     };
-    
-    // Apply new position and scale
-    setScale(newScale); // Update the scale state
+
+    // Zoom is applied directly to the stage (uncontrolled) to avoid re-rendering the map.
     stage.scale({ x: newScale, y: newScale });
     stage.position(newPos);
     stage.batchDraw();
   };
-  
+
   const handleDragStart = (e) => {
     if (poseDragRef.current) {
       e.target.stopDrag();
     }
   };
-  
-  const handleDragEnd = () => {
-    // Optional: Add any behavior you want when dragging ends
-  };
 
   // Clear goal for the selected robot
   const clearGoal = () => {
     if (!selectedRobotId) return;
-    
-    setGoalMarkers(prevMarkers => {
-      const newMarkers = { ...prevMarkers };
-      delete newMarkers[selectedRobotId];
-      return newMarkers;
-    });
-    
-    if (goalLayerRef.current) {
-      goalLayerRef.current.batchDraw();
-    }
+    setGoalOverrides((prev) => ({ ...prev, [selectedRobotId]: null }));
   };
 
   // Clear all goals
   const clearAllGoals = () => {
-    setGoalMarkers({});
-    if (goalLayerRef.current) {
-      goalLayerRef.current.batchDraw();
-    }
+    setGoalOverrides(() => {
+      const next = {};
+      Object.keys(goalMarkers).forEach((id) => {
+        next[id] = null;
+      });
+      return next;
+    });
   };
 
   // Handler for clearing all objects
@@ -849,15 +841,10 @@ const RobotMap = forwardRef(({
   const zoomToRobot = useCallback(
     (robotId) => {
       if (!hasMap || occGridWidth <= 0 || !stageRef.current) return;
-      const robot = robots.find((r) => r.id === robotId);
+      const robot = robotPositions.find((r) => r.id === robotId);
       if (!robot || mapSize.width <= 0 || mapSize.height <= 0) return;
 
-      const { x: cx, y: cy } = robotToMapPixels(
-        robot,
-        occGridWidth,
-        occGridResolution,
-        gridCellSize,
-      );
+      const { x: cx, y: cy } = mapToPixel(transform, robot.x, robot.y);
       const targetScale = Math.min(
         maxScale,
         Math.max(minScale, ZOOM_TO_ROBOT_SCALE),
@@ -868,21 +855,17 @@ const RobotMap = forwardRef(({
         y: mapSize.height / 2 - cy * targetScale,
       };
 
-      setScale(targetScale);
       stage.scale({ x: targetScale, y: targetScale });
       stage.position(newPos);
       stage.batchDraw();
     },
     [
-      robots,
+      robotPositions,
       hasMap,
       occGridWidth,
-      occGridResolution,
-      gridCellSize,
+      transform,
       mapSize.width,
       mapSize.height,
-      minScale,
-      maxScale,
     ],
   );
 
@@ -936,7 +919,7 @@ const RobotMap = forwardRef(({
     );
   }
 
-  if (positionsLoading && !robots.length && !mapData) {
+  if (positionsLoading && !robotPositions.length && !mapData) {
     return <div>Loading robot positions...</div>;
   }
   if (positionsError) {
@@ -1004,9 +987,9 @@ const RobotMap = forwardRef(({
         </div>
       )}
       {mapSize.width > 0 && mapSize.height > 0 && (
-      <Stage 
+      <Stage
         ref={stageRef}
-        width={mapSize.width} 
+        width={mapSize.width}
         height={mapSize.height}
         onMouseDown={handlePoseMouseDown}
         onMouseUp={handleStageMouseUp}
@@ -1014,364 +997,47 @@ const RobotMap = forwardRef(({
         onMouseMove={handleMouseMove}
         draggable={!poseDrag && (!canStartPoseDrag || modifierPanActive)}
         onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        scaleX={scale}
-        scaleY={scale}
+        // Initial zoom only; afterwards the stage scale is changed imperatively.
+        scaleX={minScale}
+        scaleY={minScale}
       >
-        {/* Separate layer for the grid - doesn't need to update frequently */}
-        <Layer>
-          {mapImage ? (
-            <KonvaImage 
-              image={mapImage} 
-              x={0} 
-              y={0} 
-              width={occGridWidth * gridCellSize}
-              height={occGridHeight * gridCellSize}
-            />
-          ) : (
-            <Rect 
-              width={occGridWidth * gridCellSize}
-              height={occGridHeight * gridCellSize}
-              fill="#E4F8FF" 
-            />
-          )}
-        </Layer>
-        
-        {/* Layer for robot paths - updates when paths change */}
-        <Layer ref={pathLayerRef} visible={showPaths}>
-          {Object.entries(robotPaths).map(([robotId, path]) => {
-            const rid = Number(robotId);
-            if (!isRobotVisibleOnMap(rid)) {
-              return null;
-            }
-            if (pathDisplayDismissed[rid]) {
-              return null;
-            }
-            // Check if this robot has a goal
-            const goal = goalMarkers[robotId];
-            const robot = robots.find(r => r.id === Number(robotId));
-            
-            // If robot is close to goal, don't show the path
-            if (goal && robot) {
-              const robotX = (occGridWidth - robot.x/occGridResolution)*gridCellSize;
-              const robotY = (robot.y)*gridCellSize/occGridResolution;
-              const distance = calculateDistance(robotX, robotY, goal.x, goal.y);
-              
-              // Define threshold distance for hiding path (adjust as needed)
-              const hidePathThreshold = 30; // in pixels
-              
-              if (distance < hidePathThreshold) {
-                return null;
-              }
-            }
-            
-            return (
-              <Line
-                key={`path-${robotId}`}
-                points={path.points}
-                stroke={getRobotColor(robotId)}
-                strokeWidth={pathStrokeWidth}
-                opacity={0.7}
-              />
-            );
-          })}
-        </Layer>
-        
-        {/* Separate layer for robots - updates with robot positions */}
-        <Layer ref={robotsLayerRef}>
-          {robots.map((robot) => {
-            if (!isRobotVisibleOnMap(robot.id)) {
-              return null;
-            }
-            const cx =
-              ((occGridWidth * occGridResolution - robot.x) * gridCellSize) /
-              occGridResolution;
-            const cy = (robot.y * gridCellSize) / occGridResolution;
-            const arrowLen = robotMarkerRadius * 1.25;
-            const labelSize = Math.max(8, Math.round(robotMarkerRadius * 0.95));
-            const labelOffset = robotMarkerRadius * 0.28;
-            const isSelected = robot.id === selectedRobotId;
-            const handleAirQualityPointer = (e) => {
-              if (!showAirQualityOnHover) return;
-              const pointer = e.target.getStage()?.getPointerPosition();
-              if (pointer) {
-                setAirQualityHoverPointer({ x: pointer.x, y: pointer.y });
-              }
-            };
-            return (
-              <React.Fragment key={robot.id}>
-                <Circle
-                  x={cx}
-                  y={cy}
-                  radius={robotMarkerRadius}
-                  fill={getRobotColor(robot.id)}
-                  stroke="#000"
-                  strokeWidth={isSelected ? Math.max(2, robotMarkerRadius / 3) : 2}
-                  onMouseEnter={(e) => {
-                    if (!showAirQualityOnHover) return;
-                    setHoveredRobotId(robot.id);
-                    handleAirQualityPointer(e);
-                  }}
-                  onMouseLeave={() => {
-                    setHoveredRobotId(null);
-                    setAirQualityHoverPointer(null);
-                  }}
-                  onMouseMove={(e) => {
-                    if (!showAirQualityOnHover || hoveredRobotId !== robot.id) return;
-                    handleAirQualityPointer(e);
-                  }}
-                />
-                <Arrow
-                  points={[
-                    cx,
-                    cy,
-                    cx - Math.cos(robot.theta) * arrowLen,
-                    cy + Math.sin(robot.theta) * arrowLen,
-                  ]}
-                  stroke="#000"
-                  fill="#000"
-                  strokeWidth={2}
-                  pointerAtEnding
-                  pointerLength={10}
-                  pointerWidth={8}
-                />
-                <Text
-                  x={cx - labelOffset}
-                  y={cy - labelOffset}
-                  text={robot.id.toString()}
-                  fontSize={labelSize}
-                  fill="#fff"
-                />
-              </React.Fragment>
-            );
-          })}
-        </Layer>
-        
-        {/* Separate layer for the goal markers - only this layer is redrawn on clicks */}
-        <Layer ref={goalLayerRef}>
-          {poseDrag && (
-            <>
-              <Circle
-                x={poseDrag.anchorWorld.x}
-                y={poseDrag.anchorWorld.y}
-                radius={8}
-                fill={posePreviewColor}
-                opacity={0.75}
-              />
-              <Arrow
-                points={[
-                  poseDrag.anchorWorld.x,
-                  poseDrag.anchorWorld.y,
-                  poseDrag.pointerWorld.x,
-                  poseDrag.pointerWorld.y,
-                ]}
-                stroke={posePreviewColor}
-                fill={posePreviewColor}
-                strokeWidth={3}
-                pointerAtEnding
-                pointerLength={20}
-                pointerWidth={15}
-              />
-            </>
-          )}
-          {Object.entries(goalMarkers).map(([robotId, marker]) => {
-            const rid = Number(robotId);
-            if (!isRobotVisibleOnMap(rid)) {
-              return null;
-            }
-            if (pathDisplayDismissed[rid]) {
-              return null;
-            }
-            const robot = robots.find(r => r.id === rid);
-            if (!robot) return null;
-
-            return (
-              <React.Fragment key={`goal-${robotId}`}>
-                <Circle
-                  x={marker.x}
-                  y={marker.y}
-                  radius={8}
-                  fill={getRobotColor(robotId)}
-                  opacity={0.6}
-                />
-                <Line
-                  points={[
-                    (occGridWidth - robot.x/occGridResolution)*gridCellSize,
-                    (robot.y)*gridCellSize/occGridResolution,
-                    marker.x,
-                    marker.y
-                  ]}
-                  stroke={getRobotColor(robotId)}
-                  strokeWidth={2}
-                  dash={[5, 5]}
-                />
-              </React.Fragment>
-            );
-          })}
-          {Object.entries(stagedMultiGoals).map(([robotIdStr, pos]) => {
-            const robotId = Number(robotIdStr);
-            if (!isRobotVisibleOnMap(robotId)) {
-              return null;
-            }
-            if (!pos || typeof pos.mapX !== 'number') return null;
-            const robot = robots.find((r) => r.id === robotId);
-            const px = (occGridWidth - pos.mapX / occGridResolution) * gridCellSize;
-            const py = (pos.mapY * gridCellSize) / occGridResolution;
-            const color = getRobotColor(robotId);
-            return (
-              <React.Fragment key={`staged-multi-${robotIdStr}`}>
-                <Circle
-                  x={px}
-                  y={py}
-                  radius={10}
-                  stroke={color}
-                  strokeWidth={3}
-                  fill="rgba(255,255,255,0.15)"
-                  dash={[6, 4]}
-                />
-                {robot && (
-                  <Line
-                    points={[
-                      (occGridWidth - robot.x / occGridResolution) * gridCellSize,
-                      (robot.y * gridCellSize) / occGridResolution,
-                      px,
-                      py,
-                    ]}
-                    stroke={color}
-                    strokeWidth={2}
-                    dash={[4, 6]}
-                    opacity={0.85}
-                  />
-                )}
-              </React.Fragment>
-            );
-          })}
-          {stagedPatrolPoints.map((pt, index) => {
-            if (!pt || typeof pt.mapX !== 'number') return null;
-            const px = (occGridWidth - pt.mapX / occGridResolution) * gridCellSize;
-            const py = (pt.mapY * gridCellSize) / occGridResolution;
-            const arrowLen = robotMarkerRadius * 1.25;
-            const labelSize = Math.max(8, Math.round(robotMarkerRadius * 0.95));
-            const labelOffset = robotMarkerRadius * 0.28;
-            const color = '#0d6e4f';
-            // Patrol loops back to the first point, so close the polygon on the last leg.
-            const isClosingLeg = index === stagedPatrolPoints.length - 1;
-            const prev = index > 0 ? stagedPatrolPoints[index - 1] : null;
-            const prevPx =
-              prev && typeof prev.mapX === 'number'
-                ? (occGridWidth - prev.mapX / occGridResolution) * gridCellSize
-                : null;
-            const prevPy =
-              prev && typeof prev.mapY === 'number'
-                ? (prev.mapY * gridCellSize) / occGridResolution
-                : null;
-            const first = stagedPatrolPoints[0];
-            const showClosingLeg =
-              isClosingLeg &&
-              stagedPatrolPoints.length > 2 &&
-              first &&
-              typeof first.mapX === 'number' &&
-              typeof first.mapY === 'number';
-            const firstPx = showClosingLeg
-              ? (occGridWidth - first.mapX / occGridResolution) * gridCellSize
-              : null;
-            const firstPy = showClosingLeg
-              ? (first.mapY * gridCellSize) / occGridResolution
-              : null;
-            return (
-              <React.Fragment key={`patrol-${pt.id}`}>
-                {prevPx != null && prevPy != null && (
-                  <Line
-                    points={[prevPx, prevPy, px, py]}
-                    stroke={color}
-                    strokeWidth={2}
-                    dash={[6, 4]}
-                    opacity={0.85}
-                  />
-                )}
-                {showClosingLeg && (
-                  <Line
-                    points={[px, py, firstPx, firstPy]}
-                    stroke={color}
-                    strokeWidth={2}
-                    dash={[6, 4]}
-                    opacity={0.85}
-                  />
-                )}
-                <Circle
-                  x={px}
-                  y={py}
-                  radius={robotMarkerRadius}
-                  stroke={color}
-                  strokeWidth={3}
-                  fill="rgba(13,110,79,0.35)"
-                />
-                <Arrow
-                  points={[
-                    px,
-                    py,
-                    px - Math.cos(pt.theta) * arrowLen,
-                    py + Math.sin(pt.theta) * arrowLen,
-                  ]}
-                  stroke={color}
-                  fill={color}
-                  strokeWidth={2}
-                  pointerAtEnding
-                  pointerLength={10}
-                  pointerWidth={8}
-                />
-                <Text
-                  x={px - labelOffset}
-                  y={py - labelOffset}
-                  text={String(index + 1)}
-                  fontSize={labelSize}
-                  fill="#fff"
-                  fontStyle="bold"
-                />
-              </React.Fragment>
-            );
-          })}
-        </Layer>
-
-        {/* Objects Layer */}
-        <Layer ref={objectsLayerRef}>
-          {detectedObjects.map((object) => {
-            // Transform coordinates similar to how you handle robot positions
-            const transformedX = (occGridWidth - object.x/occGridResolution) * gridCellSize;
-            const transformedY = object.y * gridCellSize / occGridResolution;
-            const { color, radius } = getObjectAppearance(object.type);
-            
-            return (
-              <React.Fragment key={`object-${object.id}`}>
-                <Circle
-                  x={transformedX}
-                  y={transformedY}
-                  radius={radius}
-                  fill={color}
-                  opacity={0.75}
-                  stroke="black"
-                  strokeWidth={1}
-                />
-                <Label
-                  x={transformedX + radius + 2}
-                  y={transformedY - 10}
-                >
-                  <Tag
-                    fill="rgba(255, 255, 255, 0.8)"
-                    cornerRadius={3}
-                    padding={3}
-                  />
-                  <Text
-                    text={`${object.type}`}
-                    fontSize={12}
-                    fill="black"
-                    padding={2}
-                  />
-                </Label>
-              </React.Fragment>
-            );
-          })}
-        </Layer>
+        <MapImageLayer
+          mapImage={mapImage}
+          width={occGridWidth * gridCellSize}
+          height={occGridHeight * gridCellSize}
+        />
+        <PathsLayer
+          robotPaths={robotPaths}
+          visible={showPaths}
+          strokeWidth={pathStrokeWidth}
+          getRobotColor={getRobotColor}
+          isRobotVisibleOnMap={isRobotVisibleOnMap}
+          pathDisplayDismissed={pathDisplayDismissed}
+        />
+        <RobotsLayer
+          robotPositions={robotPositions}
+          transform={transform}
+          selectedRobotId={selectedRobotId}
+          robotMarkerRadius={robotMarkerRadius}
+          getRobotColor={getRobotColor}
+          isRobotVisibleOnMap={isRobotVisibleOnMap}
+          onRobotPointerEnter={handleRobotPointerEnter}
+          onRobotPointerMove={handleRobotPointerMove}
+          onRobotPointerLeave={handleRobotPointerLeave}
+        />
+        <PoseDragLayer poseDrag={poseDrag} color={posePreviewColor} />
+        <GoalsLayer
+          goalMarkers={goalMarkers}
+          stagedMultiGoals={stagedMultiGoals}
+          stagedPatrolPoints={stagedPatrolPoints}
+          robotPositions={robotPositions}
+          transform={transform}
+          robotMarkerRadius={robotMarkerRadius}
+          getRobotColor={getRobotColor}
+          isRobotVisibleOnMap={isRobotVisibleOnMap}
+          pathDisplayDismissed={pathDisplayDismissed}
+        />
+        <ObjectsLayer detectedObjects={detectedObjects} transform={transform} />
       </Stage>
       )}
 
@@ -1381,43 +1047,12 @@ const RobotMap = forwardRef(({
         </div>
       )}
 
-      {/* Tooltip layer outside the main stage - not affected by transforms */}
-      {showCursorCoordinates && mousePosition && (
-        <div
-          className="robot-map__cursor-coords"
-          style={{
-            left: `${mousePosition.x + 14}px`,
-            top: `${mousePosition.y}px`,
-          }}
-        >
-          ({mousePosition.worldX.toFixed(2)}, {mousePosition.worldY.toFixed(2)})
-        </div>
-      )}
-
-      {/* Confirmation / MCU warning message */}
-      {confirmationMessage && (
-        <div 
-          style={{
-            position: 'absolute',
-            left: `${mousePosition?.x || 0}px`,
-            top: `${(mousePosition?.y || 0) - 30}px`,
-            backgroundColor: confirmationIsWarning ? '#F44336' : '#2196F3',
-            color: 'white',
-            padding: '6px 12px',
-            borderRadius: '4px',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            pointerEvents: 'none',
-            zIndex: 1000,
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            animation: 'fadeIn 0.3s',
-            maxWidth: confirmationIsWarning ? '360px' : undefined,
-            whiteSpace: confirmationIsWarning ? 'normal' : 'nowrap',
-          }}
-        >
-          {confirmationMessage}
-        </div>
-      )}
+      <CursorOverlay
+        pointerStore={pointerStoreRef.current}
+        showCursorCoordinates={showCursorCoordinates}
+        confirmationMessage={confirmationMessage}
+        confirmationIsWarning={confirmationIsWarning}
+      />
 
       {showAirQualityOnHover &&
         hoveredRobotId != null &&
@@ -1427,7 +1062,7 @@ const RobotMap = forwardRef(({
             (row) => Number(row.robot_id) === Number(hoveredRobotId),
           );
           if (!aq) return null;
-          const robot = robots.find((r) => Number(r.id) === Number(hoveredRobotId));
+          const robot = robotPositions.find((r) => Number(r.id) === Number(hoveredRobotId));
           const nowSec = Date.now() / 1000;
           const readingAgeSec = Math.max(0, Math.round(nowSec - Number(aq.timestamp)));
           const posTs = robot?.position_timestamp;
@@ -1494,7 +1129,7 @@ const RobotMap = forwardRef(({
         </div>
         );
       })}
-      
+
       {showMapControls && (
         <MapControlsPanel
           containerRef={containerRef}
@@ -1556,11 +1191,11 @@ const RobotMap = forwardRef(({
           </div>
         </MapControlsPanel>
       )}
-      
+
     </div>
   );
 });
 
 RobotMap.displayName = 'RobotMap';
 
-export default RobotMap;
+export default React.memo(RobotMap);
