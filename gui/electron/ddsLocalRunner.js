@@ -11,7 +11,6 @@ const {
 const {
   isWindows,
   defaultWslDistro,
-  spawnShellCommand,
   spawnShellCommandAsync,
   combineShellOutput,
 } = require('./shellRunner');
@@ -226,36 +225,43 @@ async function writeManifest(settings, manifest) {
   );
 }
 
-function scriptExists(platformDir, settings) {
+async function nativeFileExists(filePath) {
+  try {
+    await fs.promises.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function scriptExists(platformDir, settings) {
   const shellDir = shellDdsDir(platformDir);
   if (!shellDir) return false;
 
   if (isWindows()) {
     const check = `test -f '${escapeBashSingleQuoted(`${shellDir}/${START_SCRIPT}`)}'`;
-    const result = spawnShellCommand(check, settings, {
-      sync: true,
+    const result = await spawnShellCommandAsync(check, settings, {
       timeoutMs: STATUS_TIMEOUT_MS,
     });
     return result.status === 0;
   }
 
-  return fs.existsSync(path.join(nativeDdsDir(platformDir), START_SCRIPT));
+  return nativeFileExists(path.join(nativeDdsDir(platformDir), START_SCRIPT));
 }
 
-function ddsEnvExists(platformDir, settings) {
+async function ddsEnvExists(platformDir, settings) {
   const shellDir = shellDdsDir(platformDir);
   if (!shellDir) return false;
 
   if (isWindows()) {
     const check = `test -f '${escapeBashSingleQuoted(`${shellDir}/${DDS_ENV_FILE}`)}'`;
-    const result = spawnShellCommand(check, settings, {
-      sync: true,
+    const result = await spawnShellCommandAsync(check, settings, {
       timeoutMs: STATUS_TIMEOUT_MS,
     });
     return result.status === 0;
   }
 
-  return fs.existsSync(path.join(nativeDdsDir(platformDir), DDS_ENV_FILE));
+  return nativeFileExists(path.join(nativeDdsDir(platformDir), DDS_ENV_FILE));
 }
 
 /**
@@ -520,24 +526,24 @@ function getDefaultDdsDir() {
   return getDefaultPlatformDir();
 }
 
-function validateSettings(settings) {
+async function validateSettings(settings) {
   const { platformDir } = normalizeDdsSettings(settings);
   if (!platformDir) {
     return { valid: false, error: 'Enter the path to the dds_robot_platform folder.' };
   }
-  if (!scriptExists(platformDir, settings)) {
+  if (!(await scriptExists(platformDir, settings))) {
     const hint = isWindows()
       ? 'dds/start_scripts.sh not found in WSL (check path and WSL distro).'
       : 'dds/start_scripts.sh not found under that folder.';
     return { valid: false, error: hint };
   }
-  if (!ddsEnvExists(platformDir, settings)) {
+  if (!(await ddsEnvExists(platformDir, settings))) {
     return {
       valid: false,
       error: `Missing dds/${DDS_ENV_FILE}. Copy dds_env.sh.example to dds_env.sh.`,
     };
   }
-  if (!dockerComposeRunner.composeYamlExistsForSettings(settings)) {
+  if (!(await dockerComposeRunner.composeYamlExistsForSettings(settings))) {
     return {
       valid: false,
       error: 'Missing compose.yaml at platform root.',

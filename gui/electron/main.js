@@ -55,9 +55,9 @@ function createWindow() {
   win.loadFile(htmlPath);
 }
 
-ipcMain.handle('dds-local-get-defaults', () => ({
+ipcMain.handle('dds-local-get-defaults', async () => ({
   platformDir: ddsLocalRunner.getDefaultPlatformDir(),
-  wslDistro: process.platform === 'win32' ? ddsLocalRunner.defaultWslDistro() : '',
+  wslDistro: process.platform === 'win32' ? await ddsLocalRunner.defaultWslDistro() : '',
   platform: process.platform,
 }));
 

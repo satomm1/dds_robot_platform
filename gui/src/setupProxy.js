@@ -122,10 +122,10 @@ function proxyRobotHostRequest(res, { host, port, path, method, body, timeoutMs 
 }
 
 module.exports = function setupRobotLauncherProxy(app) {
-  app.get('/api/dds-local/defaults', (_req, res) => {
+  app.get('/api/dds-local/defaults', async (_req, res) => {
     res.json({
       platformDir: ddsLocalRunner.getDefaultPlatformDir(),
-      wslDistro: process.platform === 'win32' ? ddsLocalRunner.defaultWslDistro() : '',
+      wslDistro: process.platform === 'win32' ? await ddsLocalRunner.defaultWslDistro() : '',
       platform: process.platform,
     });
   });
@@ -133,7 +133,7 @@ module.exports = function setupRobotLauncherProxy(app) {
   app.post('/api/dds-local/validate', async (req, res) => {
     try {
       const body = await parseJsonBody(req);
-      res.json(ddsLocalRunner.validateSettings(body));
+      res.json(await ddsLocalRunner.validateSettings(body));
     } catch (err) {
       res.status(400).json({ valid: false, error: err.message || 'Invalid JSON' });
     }

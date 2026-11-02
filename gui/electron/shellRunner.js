@@ -1,5 +1,8 @@
-const { spawn, spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 const { normalizeDdsSettings } = require('./ddsLocalPaths');
+
+const FALLBACK_WSL_DISTRO = 'Ubuntu';
+const WSL_LIST_TIMEOUT_MS = 5000;
 
 function isWindows() {
   return process.platform === 'win32';
@@ -9,60 +12,80 @@ function getPlatform() {
   return process.platform;
 }
 
-function defaultWslDistro() {
-  try {
-    const result = spawnSync('wsl.exe', ['-l', '-q'], {
-      encoding: 'utf8',
-      timeout: 5000,
-      windowsHide: true,
+/** First distro from `wsl -l -q`, or null. Output is UTF-16, so strip NULs after decoding. */
+function detectWslDistro() {
+  return new Promise((resolve) => {
+    let stdout = '';
+    let settled = false;
+    const finish = (distro) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(distro);
+    };
+
+    let child;
+    try {
+      child = spawn('wsl.exe', ['-l', '-q'], { windowsHide: true });
+    } catch {
+      resolve(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        /* ignore */
+      }
+      finish(null);
+    }, WSL_LIST_TIMEOUT_MS);
+
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
     });
-    const line = (result.stdout || '')
-      .split(/\r?\n/)
-      .map((l) => l.replace(/\0/g, '').trim())
-      .find((l) => l.length > 0);
-    if (line) return line;
-  } catch {
-    /* ignore */
-  }
-  return 'Ubuntu';
+    child.on('error', () => finish(null));
+    child.on('close', () => {
+      const line = stdout
+        .split(/\r?\n/)
+        .map((l) => l.replace(/\0/g, '').trim())
+        .find((l) => l.length > 0);
+      finish(line || null);
+    });
+  });
 }
 
-function effectiveWslDistro(settings) {
+// Cached for the app lifetime once detected; the fallback is not cached so a
+// slow WSL cold start can be retried on the next call.
+let detectedWslDistroPromise = null;
+
+async function defaultWslDistro() {
+  if (!detectedWslDistroPromise) {
+    detectedWslDistroPromise = detectWslDistro();
+  }
+  const distro = await detectedWslDistroPromise;
+  if (!distro) {
+    detectedWslDistroPromise = null;
+    return FALLBACK_WSL_DISTRO;
+  }
+  return distro;
+}
+
+async function effectiveWslDistro(settings) {
   const distro = normalizeDdsSettings(settings).wslDistro;
   return distro || defaultWslDistro();
 }
 
-function spawnShellCommand(innerCommand, settings, options = {}) {
-  const { detached = false, sync = false, timeoutMs } = options;
-
+/** Start `bash -lc` (inside WSL on Windows) with piped stdio. */
+function spawnShellChild(innerCommand, distro) {
   if (isWindows()) {
-    const distro = effectiveWslDistro(settings);
-    const wslArgs = ['-d', distro, '--', 'bash', '-lc', innerCommand];
-    if (sync) {
-      return spawnSync('wsl.exe', wslArgs, {
-        encoding: 'utf8',
-        timeout: timeoutMs,
-        windowsHide: true,
-      });
-    }
-    return spawn('wsl.exe', wslArgs, {
-      detached,
-      stdio: detached ? 'ignore' : 'pipe',
+    return spawn('wsl.exe', ['-d', distro, '--', 'bash', '-lc', innerCommand], {
+      stdio: 'pipe',
       windowsHide: true,
     });
   }
-
-  const bashArgs = ['-lc', innerCommand];
-  if (sync) {
-    return spawnSync('bash', bashArgs, {
-      encoding: 'utf8',
-      timeout: timeoutMs,
-    });
-  }
-  return spawn('bash', bashArgs, {
-    detached,
-    stdio: detached ? 'ignore' : 'pipe',
-  });
+  return spawn('bash', ['-lc', innerCommand], { stdio: 'pipe' });
 }
 
 function combineShellOutput(result) {
@@ -76,8 +99,9 @@ function combineShellOutput(result) {
  * Non-blocking shell run (does not freeze Electron main / dev-server event loop).
  * @returns {Promise<{ status: number|null, stdout: string, stderr: string, error?: Error }>}
  */
-function spawnShellCommandAsync(innerCommand, settings, options = {}) {
+async function spawnShellCommandAsync(innerCommand, settings, options = {}) {
   const { timeoutMs } = options;
+  const distro = isWindows() ? await effectiveWslDistro(settings) : '';
 
   return new Promise((resolve) => {
     let stdout = '';
@@ -93,7 +117,7 @@ function spawnShellCommandAsync(innerCommand, settings, options = {}) {
 
     let child;
     try {
-      child = spawnShellCommand(innerCommand, settings, { sync: false });
+      child = spawnShellChild(innerCommand, distro);
     } catch (err) {
       finish({ status: null, stdout: '', stderr: '', error: err });
       return;
@@ -144,7 +168,6 @@ module.exports = {
   getPlatform,
   defaultWslDistro,
   effectiveWslDistro,
-  spawnShellCommand,
   spawnShellCommandAsync,
   combineShellOutput,
 };

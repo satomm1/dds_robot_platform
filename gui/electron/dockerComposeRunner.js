@@ -9,7 +9,7 @@ const {
 const {
   isWindows,
   getPlatform,
-  spawnShellCommand,
+  spawnShellCommandAsync,
   combineShellOutput,
 } = require('./shellRunner');
 
@@ -19,21 +19,31 @@ const DDS_ENV_FILE = 'dds_env.sh';
 const STATUS_TIMEOUT_MS = 15000;
 const UP_TIMEOUT_MS = 180000;
 const DOWN_TIMEOUT_MS = 90000;
+const RUNNING_PROBE =
+  "ps --status running -q 2>/dev/null | grep -q . && echo running || echo stopped";
+const MISSING_MARKER = 'missing';
 
-function shellFileExists(filePath, settings, timeoutMs = STATUS_TIMEOUT_MS) {
+async function shellFileExists(filePath, settings, timeoutMs = STATUS_TIMEOUT_MS) {
   if (!filePath) return false;
   if (isWindows()) {
     const check = `test -f '${escapeBashSingleQuoted(filePath)}'`;
-    const result = spawnShellCommand(check, settings, {
-      sync: true,
-      timeoutMs,
-    });
+    const result = await spawnShellCommandAsync(check, settings, { timeoutMs });
     return result.status === 0;
   }
-  return fs.existsSync(filePath);
+  try {
+    await fs.promises.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function composeFileExists(platformDir, settings) {
+/** Prefix that prints MISSING_MARKER and exits 0 when the file is absent. */
+function requireFileCommand(filePath) {
+  return `[ -f '${escapeBashSingleQuoted(filePath)}' ] || { echo ${MISSING_MARKER}; exit 0; }; `;
+}
+
+async function composeFileExists(platformDir, settings) {
   const root = shellPlatformRoot(platformDir, isWindows());
   if (!root) return false;
   return shellFileExists(`${root}/${COMPOSE_FILE}`, settings);
@@ -45,7 +55,7 @@ function shellCaptureDir(platformDir) {
   return path.posix.join(root, CAPTURE_SUBDIR);
 }
 
-function captureComposeFileExists(platformDir, settings) {
+async function captureComposeFileExists(platformDir, settings) {
   const captureDir = shellCaptureDir(platformDir);
   if (!captureDir) return false;
   return shellFileExists(`${captureDir}/${COMPOSE_FILE}`, settings);
@@ -68,50 +78,43 @@ function captureDockerComposeCommand(shellCaptureDirPath, composeArgs) {
   return `cd '${capture}' && docker compose ${composeArgs}`;
 }
 
-function composeYamlExistsForSettings(settings) {
+async function composeYamlExistsForSettings(settings) {
   const { platformDir } = normalizeDdsSettings(settings);
   if (!platformDir) return false;
   return composeFileExists(platformDir, settings);
 }
 
-async function getDockerStatus(settings) {
+/**
+ * Check the compose file and probe running services in a single shell call.
+ * @returns {Promise<{ running: boolean, platform: string, configured: boolean, error?: string, probeError?: string }>}
+ */
+async function probeComposeStatus(settings, { composeFilePath, probeCommand, missingError, probeFailedError }) {
   const platform = getPlatform();
-  const { platformDir } = normalizeDdsSettings(settings);
-  if (!platformDir) {
-    return { running: false, platform, configured: false };
-  }
-  if (!composeFileExists(platformDir, settings)) {
-    return {
-      running: false,
-      platform,
-      configured: false,
-      error: `Missing ${COMPOSE_FILE} at platform root.`,
-    };
+  const missing = { running: false, platform, configured: false, error: missingError };
+  if (!composeFilePath) {
+    return missing;
   }
 
-  const root = shellPlatformRoot(platformDir, isWindows());
-  const dds = shellDdsDirFromPlatform(platformDir, isWindows());
-  const cmd = dockerComposeCommand(
-    root,
-    dds,
-    "ps --status running -q 2>/dev/null | grep -q . && echo running || echo stopped",
+  const result = await spawnShellCommandAsync(
+    `${requireFileCommand(composeFilePath)}${probeCommand}`,
+    settings,
+    { timeoutMs: STATUS_TIMEOUT_MS },
   );
-
-  const result = spawnShellCommand(cmd, settings, {
-    sync: true,
-    timeoutMs: STATUS_TIMEOUT_MS,
-  });
 
   if (result.error || result.status !== 0) {
     return {
       running: false,
       platform,
       configured: true,
-      probeError: combineShellOutput(result) || 'Docker status check failed.',
+      probeError: combineShellOutput(result) || probeFailedError,
     };
   }
 
   const stdout = (result.stdout || '').trim().toLowerCase();
+  const lastLine = stdout.split(/\r?\n/).pop().trim();
+  if (lastLine === MISSING_MARKER) {
+    return missing;
+  }
   return {
     running: stdout.includes('running'),
     platform,
@@ -119,12 +122,28 @@ async function getDockerStatus(settings) {
   };
 }
 
+async function getDockerStatus(settings) {
+  const { platformDir } = normalizeDdsSettings(settings);
+  if (!platformDir) {
+    return { running: false, platform: getPlatform(), configured: false };
+  }
+
+  const root = shellPlatformRoot(platformDir, isWindows());
+  const dds = shellDdsDirFromPlatform(platformDir, isWindows());
+  return probeComposeStatus(settings, {
+    composeFilePath: root ? `${root}/${COMPOSE_FILE}` : '',
+    probeCommand: dockerComposeCommand(root, dds, RUNNING_PROBE),
+    missingError: `Missing ${COMPOSE_FILE} at platform root.`,
+    probeFailedError: 'Docker status check failed.',
+  });
+}
+
 async function dockerComposeUp(settings) {
   const { platformDir } = normalizeDdsSettings(settings);
   if (!platformDir) {
     return { ok: false, error: 'Enter the path to the dds_robot_platform folder.' };
   }
-  if (!composeFileExists(platformDir, settings)) {
+  if (!(await composeFileExists(platformDir, settings))) {
     return {
       ok: false,
       error: `Missing ${COMPOSE_FILE} at platform root.`,
@@ -139,8 +158,7 @@ async function dockerComposeUp(settings) {
   const root = shellPlatformRoot(platformDir, isWindows());
   const dds = shellDdsDirFromPlatform(platformDir, isWindows());
   const cmd = dockerComposeCommand(root, dds, 'up -d');
-  const result = spawnShellCommand(cmd, settings, {
-    sync: true,
+  const result = await spawnShellCommandAsync(cmd, settings, {
     timeoutMs: UP_TIMEOUT_MS,
   });
 
@@ -172,7 +190,7 @@ async function dockerComposeDown(settings) {
   if (!platformDir) {
     return { ok: false, error: 'Enter the path to the dds_robot_platform folder.' };
   }
-  if (!composeFileExists(platformDir, settings)) {
+  if (!(await composeFileExists(platformDir, settings))) {
     return {
       ok: false,
       error: `Missing ${COMPOSE_FILE} at platform root.`,
@@ -182,8 +200,7 @@ async function dockerComposeDown(settings) {
   const root = shellPlatformRoot(platformDir, isWindows());
   const dds = shellDdsDirFromPlatform(platformDir, isWindows());
   const cmd = dockerComposeCommand(root, dds, 'down');
-  const result = spawnShellCommand(cmd, settings, {
-    sync: true,
+  const result = await spawnShellCommandAsync(cmd, settings, {
     timeoutMs: DOWN_TIMEOUT_MS,
   });
 
@@ -202,46 +219,18 @@ async function dockerComposeDown(settings) {
 }
 
 async function getCaptureDockerStatus(settings) {
-  const platform = getPlatform();
   const { platformDir } = normalizeDdsSettings(settings);
   if (!platformDir) {
-    return { running: false, platform, configured: false };
-  }
-  if (!captureComposeFileExists(platformDir, settings)) {
-    return {
-      running: false,
-      platform,
-      configured: false,
-      error: `Missing ${COMPOSE_FILE} in ${CAPTURE_SUBDIR}/.`,
-    };
+    return { running: false, platform: getPlatform(), configured: false };
   }
 
   const captureDir = shellCaptureDir(platformDir);
-  const cmd = captureDockerComposeCommand(
-    captureDir,
-    "ps --status running -q 2>/dev/null | grep -q . && echo running || echo stopped",
-  );
-
-  const result = spawnShellCommand(cmd, settings, {
-    sync: true,
-    timeoutMs: STATUS_TIMEOUT_MS,
+  return probeComposeStatus(settings, {
+    composeFilePath: captureDir ? `${captureDir}/${COMPOSE_FILE}` : '',
+    probeCommand: captureDockerComposeCommand(captureDir, RUNNING_PROBE),
+    missingError: `Missing ${COMPOSE_FILE} in ${CAPTURE_SUBDIR}/.`,
+    probeFailedError: 'Capture Docker status check failed.',
   });
-
-  if (result.error || result.status !== 0) {
-    return {
-      running: false,
-      platform,
-      configured: true,
-      probeError: combineShellOutput(result) || 'Capture Docker status check failed.',
-    };
-  }
-
-  const stdout = (result.stdout || '').trim().toLowerCase();
-  return {
-    running: stdout.includes('running'),
-    platform,
-    configured: true,
-  };
 }
 
 async function captureDockerComposeUp(settings) {
@@ -249,7 +238,7 @@ async function captureDockerComposeUp(settings) {
   if (!platformDir) {
     return { ok: false, error: 'Enter the path to the dds_robot_platform folder.' };
   }
-  if (!captureComposeFileExists(platformDir, settings)) {
+  if (!(await captureComposeFileExists(platformDir, settings))) {
     return {
       ok: false,
       error: `Missing ${COMPOSE_FILE} in ${CAPTURE_SUBDIR}/.`,
@@ -263,8 +252,7 @@ async function captureDockerComposeUp(settings) {
 
   const captureDir = shellCaptureDir(platformDir);
   const cmd = captureDockerComposeCommand(captureDir, 'up -d');
-  const result = spawnShellCommand(cmd, settings, {
-    sync: true,
+  const result = await spawnShellCommandAsync(cmd, settings, {
     timeoutMs: UP_TIMEOUT_MS,
   });
 
@@ -296,7 +284,7 @@ async function captureDockerComposeDown(settings) {
   if (!platformDir) {
     return { ok: false, error: 'Enter the path to the dds_robot_platform folder.' };
   }
-  if (!captureComposeFileExists(platformDir, settings)) {
+  if (!(await captureComposeFileExists(platformDir, settings))) {
     return {
       ok: false,
       error: `Missing ${COMPOSE_FILE} in ${CAPTURE_SUBDIR}/.`,
@@ -305,8 +293,7 @@ async function captureDockerComposeDown(settings) {
 
   const captureDir = shellCaptureDir(platformDir);
   const cmd = captureDockerComposeCommand(captureDir, 'down');
-  const result = spawnShellCommand(cmd, settings, {
-    sync: true,
+  const result = await spawnShellCommandAsync(cmd, settings, {
     timeoutMs: DOWN_TIMEOUT_MS,
   });
 
