@@ -161,6 +161,17 @@ const RobotMap = forwardRef(({
 
   const hasMap = mapData?.map?.width > 0 && mapData?.map?.height > 0;
 
+  // The map is fetched once, not polled. When GraphQL comes back (e.g. the local stack was just
+  // started), retry a failed map load instead of waiting for the Retry button.
+  const prevPositionsErrorRef = useRef(positionsError);
+  useEffect(() => {
+    const recovered = prevPositionsErrorRef.current && !positionsError;
+    prevPositionsErrorRef.current = positionsError;
+    if (recovered && mapError && !hasMap) {
+      refetchMap().catch(() => {});
+    }
+  }, [positionsError, mapError, hasMap, refetchMap]);
+
   // Keep Konva stage matched to the map panel (resize with window / column drag)
   useEffect(() => {
     const el = containerRef.current;

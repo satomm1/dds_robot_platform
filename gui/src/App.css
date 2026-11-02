@@ -1992,6 +1992,143 @@
   color: #c62828;
 }
 
+/* Start card over the map while the local stack is off (LocalStackLaunchCard) */
+.map-container > .local-stack-launch {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  width: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: rgba(240, 246, 250, 0.94);
+}
+
+.local-stack-launch__card {
+  width: 100%;
+  max-width: 440px;
+  box-sizing: border-box;
+  padding: 28px 28px 20px;
+  border: 1px solid #d6dee5;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  text-align: center;
+  color: #333;
+}
+
+.local-stack-launch__title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #282c34;
+}
+
+.local-stack-launch__detail {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #555;
+}
+
+.local-stack-launch__spinner {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #c8d1d9;
+  border-top-color: #28a745;
+  border-radius: 50%;
+  animation: local-stack-launch-spin 0.9s linear infinite;
+}
+
+@keyframes local-stack-launch-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.local-stack-launch__btn {
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.local-stack-launch__btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.local-stack-launch__btn--start {
+  display: block;
+  width: 100%;
+  padding: 14px 20px;
+  border: 1px solid #1e7e34;
+  background: #28a745;
+  color: #fff;
+  font-size: 17px;
+}
+
+.local-stack-launch__btn--start:hover:not(:disabled) {
+  background: #218838;
+}
+
+.local-stack-launch__btn--secondary {
+  padding: 8px 16px;
+  border: 1px solid #90a4ae;
+  background: #fff;
+  color: #333;
+  font-size: 14px;
+}
+
+.local-stack-launch__btn--secondary:hover:not(:disabled) {
+  background: #e9ecef;
+}
+
+.local-stack-launch__setup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.local-stack-launch__input {
+  flex: 1 1 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.local-stack-launch__error {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #c62828;
+  word-break: break-word;
+}
+
+.local-stack-launch__dismiss {
+  margin-top: 16px;
+  padding: 4px;
+  border: none;
+  background: none;
+  color: #607d8b;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.local-stack-launch__dismiss:hover {
+  color: #37474f;
+}
+
 /* Robot startup panel (top of right sidebar) */
 .robot-startup {
   flex-shrink: 0;

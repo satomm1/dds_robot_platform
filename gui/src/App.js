@@ -18,6 +18,8 @@ import HelpModal from './components/HelpModal';
 import MapSettingsModal from './components/MapSettingsModal';
 import SystemHealthBar from './components/SystemHealthBar';
 import { RobotColorProvider } from './hooks/useRobotColors';
+import { LocalStackProvider } from './hooks/useLocalStack';
+import LocalStackLaunchCard from './components/LocalStackLaunchCard';
 import { useMapDisplaySettings } from './hooks/useMapDisplaySettings';
 import { useMultiRobotPlan } from './hooks/useMultiRobotPlan';
 import { usePatrolEditor } from './hooks/usePatrolEditor';
@@ -38,7 +40,9 @@ function App() {
   return (
     <ApolloProvider client={client}>
       <RobotColorProvider>
-        <AppContent />
+        <LocalStackProvider>
+          <AppContent />
+        </LocalStackProvider>
       </RobotColorProvider>
     </ApolloProvider>
   );
@@ -561,6 +565,7 @@ function AppContent() {
             dismissPathForRobot={dismissPathForRobot}
             clearPathDismissalForRobot={clearPathDismissalForRobot}
           />
+          <LocalStackLaunchCard backendDown={Boolean(positionsError)} />
         </div>
         {rightSidebarCollapsed ? (
           <button
