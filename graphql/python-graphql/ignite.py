@@ -1,14 +1,46 @@
 import logging
 import os
 import time
-from typing import Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from pyignite import Client
+from pyignite.cache import Cache
+from pyignite.exceptions import CacheError
 
 logger = logging.getLogger(__name__)
 
 ignite_client = Client()
 _connected = False
+
+# Cache tables hold one row per robot/agent, so one page covers a whole scan.
+SCAN_PAGE_SIZE = 1024
+
+# get_or_create_cache is a network round trip; keep one handle per cache name.
+_handles: Dict[str, Cache] = {}
+
+
+def get_cache(name: str) -> Cache:
+    """Handle for cache `name`, created on first use and reused afterwards."""
+    handle = _handles.get(name)
+    if handle is None:
+        handle = ignite_client.get_or_create_cache(name)
+        _handles[name] = handle
+    return handle
+
+
+def cache_op(name: str, fn: Callable[[Cache], Any]) -> Any:
+    """Run fn(cache). On CacheError (e.g. Ignite restarted and dropped the cache), recreate it and retry once."""
+    try:
+        return fn(get_cache(name))
+    except CacheError as exc:
+        logger.info("cache %s op failed (%s); recreating handle and retrying", name, exc)
+        _handles.pop(name, None)
+        return fn(get_cache(name))
+
+
+def scan_rows(name: str) -> List[tuple]:
+    """All (key, value) rows of cache `name`, fetched in one page."""
+    return cache_op(name, lambda c: list(c.scan(page_size=SCAN_PAGE_SIZE)))
 
 
 def is_ignite_connected() -> bool:

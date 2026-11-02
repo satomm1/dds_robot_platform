@@ -6,7 +6,8 @@ import numpy as np
 import base64
 
 from global_transform import require_global_transform
-from ignite import ignite_client
+from ignite import cache_op
+from objects_common import drop_stale
 from se2 import transform_pose
 
 mutation = MutationType()
@@ -22,16 +23,14 @@ MCU_STATE_CACHE = "robot_mcu_state"
 
 @mutation.field("requestRobotStop")
 def resolve_request_robot_stop(_, info, robot_id: int):
-    stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
-    path_cache = ignite_client.get_or_create_cache("cmd_smoothed_path")
     payload = {
         "requested_at": time.time(),
         "pending": True,
     }
     try:
-        stop_cache.put(robot_id, json.dumps(payload))
+        cache_op(STOP_REQUEST_CACHE, lambda c: c.put(robot_id, json.dumps(payload)))
         try:
-            path_cache.remove_key(robot_id)
+            cache_op("cmd_smoothed_path", lambda c: c.remove_key(robot_id))
         except Exception:
             logger.debug(
                 "requestRobotStop: no path entry or remove_key failed for robot_id=%s",
@@ -45,16 +44,14 @@ def resolve_request_robot_stop(_, info, robot_id: int):
 
 @mutation.field("requestRobotShutdown")
 def resolve_request_robot_shutdown(_, info, robot_id: int):
-    shutdown_cache = ignite_client.get_or_create_cache(SHUTDOWN_REQUEST_CACHE)
-    path_cache = ignite_client.get_or_create_cache("cmd_smoothed_path")
     payload = {
         "requested_at": time.time(),
         "pending": True,
     }
     try:
-        shutdown_cache.put(robot_id, json.dumps(payload))
+        cache_op(SHUTDOWN_REQUEST_CACHE, lambda c: c.put(robot_id, json.dumps(payload)))
         try:
-            path_cache.remove_key(robot_id)
+            cache_op("cmd_smoothed_path", lambda c: c.remove_key(robot_id))
         except Exception:
             logger.debug(
                 "requestRobotShutdown: no path entry or remove_key failed for robot_id=%s",
@@ -68,9 +65,8 @@ def resolve_request_robot_shutdown(_, info, robot_id: int):
 
 @mutation.field("clearRobotPath")
 def resolve_clear_robot_path(_, info, robot_id: int):
-    path_cache = ignite_client.get_or_create_cache("cmd_smoothed_path")
     try:
-        path_cache.remove_key(robot_id)
+        cache_op("cmd_smoothed_path", lambda c: c.remove_key(robot_id))
         return True
     except Exception as exc:
         logger.exception("clearRobotPath failed for robot_id=%s: %s", robot_id, exc)
@@ -79,9 +75,8 @@ def resolve_clear_robot_path(_, info, robot_id: int):
 
 @mutation.field("consumeRobotStopRequest")
 def resolve_consume_robot_stop_request(_, info, robot_id: int):
-    stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
     try:
-        stop_cache.remove_key(robot_id)
+        cache_op(STOP_REQUEST_CACHE, lambda c: c.remove_key(robot_id))
         return True
     except Exception as exc:
         logger.debug(
@@ -94,9 +89,8 @@ def resolve_consume_robot_stop_request(_, info, robot_id: int):
 
 @mutation.field("consumeRobotShutdownRequest")
 def resolve_consume_robot_shutdown_request(_, info, robot_id: int):
-    shutdown_cache = ignite_client.get_or_create_cache(SHUTDOWN_REQUEST_CACHE)
     try:
-        shutdown_cache.remove_key(robot_id)
+        cache_op(SHUTDOWN_REQUEST_CACHE, lambda c: c.remove_key(robot_id))
         return True
     except Exception as exc:
         logger.debug(
@@ -112,8 +106,6 @@ def resolve_set_multi_robot_goal_plan(_, info, plan_id, coordinated, plan_timest
     if not goals or len(goals) < 2:
         logger.warning("setMultiRobotGoalPlan: need at least two goals, got %s", len(goals or []))
         return False
-    goal_cache = ignite_client.get_or_create_cache("robot_goal")
-    plan_cache = ignite_client.get_or_create_cache(MULTI_ROBOT_GOAL_PLAN_CACHE)
     stored_goals = []
     robot_ids = []
     for g in goals:
@@ -136,10 +128,10 @@ def resolve_set_multi_robot_goal_plan(_, info, plan_id, coordinated, plan_timest
     try:
         for rid in robot_ids:
             try:
-                goal_cache.remove_key(rid)
+                cache_op("robot_goal", lambda c: c.remove_key(rid))
             except Exception:
                 pass
-        plan_cache.put(MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY, json.dumps(doc))
+        cache_op(MULTI_ROBOT_GOAL_PLAN_CACHE, lambda c: c.put(MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY, json.dumps(doc)))
         return True
     except Exception as exc:
         logger.exception("setMultiRobotGoalPlan failed: %s", exc)
@@ -148,9 +140,8 @@ def resolve_set_multi_robot_goal_plan(_, info, plan_id, coordinated, plan_timest
 
 @mutation.field("consumeMultiRobotGoalPlan")
 def resolve_consume_multi_robot_goal_plan(_, info):
-    plan_cache = ignite_client.get_or_create_cache(MULTI_ROBOT_GOAL_PLAN_CACHE)
     try:
-        plan_cache.remove_key(MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY)
+        cache_op(MULTI_ROBOT_GOAL_PLAN_CACHE, lambda c: c.remove_key(MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY))
         return True
     except Exception as exc:
         logger.debug("consumeMultiRobotGoalPlan: %s", exc)
@@ -159,7 +150,6 @@ def resolve_consume_multi_robot_goal_plan(_, info):
 
 @mutation.field("setRobotGoal")
 def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_timestamp, from_bot=None, goal_valid=True):
-    goal_cache = ignite_client.get_or_create_cache('robot_goal')
     goal = {
         "x": x_goal,
         "y": y_goal,
@@ -170,7 +160,7 @@ def resolve_set_robot_goal(_, info, robot_id, x_goal, y_goal, theta_goal, goal_t
     if from_bot is not None:
         goal["from_bot"] = from_bot
     try:
-        goal_cache.put(robot_id, json.dumps(goal))
+        cache_op('robot_goal', lambda c: c.put(robot_id, json.dumps(goal)))
         return True
     except Exception as exc:
         logger.exception("setRobotGoal failed for robot_id=%s: %s", robot_id, exc)
@@ -218,7 +208,6 @@ def resolve_set_global_robot_goal(
 
 @mutation.field("setRobotPosition")
 def resolve_set_robot_position(_, info, robot_id, x, y, theta, position_timestamp=None):
-    position_cache = ignite_client.get_or_create_cache('robot_position')
     position = {
         "x": x,
         "y": y,
@@ -227,14 +216,13 @@ def resolve_set_robot_position(_, info, robot_id, x, y, theta, position_timestam
     if position_timestamp is not None:
         position["position_timestamp"] = float(position_timestamp)
     try:
-        position_cache.put(robot_id, json.dumps(position))
+        cache_op('robot_position', lambda c: c.put(robot_id, json.dumps(position)))
         return True
     except Exception as exc:
         logger.exception("setRobotPosition failed for robot_id=%s: %s", robot_id, exc)
         return False    
 @mutation.field("setRobotInitialPosition")
 def resolve_set_robot_initial_position(_, info, robot_id, x_init, y_init, theta_init, init_timestamp):
-    position_cache = ignite_client.get_or_create_cache('robot_initial_position')
     position = {
         "x": x_init,
         "y": y_init,
@@ -242,7 +230,7 @@ def resolve_set_robot_initial_position(_, info, robot_id, x_init, y_init, theta_
         "timestamp": init_timestamp
     }
     try:
-        position_cache.put(robot_id, json.dumps(position))
+        cache_op('robot_initial_position', lambda c: c.put(robot_id, json.dumps(position)))
         return True
     except Exception as exc:
         logger.exception("setRobotInitialPosition failed for robot_id=%s: %s", robot_id, exc)
@@ -250,9 +238,8 @@ def resolve_set_robot_initial_position(_, info, robot_id, x_init, y_init, theta_
     
 @mutation.field("clearRobotPosition")
 def resolve_clear_robot_position(_, info, robot_id):
-    position_cache = ignite_client.get_or_create_cache('robot_position')
     try:
-        position_cache.remove_key(robot_id)
+        cache_op('robot_position', lambda c: c.remove_key(robot_id))
         return True
     except Exception as exc:
         logger.exception("clearRobotPosition failed for robot_id=%s: %s", robot_id, exc)
@@ -260,33 +247,15 @@ def resolve_clear_robot_position(_, info, robot_id):
     
 @mutation.field("clearRobot")
 def resolve_clear_robot(_, info, robot_id):
-    position_cache = ignite_client.get_or_create_cache('robot_position')
-    path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
-    goal_cache = ignite_client.get_or_create_cache('robot_goal')
-    stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
-    shutdown_cache = ignite_client.get_or_create_cache(SHUTDOWN_REQUEST_CACHE)
     try:
-        position_cache.remove_key(robot_id)
-        path_cache.remove_key(robot_id)
-        goal_cache.remove_key(robot_id)
-        try:
-            stop_cache.remove_key(robot_id)
-        except Exception:
-            pass
-        try:
-            shutdown_cache.remove_key(robot_id)
-        except Exception:
-            pass
-        air_quality_cache = ignite_client.get_or_create_cache(AIR_QUALITY_CACHE)
-        try:
-            air_quality_cache.remove_key(robot_id)
-        except Exception:
-            pass
-        mcu_cache = ignite_client.get_or_create_cache(MCU_STATE_CACHE)
-        try:
-            mcu_cache.remove_key(robot_id)
-        except Exception:
-            pass
+        cache_op('robot_position', lambda c: c.remove_key(robot_id))
+        cache_op('cmd_smoothed_path', lambda c: c.remove_key(robot_id))
+        cache_op('robot_goal', lambda c: c.remove_key(robot_id))
+        for name in (STOP_REQUEST_CACHE, SHUTDOWN_REQUEST_CACHE, AIR_QUALITY_CACHE, MCU_STATE_CACHE):
+            try:
+                cache_op(name, lambda c: c.remove_key(robot_id))
+            except Exception:
+                pass
         return True
     except Exception as exc:
         logger.exception("clearRobot failed for robot_id=%s: %s", robot_id, exc)
@@ -304,7 +273,6 @@ def resolve_set_air_quality(
     nox_index,
     timestamp,
 ):
-    air_quality_cache = ignite_client.get_or_create_cache(AIR_QUALITY_CACHE)
     payload = {
         "temperature": float(temperature),
         "relative_humidity": float(relative_humidity),
@@ -313,7 +281,7 @@ def resolve_set_air_quality(
         "timestamp": float(timestamp),
     }
     try:
-        air_quality_cache.put(robot_id, json.dumps(payload))
+        cache_op(AIR_QUALITY_CACHE, lambda c: c.put(robot_id, json.dumps(payload)))
         return True
     except Exception as exc:
         logger.exception("setAirQuality failed for robot_id=%s: %s", robot_id, exc)
@@ -329,14 +297,13 @@ def resolve_set_robot_mcu_state(
     location_valid,
     timestamp,
 ):
-    mcu_cache = ignite_client.get_or_create_cache(MCU_STATE_CACHE)
     payload = {
         "mcu_connected": bool(mcu_connected),
         "location_valid": bool(location_valid),
         "timestamp": float(timestamp),
     }
     try:
-        mcu_cache.put(robot_id, json.dumps(payload))
+        cache_op(MCU_STATE_CACHE, lambda c: c.put(robot_id, json.dumps(payload)))
         return True
     except Exception as exc:
         logger.exception("setRobotMcuState failed for robot_id=%s: %s", robot_id, exc)
@@ -344,9 +311,8 @@ def resolve_set_robot_mcu_state(
 
 @mutation.field("setAgentList")
 def resolve_set_agent_list(_, info, agent_list):
-    agent_list_cache = ignite_client.get_or_create_cache('subscribed_agents')
     try:
-        agent_list_cache.put(1, json.dumps(agent_list))
+        cache_op('subscribed_agents', lambda c: c.put(1, json.dumps(agent_list)))
         return True
     except Exception as exc:
         logger.exception("setAgentList failed: %s", exc)
@@ -354,9 +320,8 @@ def resolve_set_agent_list(_, info, agent_list):
     
 @mutation.field("setExitedAgentList")
 def resolve_set_exited_agent_list(_, info, agent_list):
-    agent_list_cache = ignite_client.get_or_create_cache('exited_agents')
     try:
-        agent_list_cache.put(1, json.dumps(agent_list))
+        cache_op('exited_agents', lambda c: c.put(1, json.dumps(agent_list)))
         return True
     except Exception as exc:
         logger.exception("setExitedAgentList failed: %s", exc)
@@ -364,9 +329,8 @@ def resolve_set_exited_agent_list(_, info, agent_list):
     
 @mutation.field("clearDetectedObjects")
 def resolve_clear_detected_objects(_, info):
-    detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')
     try:
-        detected_objects_cache.clear()
+        cache_op('detected_objects', lambda c: c.clear())
         return True
     except Exception as exc:
         logger.exception("clearDetectedObjects failed: %s", exc)
@@ -397,9 +361,8 @@ def resolve_set_transform(_, info, R, t, timestamp, model=None, src_points=None,
         transform["src_points"] = src_points
         transform["dst_points"] = dst_points
         transform["smooth"] = float(smooth or 0.0)
-    transform_cache = ignite_client.get_or_create_cache('transform')
     try:
-        transform_cache.put(1, json.dumps(transform))
+        cache_op('transform', lambda c: c.put(1, json.dumps(transform)))
         return True
     except Exception as exc:
         logger.exception("setTransform failed: %s", exc)
@@ -407,11 +370,9 @@ def resolve_set_transform(_, info, R, t, timestamp, model=None, src_points=None,
     
 @mutation.field("setMap")
 def resolve_set_map(_, info, data):
-    map_cache = ignite_client.get_or_create_cache('map')
-
     array_bytes = base64.b64decode(data)
     try:
-        map_cache.put(1, array_bytes)
+        cache_op('map', lambda c: c.put(1, array_bytes))
         return True
     except Exception as exc:
         logger.exception("setMap failed: %s", exc)
@@ -419,7 +380,6 @@ def resolve_set_map(_, info, data):
     
 @mutation.field("setMapMetadata")
 def resolve_set_map_metdata(_, info, resolution, width, height, origin_pos_x, origin_pos_y, origin_pos_z, origin_ori_x, origin_ori_y, origin_ori_z, origin_ori_w):
-    md_cache = ignite_client.get_or_create_cache('map_metadata')
     metadata = {
         "resolution": resolution,
         "width": width,
@@ -433,7 +393,7 @@ def resolve_set_map_metdata(_, info, resolution, width, height, origin_pos_x, or
         "origin.orientation.w": origin_ori_w
     }
     try:
-        md_cache.put(1, json.dumps(metadata))
+        cache_op('map_metadata', lambda c: c.put(1, json.dumps(metadata)))
         return True
     except Exception as exc:
         logger.exception("setMapMetadata failed: %s", exc)
@@ -441,14 +401,13 @@ def resolve_set_map_metdata(_, info, resolution, width, height, origin_pos_x, or
     
 @mutation.field("setPath")
 def resolve_set_path(_, info, robot_id, x, y, t):
-    path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
     path = {
         "x": x,
         "y": y,
         "t": t
     }
     try:
-        path_cache.put(robot_id, json.dumps(path).encode('utf-8'))
+        cache_op('cmd_smoothed_path', lambda c: c.put(robot_id, json.dumps(path).encode('utf-8')))
         return True
     except Exception as exc:
         logger.exception("setPath failed for robot_id=%s: %s", robot_id, exc)
@@ -456,15 +415,14 @@ def resolve_set_path(_, info, robot_id, x, y, t):
     
 @mutation.field("setObjects")
 def resolve_set_objects(_, info, agent_id, x, y, class_name, object_num, timestamp=None):
-    detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')
-    
     # Get existing objects
-    detected_objects = detected_objects_cache.get(agent_id)
+    detected_objects = cache_op('detected_objects', lambda c: c.get(agent_id))
 
     if detected_objects is None:
         detected_objects = dict()
     else:
-        detected_objects = json.loads(detected_objects)
+        # Writers prune stale detections; objectPositions only filters them on read.
+        detected_objects = drop_stale(json.loads(detected_objects), time.time())
 
     entry = {
         "x": x,
@@ -477,7 +435,7 @@ def resolve_set_objects(_, info, agent_id, x, y, class_name, object_num, timesta
     detected_objects[object_num] = entry
 
     try:
-        detected_objects_cache.put(agent_id, json.dumps(detected_objects))
+        cache_op('detected_objects', lambda c: c.put(agent_id, json.dumps(detected_objects)))
         return True
     except Exception as exc:
         logger.exception("setObjects failed for agent_id=%s: %s", agent_id, exc)
@@ -485,9 +443,7 @@ def resolve_set_objects(_, info, agent_id, x, y, class_name, object_num, timesta
     
 @mutation.field("clearObject")
 def resolve_clear_object(_, info, agent_id, object_num):
-    detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')
-
-    detected_objects = detected_objects_cache.get(agent_id)
+    detected_objects = cache_op('detected_objects', lambda c: c.get(agent_id))
     if detected_objects is None:
         return False
     detected_objects = json.loads(detected_objects)
@@ -495,8 +451,9 @@ def resolve_clear_object(_, info, agent_id, object_num):
     if str(object_num) not in detected_objects:
         return False
     detected_objects.pop(str(object_num))
+    detected_objects = drop_stale(detected_objects, time.time())
     try:
-        detected_objects_cache.put(agent_id, json.dumps(detected_objects))
+        cache_op('detected_objects', lambda c: c.put(agent_id, json.dumps(detected_objects)))
         return True
     except Exception as exc:
         logger.exception("clearObject failed for agent_id=%s: %s", agent_id, exc)
@@ -507,7 +464,7 @@ def resolve_set_ledger_objects(_, info, objects):
     """Replace the fleet ledger snapshot (JSON array) published by dds/observation_ledger.py."""
     try:
         json.loads(objects)
-        ignite_client.get_or_create_cache('ledger_objects').put(1, objects)
+        cache_op('ledger_objects', lambda c: c.put(1, objects))
         return True
     except Exception as exc:
         logger.exception("setLedgerObjects failed: %s", exc)
@@ -515,9 +472,8 @@ def resolve_set_ledger_objects(_, info, objects):
 
 @mutation.field("clearAllObjects")
 def resolve_clear_all_objects(_, info):
-    detected_objects_cache = ignite_client.get_or_create_cache('detected_objects')
     try:
-        detected_objects_cache.clear()
+        cache_op('detected_objects', lambda c: c.clear())
         return True
     except Exception as exc:
         logger.exception("clearAllObjects failed: %s", exc)

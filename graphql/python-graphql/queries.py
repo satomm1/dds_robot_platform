@@ -1,19 +1,17 @@
 from ariadne import load_schema_from_path, make_executable_schema, gql, QueryType
 import json
 import logging
-import os
 import time
 import numpy as np
 
 from global_transform import get_global_transform_doc, require_global_transform
-from ignite import ignite_client
+from ignite import cache_op, scan_rows
+from objects_common import is_stale
 from robot_images import has_image, image_url, read_meta
 from se2 import transform_pose
 
 logger = logging.getLogger(__name__)
 
-md_cache = ignite_client.get_or_create_cache('map_metadata')
-map_cache = ignite_client.get_or_create_cache('map')
 query = QueryType()
 
 STOP_REQUEST_CACHE = "robot_stop_request"
@@ -22,9 +20,6 @@ MULTI_ROBOT_GOAL_PLAN_CACHE = "multi_robot_goal_plan"
 MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY = "active"
 AIR_QUALITY_CACHE = "robot_air_quality"
 MCU_STATE_CACHE = "robot_mcu_state"
-# Drop detections older than this (Unix seconds); entries without timestamp are kept.
-OBJECT_STALE_SEC = float(os.environ.get("OBJECT_STALE_SEC", "15"))
-PERSON_OBJECT_STALE_SEC = float(os.environ.get("PERSON_OBJECT_STALE_SEC", "1.0"))
 
 
 def _central_pose_to_global(x, y, theta):
@@ -71,8 +66,8 @@ def _mcu_state_from_cache_row(robot_id, raw):
 
 @query.field("map")
 def resolve_data(*_):
-    md = md_cache.get(1)
-    map = map_cache.get(1)
+    md = cache_op('map_metadata', lambda c: c.get(1))
+    map = cache_op('map', lambda c: c.get(1))
     if md is None or map is None:
         logger.debug("map query: missing map_metadata or map bytes")
         return {
@@ -125,15 +120,13 @@ def _robot_position_from_cache(robot_id, raw):
 
 @query.field("robotPosition")
 def resolve_data(*_, robot_id: int):
-    position_cache = ignite_client.get_or_create_cache('robot_position')
-    robot = position_cache.get(robot_id)
+    robot = cache_op('robot_position', lambda c: c.get(robot_id))
     return _robot_position_from_cache(robot_id, robot)
 
 
 @query.field("robotPositions")
 def resolve_data(*_):
-    position_cache = ignite_client.get_or_create_cache('robot_position')
-    robots = position_cache.scan()
+    robots = scan_rows('robot_position')
     all_robots = []
     for robot in robots:
         robot_id = robot[0]
@@ -149,8 +142,7 @@ def resolve_data(*_):
 
 @query.field("robotInitialPosition")
 def resolve_data(*_, robot_id: int):
-    position_cache = ignite_client.get_or_create_cache('robot_initial_position')
-    robot = position_cache.get(robot_id)
+    robot = cache_op('robot_initial_position', lambda c: c.get(robot_id))
     if robot is None:
         return {
             "x_init": None,
@@ -167,8 +159,7 @@ def resolve_data(*_, robot_id: int):
 
 @query.field("robotInitialPositions")
 def resolve_data(*_):
-    position_cache = ignite_client.get_or_create_cache('robot_initial_position')
-    robots = position_cache.scan()
+    robots = scan_rows('robot_initial_position')
     all_robots = []
     for robot in robots:
         robot_id = robot[0]
@@ -184,8 +175,7 @@ def resolve_data(*_):
 
 @query.field("robotVelocity")
 def resolve_data(*_, robot_id: int):
-    velocity_cache = ignite_client.get_or_create_cache('robot_odom')
-    robot = velocity_cache.get(robot_id)
+    robot = cache_op('robot_odom', lambda c: c.get(robot_id))
     if robot is None:
         return {
             "v_x": None,
@@ -201,8 +191,7 @@ def resolve_data(*_, robot_id: int):
 
 @query.field("robotGoal")
 def resolve_data(*_, robot_id: int):
-    goal_cache = ignite_client.get_or_create_cache('robot_goal')
-    robot = goal_cache.get(robot_id)
+    robot = cache_op('robot_goal', lambda c: c.get(robot_id))
     if robot is None:
         return {
             "x_goal": None,
@@ -226,8 +215,7 @@ def resolve_data(*_, robot_id: int):
 
 @query.field("robotGoals")
 def resolve_data(*_):
-    goal_cache = ignite_client.get_or_create_cache('robot_goal')
-    goals = goal_cache.scan()
+    goals = scan_rows('robot_goal')
     all_goals = []
     for goal in goals:
         robot_id = goal[0]
@@ -247,8 +235,7 @@ def resolve_data(*_):
 def resolve_global_robot_position(*_, robot_id: int):
     # Ensure transform exists before reading (clear error if misconfigured)
     require_global_transform()
-    position_cache = ignite_client.get_or_create_cache('robot_position')
-    robot = position_cache.get(robot_id)
+    robot = cache_op('robot_position', lambda c: c.get(robot_id))
     pos = _robot_position_from_cache(robot_id, robot)
     gx, gy, gtheta = _central_pose_to_global(pos["x"], pos["y"], pos["theta"])
     return {
@@ -262,8 +249,7 @@ def resolve_global_robot_position(*_, robot_id: int):
 @query.field("globalRobotPositions")
 def resolve_global_robot_positions(*_):
     require_global_transform()
-    position_cache = ignite_client.get_or_create_cache('robot_position')
-    robots = position_cache.scan()
+    robots = scan_rows('robot_position')
     all_robots = []
     for robot in robots:
         robot_id = robot[0]
@@ -306,8 +292,7 @@ def _robot_goal_from_cache(raw):
 @query.field("globalRobotGoal")
 def resolve_global_robot_goal(*_, robot_id: int):
     require_global_transform()
-    goal_cache = ignite_client.get_or_create_cache('robot_goal')
-    goal = _robot_goal_from_cache(goal_cache.get(robot_id))
+    goal = _robot_goal_from_cache(cache_op('robot_goal', lambda c: c.get(robot_id)))
     gx, gy, gtheta = _central_pose_to_global(
         goal["x_goal"], goal["y_goal"], goal["theta_goal"]
     )
@@ -324,8 +309,7 @@ def resolve_global_robot_goal(*_, robot_id: int):
 @query.field("globalRobotGoals")
 def resolve_global_robot_goals(*_):
     require_global_transform()
-    goal_cache = ignite_client.get_or_create_cache('robot_goal')
-    goals = goal_cache.scan()
+    goals = scan_rows('robot_goal')
     all_goals = []
     for entry in goals:
         robot_id = entry[0]
@@ -364,8 +348,7 @@ def resolve_global_transform(*_):
 
 @query.field("activeMultiRobotGoalPlan")
 def resolve_active_multi_robot_goal_plan(*_):
-    plan_cache = ignite_client.get_or_create_cache(MULTI_ROBOT_GOAL_PLAN_CACHE)
-    raw = plan_cache.get(MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY)
+    raw = cache_op(MULTI_ROBOT_GOAL_PLAN_CACHE, lambda c: c.get(MULTI_ROBOT_GOAL_PLAN_ACTIVE_KEY))
     if raw is None:
         return None
     try:
@@ -394,10 +377,9 @@ def resolve_active_multi_robot_goal_plan(*_):
 
 @query.field("pendingRobotStops")
 def resolve_pending_robot_stops(*_):
-    stop_cache = ignite_client.get_or_create_cache(STOP_REQUEST_CACHE)
     pending = []
     try:
-        for row in stop_cache.scan():
+        for row in scan_rows(STOP_REQUEST_CACHE):
             robot_id, raw = row[0], row[1]
             if raw is None:
                 continue
@@ -416,10 +398,9 @@ def resolve_pending_robot_stops(*_):
 
 @query.field("pendingRobotShutdowns")
 def resolve_pending_robot_shutdowns(*_):
-    shutdown_cache = ignite_client.get_or_create_cache(SHUTDOWN_REQUEST_CACHE)
     pending = []
     try:
-        for row in shutdown_cache.scan():
+        for row in scan_rows(SHUTDOWN_REQUEST_CACHE):
             robot_id, raw = row[0], row[1]
             if raw is None:
                 continue
@@ -438,8 +419,7 @@ def resolve_pending_robot_shutdowns(*_):
 
 @query.field("robotPath")
 def resolve_data(*_, robot_id: int):
-    path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
-    robot = path_cache.get(robot_id)
+    robot = cache_op('cmd_smoothed_path', lambda c: c.get(robot_id))
     if robot is None:
         return {
             "id": robot_id,
@@ -457,8 +437,7 @@ def resolve_data(*_, robot_id: int):
 
 @query.field("robotPaths")
 def resolve_data(*_):
-    path_cache = ignite_client.get_or_create_cache('cmd_smoothed_path')
-    paths = path_cache.scan()
+    paths = scan_rows('cmd_smoothed_path')
     all_paths = []
     for path in paths:
         robot_id = path[0]
@@ -473,8 +452,7 @@ def resolve_data(*_):
 
 @query.field("robotScan")
 def resolve_data(*_, robot_id: int):
-    scan_cache = ignite_client.get_or_create_cache('robot_scan')
-    robot = scan_cache.get(robot_id)
+    robot = cache_op('robot_scan', lambda c: c.get(robot_id))
     if robot is None:
         logger.debug("robotScan cache miss for robot_id=%s", robot_id)
         return {
@@ -523,8 +501,7 @@ def resolve_data(*_, robot_id: int):
 
 @query.field("robotStatus")
 def resolve_data(*_, robot_id: int):
-    status_cache = ignite_client.get_or_create_cache('robot_status')
-    robot = status_cache.get(robot_id)
+    robot = cache_op('robot_status', lambda c: c.get(robot_id))
     if robot is None:
         return {
             "id": robot_id,
@@ -543,14 +520,12 @@ def resolve_data(*_, robot_id: int):
 
 @query.field("stoppedRobotPositions")
 def resolve_data(*_):
-    position_cache = ignite_client.get_or_create_cache('robot_position')
-    status_cache = ignite_client.get_or_create_cache('robot_status')
-    robots = position_cache.scan()
+    robots = scan_rows('robot_position')
     all_robots = []
     for robot in robots:
         robot_id = robot[0]
         robot = json.loads(robot[1])
-        status = status_cache.get(robot_id)
+        status = cache_op('robot_status', lambda c: c.get(robot_id))
         if status == 0:
             all_robots.append({
                 "id": robot_id,
@@ -561,12 +536,12 @@ def resolve_data(*_):
     return all_robots
 
 def _object_positions_from_cache():
-    position_cache = ignite_client.get_or_create_cache('detected_objects')
-    objects = position_cache.scan()
+    # Read-only: stale detections are filtered here and pruned by the writers
+    # (setObjects / clearObject), so frequent polls never write to Ignite.
+    objects = scan_rows('detected_objects')
     all_objects = []
     now = time.time()
 
-    id = 0
     for row in objects:
         robot_id = int(row[0])
         try:
@@ -575,40 +550,18 @@ def _object_positions_from_cache():
             logger.warning("objectPositions bad JSON for agent_id=%s: %s", robot_id, exc)
             continue
 
-        kept = {}
         for key, object in by_num.items():
-            ts = object.get("timestamp")
-            if ts is not None:
-                try:
-                    stale_limit = (
-                        PERSON_OBJECT_STALE_SEC
-                        if object.get("class_name") == "person"
-                        else OBJECT_STALE_SEC
-                    )
-                    if now - float(ts) > stale_limit:
-                        continue
-                except (TypeError, ValueError):
-                    pass
-            kept[key] = object
+            if is_stale(object, now):
+                continue
             all_objects.append({
-                "id": id,
+                # Stable per object while present: "{robot_id}:{object_num}".
+                "id": f"{robot_id}:{key}",
                 "robot_id": robot_id,
                 "x": object["x"],
                 "y": object["y"],
                 "type": object["class_name"],
                 "timestamp": object.get("timestamp"),
             })
-            id += 1
-
-        # Persist prune so Ignite does not keep stale detections forever
-        if len(kept) != len(by_num):
-            try:
-                if kept:
-                    position_cache.put(robot_id, json.dumps(kept))
-                else:
-                    position_cache.remove(robot_id)
-            except Exception as exc:
-                logger.warning("objectPositions prune failed agent_id=%s: %s", robot_id, exc)
 
     return all_objects
 
@@ -621,7 +574,7 @@ def resolve_data(*_):
 @query.field("ledgerObjects")
 def resolve_ledger_objects(*_):
     # The ledger only holds objects that are currently present, so no stale pruning here.
-    raw = ignite_client.get_or_create_cache('ledger_objects').get(1)
+    raw = cache_op('ledger_objects', lambda c: c.get(1))
     if raw is None:
         return []
     try:
@@ -650,8 +603,7 @@ def resolve_global_object_positions(*_):
 
 @query.field("transform")
 def resolve_data(*_):
-    transform_cache = ignite_client.get_or_create_cache('transform')
-    transform = transform_cache.get(1)
+    transform = cache_op('transform', lambda c: c.get(1))
     if transform is None:
         return {
             "R": [0],
@@ -678,8 +630,7 @@ def resolve_data(*_):
 
 @query.field("subscribed_agents")
 def resolve_data(*_):
-    agent_cache = ignite_client.get_or_create_cache('subscribed_agents')
-    agents = agent_cache.get(1)
+    agents = cache_op('subscribed_agents', lambda c: c.get(1))
     if agents is None:
         return {"id": []}
     agents = json.loads(agents)
@@ -691,8 +642,7 @@ def resolve_data(*_):
 
 @query.field("exitedAgents")
 def resolve_data(*_):
-    agent_cache = ignite_client.get_or_create_cache('exited_agents')
-    agents = agent_cache.get(1)
+    agents = cache_op('exited_agents', lambda c: c.get(1))
     if agents is None:
         return {"id": []}
     agents = json.loads(agents)
@@ -704,10 +654,8 @@ def resolve_data(*_):
 
 @query.field("subscribedAndExitedAgents")
 def resolve_data(*_):
-    agent_cache = ignite_client.get_or_create_cache('subscribed_agents')
-    exited_agent_cache = ignite_client.get_or_create_cache('exited_agents')
-    agents = agent_cache.get(1)
-    exited_agents = exited_agent_cache.get(1)
+    agents = cache_op('subscribed_agents', lambda c: c.get(1))
+    exited_agents = cache_op('exited_agents', lambda c: c.get(1))
     
     if agents is None:
         agents = []
@@ -726,15 +674,13 @@ def resolve_data(*_):
 
 @query.field("airQuality")
 def resolve_air_quality(*_, robot_id: int):
-    air_quality_cache = ignite_client.get_or_create_cache(AIR_QUALITY_CACHE)
-    raw = air_quality_cache.get(robot_id)
+    raw = cache_op(AIR_QUALITY_CACHE, lambda c: c.get(robot_id))
     return _air_quality_from_cache_row(robot_id, raw)
 
 
 @query.field("airQualities")
 def resolve_air_qualities(*_):
-    air_quality_cache = ignite_client.get_or_create_cache(AIR_QUALITY_CACHE)
-    rows = air_quality_cache.scan()
+    rows = scan_rows(AIR_QUALITY_CACHE)
     result = []
     for robot_id, raw in rows:
         entry = _air_quality_from_cache_row(robot_id, raw)
@@ -745,15 +691,13 @@ def resolve_air_qualities(*_):
 
 @query.field("robotMcuState")
 def resolve_robot_mcu_state(*_, robot_id: int):
-    mcu_cache = ignite_client.get_or_create_cache(MCU_STATE_CACHE)
-    raw = mcu_cache.get(robot_id)
+    raw = cache_op(MCU_STATE_CACHE, lambda c: c.get(robot_id))
     return _mcu_state_from_cache_row(robot_id, raw)
 
 
 @query.field("robotMcuStates")
 def resolve_robot_mcu_states(*_):
-    mcu_cache = ignite_client.get_or_create_cache(MCU_STATE_CACHE)
-    rows = mcu_cache.scan()
+    rows = scan_rows(MCU_STATE_CACHE)
     result = []
     for robot_id, raw in rows:
         entry = _mcu_state_from_cache_row(robot_id, raw)

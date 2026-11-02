@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from ignite import ignite_client
+from ignite import cache_op
 from se2 import compute_similarity
 
 logger = logging.getLogger(__name__)
@@ -56,8 +56,7 @@ def load_common_point_pairs(path: Path) -> List[PointPair]:
 
 
 def get_global_transform_doc() -> Optional[dict]:
-    cache = ignite_client.get_or_create_cache(GLOBAL_TRANSFORM_CACHE)
-    raw = cache.get(GLOBAL_TRANSFORM_KEY)
+    raw = cache_op(GLOBAL_TRANSFORM_CACHE, lambda c: c.get(GLOBAL_TRANSFORM_KEY))
     if raw is None:
         return None
     try:
@@ -137,8 +136,7 @@ def init_global_transform_from_file(path: Optional[Path] = None) -> bool:
         "s": s,
         "timestamp": int(time.time()),
     }
-    cache = ignite_client.get_or_create_cache(GLOBAL_TRANSFORM_CACHE)
-    cache.put(GLOBAL_TRANSFORM_KEY, json.dumps(payload))
+    cache_op(GLOBAL_TRANSFORM_CACHE, lambda c: c.put(GLOBAL_TRANSFORM_KEY, json.dumps(payload)))
     logger.info(
         "Wrote global_transform to Ignite from %s (%s landmark pairs, s=%.6f, det(R)=%.6f%s)",
         points_path,

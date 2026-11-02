@@ -281,7 +281,7 @@ query {
   "data": {
     "objectPositions": [
       {
-        "id": 0,
+        "id": "3:-1",
         "robot_id": 3,
         "x": 3.2,
         "y": 1.1,
@@ -289,7 +289,7 @@ query {
         "timestamp": 1721280000.789
       },
       {
-        "id": 1,
+        "id": "4:2",
         "robot_id": 4,
         "x": 0.5,
         "y": -2.0,
@@ -304,11 +304,11 @@ query {
 
 | Field       | Type   | Meaning                                                               |
 | ----------- | ------ | --------------------------------------------------------------------- |
-| `id`        | Int    | Index in this result list (not necessarily a stable global object ID) |
+| `id`        | ID     | `"{robot_id}:{object_num}"`; stable for an object while it is present (same value on every poll) |
 | `robot_id`  | Int    | Robot / agent that reported the detection                             |
 | `x`, `y`    | Float  | Object position (meters, map frame)                                   |
 | `type`      | String | Class / label (e.g. detector class name)                              |
-| `timestamp` | Float  | Detection time (Unix seconds, fractional OK); may be `null` for older entries. Entries with a timestamp older than **15 seconds** are removed when queried (`OBJECT_STALE_SEC`), except `type: "person"` which expires after **1 second** (`PERSON_OBJECT_STALE_SEC`). A single robot may report multiple people (separate list entries); person markers use negative Ignite `object_num` slots (`-1`, `-2`, …). |
+| `timestamp` | Float  | Detection time (Unix seconds, fractional OK); may be `null` for older entries. Entries with a timestamp older than **15 seconds** are left out of query results (`OBJECT_STALE_SEC`), except `type: "person"` which expires after **1 second** (`PERSON_OBJECT_STALE_SEC`). A single robot may report multiple people (separate list entries); person markers use negative Ignite `object_num` slots (`-1`, `-2`, …). |
 
 
 ---
